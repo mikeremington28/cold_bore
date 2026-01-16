@@ -6,7 +6,7 @@ workflows:
 
     # Uses the App Store Connect API key you added in Codemagic (Team settings)
     integrations:
-      app_store_connect: Codemagic CI
+      app_store_connect: Cold Bore API
 
     environment:
       flutter: stable
