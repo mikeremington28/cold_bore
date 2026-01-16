@@ -1,0 +1,25 @@
+workflows:
+  build_all:
+    name: Cold Bore - Android APK + iOS build (no signing yet)
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+
+    environment:
+      flutter: stable
+
+    scripts:
+      - name: Pub get
+        script: flutter pub get
+
+      - name: Analyze
+        script: flutter analyze
+
+      - name: Build Android APK
+        script: flutter build apk --release
+
+      - name: Build iOS (no codesign)
+        script: flutter build ios --release --no-codesign
+
+    artifacts:
+      - build/app/outputs/flutter-apk/app-release.apk
+      - build/ios/iphoneos/*.app
