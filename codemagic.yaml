@@ -1,11 +1,21 @@
 workflows:
   ios_only:
-    name: Cold Bore - iOS build (no signing yet)
+    name: Cold Bore - iOS (TestFlight)
     max_build_duration: 60
     instance_type: mac_mini_m2
 
+    # Use the App Store Connect API key you added in Codemagic UI
+    integrations:
+      app_store_connect: Codemagic CI
+
     environment:
       flutter: stable
+
+      # Enable automatic fetching of signing files for TestFlight/App Store.
+      # (Requires that iOS signing is enabled for this app in Codemagic UI.)
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.remington.coldbore
 
     scripts:
       - name: Pub get
@@ -14,9 +24,20 @@ workflows:
       - name: Analyze
         script: flutter analyze
 
-      - name: Build iOS (no codesign)
-        script: flutter build ios --release --no-codesign
+      - name: Set up code signing settings on Xcode project
+        script: xcode-project use-profiles
+
+      - name: Build iOS IPA (Release)
+        script: flutter build ipa --release
 
     artifacts:
-      - build/ios/iphoneos/*.app
+      - build/ios/ipa/*.ipa
       - build/**/outputs/**/*.txt
+
+    publishing:
+      app_store_connect:
+        # Use the App Store Connect API key from the 'integrations' section above
+        auth: integration
+
+        # Upload to TestFlight
+        submit_to_testflight: true
