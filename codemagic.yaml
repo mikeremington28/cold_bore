@@ -6,7 +6,7 @@ workflows:
     instance_type: mac_mini_m2
 
     integrations:
-      app_store_connect: Codemagic CI
+      app_store_connect: Cold Bore API
 
     environment:
       flutter: stable
