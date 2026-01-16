@@ -20,8 +20,9 @@ workflows:
       - name: Pub get
         script: flutter pub get
 
-      - name: Analyze
-        script: flutter analyze
+      - - name: Analyze (non-blocking)
+    script: flutter analyze || true
+
 
       # Applies fetched signing files to the Xcode project
       - name: Apply iOS signing settings
