@@ -1,17 +1,15 @@
 workflows:
   ios_testflight:
     name: Cold Bore - iOS (TestFlight)
+
     max_build_duration: 60
     instance_type: mac_mini_m2
 
-    # Uses the App Store Connect API key you added in Codemagic (Team settings)
     integrations:
-      app_store_connect: Cold Bore API
+      app_store_connect: Codemagic CI
 
     environment:
       flutter: stable
-
-      # Fetch the correct Distribution cert + provisioning profile for this bundle id
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.remington.coldbore
@@ -20,11 +18,9 @@ workflows:
       - name: Pub get
         script: flutter pub get
 
-      - - name: Analyze (non-blocking)
-    script: flutter analyze || true
+      - name: Analyze (non-blocking)
+        script: flutter analyze || true
 
-
-      # Applies fetched signing files to the Xcode project
       - name: Apply iOS signing settings
         script: xcode-project use-profiles
 
@@ -33,10 +29,8 @@ workflows:
 
     artifacts:
       - build/ios/ipa/*.ipa
-      - build/**/outputs/**/*.txt
 
     publishing:
       app_store_connect:
-        # Auth with the key referenced in `integrations` above
         auth: integration
         submit_to_testflight: true
