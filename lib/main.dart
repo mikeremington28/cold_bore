@@ -104,7 +104,8 @@ class _AppRootState extends State<_AppRoot> {
   @override
   Widget build(BuildContext context) {
     if (!_unlocked) {
-      return HomeScreen() => setState(() => _unlocked = true),
+      return HomeScreen(
+        onUnlocked: () => setState(() => _unlocked = true),
       );
     }
 
@@ -736,106 +737,6 @@ class _ColdBoreRow {
 ///
 
 
-class _UnlockScreenState extends State<UnlockScreen> {
-  bool _busy = false;
-  String? _error;
-
-  Future<void> _unlock() async {
-    if (_busy) return;
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-
-    try {
-      final canCheck = await _auth.canCheckBiometrics;
-      final isSupported = await _auth.isDeviceSupported();
-      bool ok = false;
-
-      if (isSupported && canCheck) {
-        final didAuth = await _auth.authenticate(
-          localizedReason: 'Authenticate to continue',
-          biometricOnly: true,
-          stickyAuth: true,
-        );
-        ok = didAuth;
-      } else {
-        // Device doesn't support biometrics — in MVP we allow unlock.
-        ok = true;
-      }
-      } else {
-        // Device doesn't support biometrics — in MVP we allow unlock.
-        ok = true;
-      }
-
-      if (!mounted) return;
-
-      if (ok) {
-        widget.onUnlocked();
-      } else {
-        setState(() => _error = 'Unlock canceled.');
-      }
-    } catch (e) {
-      if (!mounted) return;
-      // In MVP we still allow unlock if auth fails unexpectedly.
-      setState(() => _error = 'Biometric error (allowed to continue): $e');
-      widget.onUnlocked();
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Spacer(),
-              const Icon(Icons.shield_outlined, size: 64),
-              const SizedBox(height: 12),
-              const Text(
-                'Cold Bore',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Protected logbook (MVP)',
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 24),
-              ElevatedButton.icon(
-                onPressed: _busy ? null : _unlock,
-                icon: const Icon(Icons.lock_open),
-                label: Text(_busy ? 'Unlocking…' : 'Unlock'),
-              ),
-              if (_error != null) ...[
-                const SizedBox(height: 12),
-                Text(
-                  _error!,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                ),
-              ],
-              const Spacer(),
-              Text(
-                'Tip: PIN + biometrics settings come next.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.65),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 class HomeShell extends StatefulWidget {
   final AppState state;
