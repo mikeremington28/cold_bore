@@ -38,6 +38,13 @@ class DopeEntry {
   final double windageLeft;
   final double windageRight;
 
+  /// Simple string fields used by the editor UI.
+  ///
+  /// These are intentionally kept separate from [windageLeft]/[windageRight]
+  /// and [windNotes] so we can evolve the model later without breaking builds.
+  final String windage;
+  final String notes;
+
   DopeEntry({
     required this.id,
     required this.time,
@@ -51,6 +58,8 @@ class DopeEntry {
     required this.windNotes,
     this.windageLeft = 0.0,
     this.windageRight = 0.0,
+    this.windage = '',
+    this.notes = '',
   });
 }
 
@@ -676,6 +685,11 @@ class TrainingSession {
     required this.dateTime,
     required this.locationName,
     required this.notes,
+    this.latitude,
+    this.longitude,
+    this.temperatureF,
+    this.windSpeedMph,
+    this.windDirectionDeg,
     required this.rifleId,
     required this.ammoLotId,
     required this.shots,
