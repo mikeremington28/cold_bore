@@ -1,12 +1,9 @@
 name: cold_bore
-description: "A new Flutter project."
+description: "Cold Bore"
 publish_to: "none"
 
 # Bump this build number every time you upload to TestFlight/App Store Connect.
- 
-  "version: $($matches[1])+$([int]$matches[2] + 1)" 
-
-
+version: 1.0.0+8
 environment:
   sdk: ^3.10.4
 
