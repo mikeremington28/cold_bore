@@ -2313,7 +2313,16 @@ class _NewSessionResult {
   final double? temperatureF;
   final double? windSpeedMph;
   final int? windDirectionDeg;
-  _NewSessionResult({required this.locationName, required this.dateTime, required this.notes});
+  _NewSessionResult({
+    required this.locationName,
+    required this.dateTime,
+    required this.notes,
+    this.latitude,
+    this.longitude,
+    this.temperatureF,
+    this.windSpeedMph,
+    this.windDirectionDeg,
+  });
 }
 
 class _NewSessionDialog extends StatefulWidget {
@@ -2718,6 +2727,10 @@ class _NewRifleResult {
     required this.caliber,
     required this.notes,
     required this.dope,
+    this.dopeEntries = const [],
+    this.serialNumber,
+    this.barrelLength,
+    this.twistRate,
   });
 }
 
@@ -2805,7 +2818,13 @@ class _NewAmmoResult {
   final String bullet;
   final String notes;
   final double? ballisticCoefficient;
-  _NewAmmoResult({required this.name, required this.caliber, required this.bullet, required this.notes});
+  _NewAmmoResult({
+    required this.name,
+    required this.caliber,
+    required this.bullet,
+    required this.notes,
+    this.ballisticCoefficient,
+  });
 }
 
 class _NewAmmoDialog extends StatefulWidget {
