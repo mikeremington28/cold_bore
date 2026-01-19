@@ -156,6 +156,35 @@ class AppState extends ChangeNotifier {
 
   UserProfile? _activeUser;
 
+
+  // Current environment (optional)
+  double? _latitude;
+  double? _longitude;
+  double? _temperatureF;
+  double? _windSpeedMph;
+  int? _windDirectionDeg;
+
+  double? get latitude => _latitude;
+  double? get longitude => _longitude;
+  double? get temperatureF => _temperatureF;
+  double? get windSpeedMph => _windSpeedMph;
+  int? get windDirectionDeg => _windDirectionDeg;
+
+  void setEnvironment({
+    double? latitude,
+    double? longitude,
+    double? temperatureF,
+    double? windSpeedMph,
+    int? windDirectionDeg,
+  }) {
+    _latitude = latitude;
+    _longitude = longitude;
+    _temperatureF = temperatureF;
+    _windSpeedMph = windSpeedMph;
+    _windDirectionDeg = windDirectionDeg;
+    notifyListeners();
+  }
+
   List<UserProfile> get users => List.unmodifiable(_users);
   List<Rifle> get rifles => List.unmodifiable(_rifles);
   List<AmmoLot> get ammoLots => List.unmodifiable(_ammoLots);
@@ -2554,8 +2583,8 @@ class _ColdBoreResult {
 }
 
 class _ColdBoreDialog extends StatefulWidget {
-  final DateTime defaultTime = DateTime.now();
-  const _ColdBoreDialog({required this.defaultTime});
+  final DateTime defaultTime;
+  _ColdBoreDialog({super.key, DateTime? defaultTime}) : defaultTime = defaultTime ?? DateTime.now();
 
   @override
   State<_ColdBoreDialog> createState() => _ColdBoreDialogState();
