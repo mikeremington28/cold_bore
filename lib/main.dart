@@ -214,6 +214,37 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void addDopeEntry(String rifleId, DopeEntry entry) {
+    final idx = _rifles.indexWhere((r) => r.id == rifleId);
+    if (idx == -1) return;
+    final r = _rifles[idx];
+    final list = List<DopeEntry>.from(r.dopeEntries);
+    list.add(entry);
+    _rifles[idx] = r.copyWith(dopeEntries: list);
+    notifyListeners();
+  }
+
+  void updateDopeEntry(String rifleId, DopeEntry entry) {
+    final idx = _rifles.indexWhere((r) => r.id == rifleId);
+    if (idx == -1) return;
+    final r = _rifles[idx];
+    final list = List<DopeEntry>.from(r.dopeEntries);
+    final eIdx = list.indexWhere((e) => e.id == entry.id);
+    if (eIdx == -1) return;
+    list[eIdx] = entry;
+    _rifles[idx] = r.copyWith(dopeEntries: list);
+    notifyListeners();
+  }
+
+  void deleteDopeEntry(String rifleId, String entryId) {
+    final idx = _rifles.indexWhere((r) => r.id == rifleId);
+    if (idx == -1) return;
+    final r = _rifles[idx];
+    final list = r.dopeEntries.where((e) => e.id != entryId).toList();
+    _rifles[idx] = r.copyWith(dopeEntries: list);
+    notifyListeners();
+  }
+
   void updateRifleDope({required String rifleId, required String dope}) {
     final idx = _rifles.indexWhere((r) => r.id == rifleId);
     if (idx < 0) return;
@@ -546,6 +577,7 @@ class Rifle {
   final String caliber;
   final String notes;
   final String dope;
+  final List<DopeEntry> dopeEntries;
 
   // Optional details
   final String? serialNumber;
@@ -558,6 +590,7 @@ class Rifle {
     required this.caliber,
     required this.notes,
     required this.dope,
+    this.dopeEntries = const [],
     this.serialNumber,
     this.barrelLength,
     this.twistRate,
@@ -568,6 +601,7 @@ class Rifle {
     String? caliber,
     String? notes,
     String? dope,
+    List<DopeEntry>? dopeEntries,
     String? serialNumber,
     String? barrelLength,
     String? twistRate,
@@ -578,6 +612,7 @@ class Rifle {
       caliber: caliber ?? this.caliber,
       notes: notes ?? this.notes,
       dope: dope ?? this.dope,
+      dopeEntries: dopeEntries ?? this.dopeEntries,
       serialNumber: serialNumber ?? this.serialNumber,
       barrelLength: barrelLength ?? this.barrelLength,
       twistRate: twistRate ?? this.twistRate,
@@ -2564,6 +2599,7 @@ class _NewRifleResult {
   final String caliber;
   final String notes;
   final String dope;
+  final List<DopeEntry> dopeEntries;
   final String? serialNumber;
   final String? barrelLength;
   final String? twistRate;
@@ -2738,4 +2774,207 @@ String _fmtDateTime(DateTime dt) {
   final hh = dt.hour.toString().padLeft(2, '0');
   final mm = dt.minute.toString().padLeft(2, '0');
   return '$m/$d/$y $hh:$mm';
+}
+
+class DopeManagerScreen extends StatelessWidget {
+  final AppState state;
+  final Rifle rifle;
+  const DopeManagerScreen({super.key, required this.state, required this.rifle});
+
+  @override
+  Widget build(BuildContext context) {
+    final entries = rifle.dopeEntries;
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('DOPE • ${rifle.name}'),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () async {
+          final res = await showDialog<DopeEntry>(
+            context: context,
+            builder: (_) => const _DopeEntryDialog(),
+          );
+          if (res != null) {
+            state.addDopeEntry(
+              rifle.id,
+              DopeEntry(
+                id: state.newIdForChild(),
+                distance: res.distance,
+                elevation: res.elevation,
+                windage: res.windage,
+                notes: res.notes,
+              ),
+            );
+          }
+        },
+        child: const Icon(Icons.add),
+      ),
+      body: entries.isEmpty
+          ? Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'No DOPE entries yet.',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text('Tap + to add your first DOPE entry.'),
+                  if (rifle.dope.trim().isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Legacy DOPE (single field)',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(rifle.dope),
+                  ],
+                ],
+              ),
+            )
+          : ListView.separated(
+              padding: const EdgeInsets.all(12),
+              itemCount: entries.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (context, i) {
+                final e = entries[i];
+                return ListTile(
+                  title: Text('${e.distance} • Elev ${e.elevation} • Wind ${e.windage}'),
+                  subtitle: e.notes.trim().isEmpty ? null : Text(e.notes),
+                  onTap: () async {
+                    final edited = await showDialog<DopeEntry>(
+                      context: context,
+                      builder: (_) => _DopeEntryDialog(existing: e),
+                    );
+                    if (edited != null) {
+                      state.updateDopeEntry(
+                        rifle.id,
+                        e.copyWith(
+                          distance: edited.distance,
+                          elevation: edited.elevation,
+                          windage: edited.windage,
+                          notes: edited.notes,
+                        ),
+                      );
+                    }
+                  },
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: () async {
+                      final ok = await showDialog<bool>(
+                        context: context,
+                        builder: (_) => AlertDialog(
+                          title: const Text('Delete DOPE entry?'),
+                          content: const Text('This cannot be undone.'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              child: const Text('Cancel'),
+                            ),
+                            FilledButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              child: const Text('Delete'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (ok == true) {
+                        state.deleteDopeEntry(rifle.id, e.id);
+                      }
+                    },
+                  ),
+                );
+              },
+            ),
+    );
+  }
+}
+
+class _DopeEntryDialog extends StatefulWidget {
+  final DopeEntry? existing;
+  const _DopeEntryDialog({this.existing});
+
+  @override
+  State<_DopeEntryDialog> createState() => _DopeEntryDialogState();
+}
+
+class _DopeEntryDialogState extends State<_DopeEntryDialog> {
+  late final TextEditingController _distance;
+  late final TextEditingController _elev;
+  late final TextEditingController _wind;
+  late final TextEditingController _notes;
+
+  @override
+  void initState() {
+    super.initState();
+    _distance = TextEditingController(text: widget.existing?.distance ?? '');
+    _elev = TextEditingController(text: widget.existing?.elevation ?? '');
+    _wind = TextEditingController(text: widget.existing?.windage ?? '');
+    _notes = TextEditingController(text: widget.existing?.notes ?? '');
+  }
+
+  @override
+  void dispose() {
+    _distance.dispose();
+    _elev.dispose();
+    _wind.dispose();
+    _notes.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.existing == null ? 'Add DOPE' : 'Edit DOPE'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _distance,
+              decoration: const InputDecoration(labelText: 'Distance (yd/m)'),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _elev,
+              decoration: const InputDecoration(labelText: 'Elevation (dial)'),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _wind,
+              decoration: const InputDecoration(labelText: 'Windage (e.g., R0.2 / L0.1 / 0)'),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _notes,
+              maxLines: 3,
+              decoration: const InputDecoration(labelText: 'Notes (optional)'),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () {
+            Navigator.pop(
+              context,
+              DopeEntry(
+                id: 'tmp',
+                distance: _distance.text.trim(),
+                elevation: _elev.text.trim(),
+                windage: _wind.text.trim(),
+                notes: _notes.text.trim(),
+              ),
+            );
+          },
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
 }
