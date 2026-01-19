@@ -763,13 +763,12 @@ class _UnlockScreenState extends State<UnlockScreen> {
       bool ok = false;
 
       if (isSupported && canCheck) {
-        ok = await _auth.authenticate(
-          localizedReason: 'Unlock Cold Bore',
-          options: const AuthenticationOptions(
-            biometricOnly: false,
-            stickyAuth: true,
-          ),
+        final didAuth = await _auth.authenticate(
+          localizedReason: 'Authenticate to continue',
+          biometricOnly: true,
+          stickyAuth: true,
         );
+        ok = didAuth;
       } else {
         // Device doesn't support biometrics — in MVP we allow unlock.
         ok = true;

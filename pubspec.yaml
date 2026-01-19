@@ -3,7 +3,9 @@ description: "A new Flutter project."
 publish_to: "none"
 
 # Bump this build number every time you upload to TestFlight/App Store Connect.
-version: 1.0.0+9
+ 
+  "version: $($matches[1])+$([int]$matches[2] + 1)" 
+
 
 environment:
   sdk: ^3.10.4
