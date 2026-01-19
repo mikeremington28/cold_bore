@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:geolocator/geolocator.dart';
 import 'dart:typed_data';
 import 'package:image_picker/image_picker.dart';
 
@@ -285,6 +287,11 @@ class AppState extends ChangeNotifier {
       dateTime: dateTime,
       locationName: locationName.trim(),
       notes: notes.trim(),
+      latitude: latitude,
+      longitude: longitude,
+      temperatureF: temperatureF,
+      windSpeedMph: windSpeedMph,
+      windDirectionDeg: windDirectionDeg,
       rifleId: null,
       ammoLotId: null,
       shots: const [],
@@ -647,6 +654,15 @@ class TrainingSession {
   final String locationName;
   final String notes;
 
+  // Optional GPS (saved only if user taps Use GPS)
+  final double? latitude;
+  final double? longitude;
+
+  // Optional Weather (stored on the session)
+  final double? temperatureF;
+  final double? windSpeedMph;
+  final int? windDirectionDeg;
+
   final String? rifleId;
   final String? ammoLotId;
 
@@ -668,6 +684,11 @@ class TrainingSession {
   });
 
   TrainingSession copyWith({
+    double? latitude,
+    double? longitude,
+    double? temperatureF,
+    double? windSpeedMph,
+    int? windDirectionDeg,
     DateTime? dateTime,
     String? locationName,
     String? notes,
@@ -683,6 +704,11 @@ class TrainingSession {
       dateTime: dateTime ?? this.dateTime,
       locationName: locationName ?? this.locationName,
       notes: notes ?? this.notes,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      temperatureF: temperatureF ?? this.temperatureF,
+      windSpeedMph: windSpeedMph ?? this.windSpeedMph,
+      windDirectionDeg: windDirectionDeg ?? this.windDirectionDeg,
       rifleId: rifleId ?? this.rifleId,
       ammoLotId: ammoLotId ?? this.ammoLotId,
       shots: shots ?? this.shots,
@@ -2282,6 +2308,11 @@ class _NewSessionResult {
   final String locationName;
   final DateTime dateTime;
   final String notes;
+  final double? latitude;
+  final double? longitude;
+  final double? temperatureF;
+  final double? windSpeedMph;
+  final int? windDirectionDeg;
   _NewSessionResult({required this.locationName, required this.dateTime, required this.notes});
 }
 
@@ -2295,16 +2326,95 @@ class _NewSessionDialog extends StatefulWidget {
 class _NewSessionDialogState extends State<_NewSessionDialog> {
   final _location = TextEditingController();
   final _notes = TextEditingController();
+  final _tempF = TextEditingController();
+  final _windMph = TextEditingController();
+  final _windDir = TextEditingController();
   DateTime _dateTime = DateTime.now();
+  double? _lat;
+  double? _lon;
+  bool _busy = false;
+  String? _gpsError;
 
   @override
   void dispose() {
     _location.dispose();
     _notes.dispose();
+    _tempF.dispose();
+    _windMph.dispose();
+    _windDir.dispose();
     super.dispose();
   }
 
-  Future<void> _pickDateTime() async {
+  
+  Future<void> _useGps() async {
+    setState(() {
+      _busy = true;
+      _gpsError = null;
+    });
+    try {
+      final enabled = await Geolocator.isLocationServiceEnabled();
+      if (!enabled) {
+        setState(() => _gpsError = 'Location Services are off.');
+        return;
+      }
+
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
+        setState(() => _gpsError = 'Location permission denied.');
+        return;
+      }
+
+      final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      _lat = pos.latitude;
+      _lon = pos.longitude;
+      _location.text = '${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)}';
+    } catch (e) {
+      setState(() => _gpsError = 'GPS failed: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _fetchWeather() async {
+    if (_lat == null || _lon == null) {
+      setState(() => _gpsError = 'Tap "Use GPS" first (or enter coordinates).');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _gpsError = null;
+    });
+    try {
+      final uri = Uri.parse(
+        'https://api.open-meteo.com/v1/forecast'
+        '?latitude=${_lat}&longitude=${_lon}'
+        '&current=temperature_2m,wind_speed_10m,wind_direction_10m'
+        '&temperature_unit=fahrenheit&wind_speed_unit=mph',
+      );
+      final resp = await http.get(uri);
+      if (resp.statusCode != 200) {
+        throw 'HTTP ${resp.statusCode}';
+      }
+      final data = jsonDecode(resp.body) as Map<String, dynamic>;
+      final current = data['current'] as Map<String, dynamic>?;
+      if (current == null) throw 'No current weather data.';
+      final t = (current['temperature_2m'] as num?)?.toDouble();
+      final w = (current['wind_speed_10m'] as num?)?.toDouble();
+      final d = (current['wind_direction_10m'] as num?)?.toInt();
+      if (t != null) _tempF.text = t.toStringAsFixed(1);
+      if (w != null) _windMph.text = w.toStringAsFixed(1);
+      if (d != null) _windDir.text = d.toString();
+    } catch (e) {
+      setState(() => _gpsError = 'Weather fetch failed: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+Future<void> _pickDateTime() async {
     final now = DateTime.now();
     final d = await showDatePicker(
       context: context,

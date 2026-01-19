@@ -49,5 +49,7 @@
 
 	<key>NSFaceIDUsageDescription</key>
 	<string>Use Face ID to securely access your data.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>We use your location to save session GPS and fetch weather when you tap Use GPS.</string>
 </dict>
 </plist>
