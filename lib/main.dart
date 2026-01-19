@@ -547,12 +547,20 @@ class Rifle {
   final String notes;
   final String dope;
 
+  // Optional details
+  final String? serialNumber;
+  final String? barrelLength;
+  final String? twistRate;
+
   Rifle({
     required this.id,
     required this.name,
     required this.caliber,
     required this.notes,
     required this.dope,
+    this.serialNumber,
+    this.barrelLength,
+    this.twistRate,
   });
 
   Rifle copyWith({
@@ -560,6 +568,9 @@ class Rifle {
     String? caliber,
     String? notes,
     String? dope,
+    String? serialNumber,
+    String? barrelLength,
+    String? twistRate,
   }) {
     return Rifle(
       id: id,
@@ -567,6 +578,9 @@ class Rifle {
       caliber: caliber ?? this.caliber,
       notes: notes ?? this.notes,
       dope: dope ?? this.dope,
+      serialNumber: serialNumber ?? this.serialNumber,
+      barrelLength: barrelLength ?? this.barrelLength,
+      twistRate: twistRate ?? this.twistRate,
     );
   }
 }
@@ -578,12 +592,16 @@ class AmmoLot {
   final String bullet;
   final String notes;
 
+  // Optional ballistics
+  final double? ballisticCoefficient;
+
   AmmoLot({
     required this.id,
     required this.name,
     required this.caliber,
     required this.bullet,
     required this.notes,
+    this.ballisticCoefficient,
   });
 }
 
@@ -1459,7 +1477,7 @@ class SessionDetailScreen extends StatelessWidget {
               const SizedBox(height: 6),
               Text(_fmtDateTime(s.dateTime)),
               const SizedBox(height: 16),
-              _SectionTitle('Training Notes'),
+              _SectionTitle('Notes'),
               const SizedBox(height: 8),
               Card(
                 child: Padding(
@@ -1902,7 +1920,15 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
       builder: (_) => const _NewRifleDialog(),
     );
     if (res == null) return;
-    widget.state.addRifle(name: res.name, caliber: res.caliber, notes: res.notes, dope: res.dope);
+    widget.state.addRifle(
+      name: res.name,
+      caliber: res.caliber,
+      notes: res.notes,
+      dope: res.dope,
+      serialNumber: res.serialNumber,
+      barrelLength: res.barrelLength,
+      twistRate: res.twistRate,
+    );
   }
 
   Future<void> _addAmmo() async {
@@ -1916,6 +1942,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
       caliber: res.caliber,
       bullet: res.bullet,
       notes: res.notes,
+      ballisticCoefficient: res.ballisticCoefficient,
     );
   }
 
@@ -2428,7 +2455,7 @@ class _EditNotesDialogState extends State<_EditNotesDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Training Notes'),
+      title: const Text('Notes'),
       content: TextField(
         controller: _c,
         maxLines: 6,
@@ -2537,6 +2564,9 @@ class _NewRifleResult {
   final String caliber;
   final String notes;
   final String dope;
+  final String? serialNumber;
+  final String? barrelLength;
+  final String? twistRate;
   _NewRifleResult({
     required this.name,
     required this.caliber,
@@ -2628,6 +2658,7 @@ class _NewAmmoResult {
   final String caliber;
   final String bullet;
   final String notes;
+  final double? ballisticCoefficient;
   _NewAmmoResult({required this.name, required this.caliber, required this.bullet, required this.notes});
 }
 
