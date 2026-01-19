@@ -1,2673 +1,2219 @@
-// lib/main.dart
-import 'dart:async';
-import 'dart:convert';
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:in_app_purchase/in_app_purchase.dart';
-import 'package:url_launcher/url_launcher.dart';
-
-import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
-
-import 'package:share_plus/share_plus.dart';
-import 'package:file_selector/file_selector.dart';
-
+import 'package:http/http.dart' as http;
+import 'package:geolocator/geolocator.dart';
+import 'dart:typed_data';
+import 'dart:convert';
 import 'package:image_picker/image_picker.dart';
-import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
-Future<void> main() async {
+enum DistanceUnit { yards, meters }
+
+enum ElevationUnit { mil, moa }
+
+enum WindType { fullValue, clock }
+
+class DistanceKey {
+  final double value;
+  final DistanceUnit unit;
+
+  const DistanceKey(this.value, this.unit);
+
+  @override
+  bool operator ==(Object other) =>
+      other is DistanceKey && other.value == value && other.unit == unit;
+
+  @override
+  int get hashCode => value.hashCode ^ unit.hashCode;
+}
+
+class DopeEntry {
+  final String id;
+  final DateTime time;
+  final double distance;
+  final DistanceUnit distanceUnit;
+  final double elevation;
+  final ElevationUnit elevationUnit;
+  final String elevationNotes;
+  final WindType windType;
+  final String windValue;
+  final String windNotes;
+  final double windageLeft;
+  final double windageRight;
+
+  RifleDopeEntry({
+    required this.id,
+    required this.time,
+    required this.distance,
+    required this.distanceUnit,
+    required this.elevation,
+    required this.elevationUnit,
+    required this.elevationNotes,
+    required this.windType,
+    required this.windValue,
+    required this.windNotes,
+    this.windageLeft = 0.0,
+    this.windageRight = 0.0,
+  });
+}
+
+
+// Separate DOPE entry model for Rifle DOPE list (simple text fields).
+// This avoids colliding with the main DopeEntry model used for working/training DOPE.
+class RifleDopeEntry {
+  final String id;
+  final String distance;
+  final String elevation;
+  final String windage;
+  final String notes;
+
+  const RifleRifleDopeEntry({
+    required this.id,
+    required this.distance,
+    required this.elevation,
+    required this.windage,
+    required this.notes,
+  });
+
+  RifleDopeEntry copyWith({
+    String? id,
+    String? distance,
+    String? elevation,
+    String? windage,
+    String? notes,
+  }) {
+    return RifleRifleDopeEntry(
+      id: id ?? this.id,
+      distance: distance ?? this.distance,
+      elevation: elevation ?? this.elevation,
+      windage: windage ?? this.windage,
+      notes: notes ?? this.notes,
+    );
+  }
+}
+
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const RanchHandApp());
+  runApp(const ColdBoreApp());
 }
 
-class RanchHandApp extends StatefulWidget {
-  const RanchHandApp({super.key});
-
-  @override
-  State<RanchHandApp> createState() => _RanchHandAppState();
-}
-
-class _RanchHandAppState extends State<RanchHandApp> {
-  ThemeMode _themeMode = ThemeMode.system;
-
-  @override
-  void initState() {
-    super.initState();
-    _initThemeMode();
-  }
-
-  Future<void> _initThemeMode() async {
-    final mode = await Storage.loadThemeMode();
-    if (!mounted) return;
-    setState(() => _themeMode = mode);
-  }
-
-  void _setThemeMode(ThemeMode mode) {
-    unawaited(Storage.saveThemeMode(mode));
-    setState(() => _themeMode = mode);
-  }
+///
+/// Cold Bore (MVP Shell + First Feature Set)
+/// - Unlock (biometrics attempt; falls back to allow unlock during MVP)
+/// - Users (in-memory)
+/// - Equipment: Rifles + Ammo Lots (in-memory)
+/// - Sessions: assign rifle/ammo + add Cold Bore entries + photos + training DOPE
+///
+/// NOTE: Still "no database yet". We'll swap AppState storage to a real DB later.
+///
+class ColdBoreApp extends StatelessWidget {
+  const ColdBoreApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Ranch Hand',
+      title: 'Cold Bore',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(useMaterial3: true),
-      darkTheme: ThemeData.dark(useMaterial3: true),
-      themeMode: _themeMode,
-      home: DashboardScreen(
-        currentThemeMode: _themeMode,
-        onThemeChanged: _setThemeMode,
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueGrey),
+        useMaterial3: true,
       ),
-    );
-  }
-}
-/* ============================
-   Models
-============================ */
-
-class Equipment {
-  final String id;
-  String name;
-  String type;
-
-  // Optional details
-  String? vin;
-  String? serialNumber;
-  DateTime? purchaseDate;
-
-  // More optional details
-  String? location;
-  String? manufacturer;
-  String? model;
-  String? vendor;
-  double? purchasePrice;
-  DateTime? warrantyUntil;
-
-  String notes;
-  final DateTime createdAt;
-  Map<String, String> specs;
-
-  Equipment({
-    required this.id,
-    required this.name,
-    required this.type,
-    this.vin,
-    this.serialNumber,
-    this.purchaseDate,
-    this.location,
-    this.manufacturer,
-    this.model,
-    this.vendor,
-    this.purchasePrice,
-    this.warrantyUntil,
-    required this.notes,
-    required this.createdAt,
-    Map<String, String>? specs,
-  }) : specs = specs ?? {};
-
-  Map<String, dynamic> toMap() => {
-        'id': id,
-        'name': name,
-        'type': type,
-        'vin': vin,
-        'serialNumber': serialNumber,
-        'purchaseDate': purchaseDate?.toIso8601String(),
-        'location': location,
-        'manufacturer': manufacturer,
-        'model': model,
-        'vendor': vendor,
-        'purchasePrice': purchasePrice,
-        'warrantyUntil': warrantyUntil?.toIso8601String(),
-        'notes': notes,
-        'createdAt': createdAt.toIso8601String(),
-        'specs': specs,
-      };
-
-  static Equipment fromMap(Map<String, dynamic> map) {
-    final specsRaw = map['specs'];
-    Map<String, String> specs = {};
-    if (specsRaw is Map) {
-      specs =
-          specsRaw.map((k, v) => MapEntry(k.toString(), (v ?? '').toString()));
-    }
-
-    return Equipment(
-      id: (map['id'] ?? '').toString(),
-      name: (map['name'] ?? '').toString(),
-      type: (map['type'] ?? '').toString(),
-      vin: (map['vin'] ?? '').toString().trim().isEmpty
-          ? null
-          : (map['vin'] ?? '').toString(),
-      serialNumber: (map['serialNumber'] ?? '').toString().trim().isEmpty
-          ? null
-          : (map['serialNumber'] ?? '').toString(),
-      purchaseDate: DateTime.tryParse((map['purchaseDate'] ?? '').toString()),
-      location: (map['location'] ?? '').toString().trim().isEmpty ? null : (map['location'] ?? '').toString(),
-      manufacturer: (map['manufacturer'] ?? '').toString().trim().isEmpty ? null : (map['manufacturer'] ?? '').toString(),
-      model: (map['model'] ?? '').toString().trim().isEmpty ? null : (map['model'] ?? '').toString(),
-      vendor: (map['vendor'] ?? '').toString().trim().isEmpty ? null : (map['vendor'] ?? '').toString(),
-      purchasePrice: (map['purchasePrice'] is num)
-          ? (map['purchasePrice'] as num).toDouble()
-          : double.tryParse((map['purchasePrice'] ?? '').toString()),
-      warrantyUntil: DateTime.tryParse((map['warrantyUntil'] ?? '').toString()),
-      notes: (map['notes'] ?? '').toString(),
-      createdAt: DateTime.tryParse((map['createdAt'] ?? '').toString()) ??
-          DateTime.now(),
-      specs: specs,
+      home: const _AppRoot(),
     );
   }
 }
 
-class MaintenanceRecord {
-  final String id;
-  final String equipmentId;
-  final String equipmentName;
-  final String serviceType;
-  final DateTime? serviceDate;
-  final int? hours;
-  final int? mileage;
-  final String notes;
-
-  // Optional "next due" reminders
-  final DateTime? nextDueDate;
-  final int? nextDueHours;
-  final int? nextDueMileage;
-
-  MaintenanceRecord({
-    required this.id,
-    required this.equipmentId,
-    required this.equipmentName,
-    required this.serviceType,
-    this.serviceDate,
-    required this.hours,
-    required this.mileage,
-    required this.notes,
-    this.nextDueDate,
-    this.nextDueHours,
-    this.nextDueMileage,
-  });
-
-
-  bool get hasNextDue =>
-      nextDueDate != null || nextDueHours != null || nextDueMileage != null;
-
-  bool get hasCompleted => serviceDate != null;
-  Map<String, dynamic> toMap() => {
-        'id': id,
-        'equipmentId': equipmentId,
-        'equipmentName': equipmentName,
-        'serviceType': serviceType,
-        'serviceDate': serviceDate?.toIso8601String(),
-        'hours': hours,
-        'mileage': mileage,
-        'notes': notes,
-        'nextDueDate': nextDueDate?.toIso8601String(),
-        'nextDueHours': nextDueHours,
-        'nextDueMileage': nextDueMileage,
-      };
-
-  static MaintenanceRecord fromMap(Map<String, dynamic> map) {
-    return MaintenanceRecord(
-      id: (map['id'] ?? '').toString(),
-      equipmentId: (map['equipmentId'] ?? '').toString(),
-      equipmentName: (map['equipmentName'] ?? '').toString(),
-      serviceType: (map['serviceType'] ?? '').toString(),
-      serviceDate: (() {
-        final raw = (map['serviceDate'] ?? '').toString().trim();
-        if (raw.isEmpty) return null;
-        return DateTime.tryParse(raw);
-      })(),
-      hours: map['hours'] is int
-          ? map['hours'] as int
-          : int.tryParse((map['hours'] ?? '').toString()),
-      mileage: map['mileage'] is int
-          ? map['mileage'] as int
-          : int.tryParse((map['mileage'] ?? '').toString()),
-      notes: (map['notes'] ?? '').toString(),
-      nextDueDate: DateTime.tryParse((map['nextDueDate'] ?? '').toString()),
-      nextDueHours: (map['nextDueHours'] is num)
-          ? (map['nextDueHours'] as num).toInt()
-          : int.tryParse((map['nextDueHours'] ?? '').toString()),
-      nextDueMileage: (map['nextDueMileage'] is num)
-          ? (map['nextDueMileage'] as num).toInt()
-          : int.tryParse((map['nextDueMileage'] ?? '').toString()),
-    );
-  }
-}
-
-
-class TrendPrediction {
-  final int? typicalIntervalDays; // null if not enough data
-  final DateTime? nextDue;
-  final String confidence; // "High" | "Medium" | "Low" | "None"
-
-  const TrendPrediction({
-    required this.typicalIntervalDays,
-    required this.nextDue,
-    required this.confidence,
-  });
-}
-
-enum _EquipmentFilter { all, dueSoon, overdue }
-
-TrendPrediction predictNextDueFromDates(
-  List<DateTime> serviceDates, {
-  int fallbackIntervalDays = 60,
-  int minRecordsForTrend = 3,
-}) {
-  if (serviceDates.isEmpty) {
-    return const TrendPrediction(
-      typicalIntervalDays: null,
-      nextDue: null,
-      confidence: "None",
-    );
-  }
-
-  final dates = [...serviceDates]..sort((a, b) => a.compareTo(b));
-
-  if (dates.length < minRecordsForTrend) {
-    final last = dates.last;
-    return TrendPrediction(
-      typicalIntervalDays: fallbackIntervalDays,
-      nextDue: last.add(Duration(days: fallbackIntervalDays)),
-      confidence: "Low",
-    );
-  }
-
-  final gaps = <int>[];
-  for (int i = 1; i < dates.length; i++) {
-    final gap = dates[i].difference(dates[i - 1]).inDays;
-    if (gap > 0) gaps.add(gap);
-  }
-
-  if (gaps.length < 2) {
-    final last = dates.last;
-    return TrendPrediction(
-      typicalIntervalDays: fallbackIntervalDays,
-      nextDue: last.add(Duration(days: fallbackIntervalDays)),
-      confidence: "Low",
-    );
-  }
-
-  gaps.sort();
-  int median(List<int> xs) => xs[xs.length ~/ 2];
-  final typical = median(gaps);
-
-  final within10pct = gaps.where((g) => (g - typical).abs() <= (typical * 0.10)).length;
-  final ratio = within10pct / gaps.length;
-
-  final confidence = (gaps.length >= 6 && ratio >= 0.6)
-      ? "High"
-      : (gaps.length >= 4 && ratio >= 0.4)
-          ? "Medium"
-          : "Low";
-
-  final last = dates.last;
-  return TrendPrediction(
-    typicalIntervalDays: typical,
-    nextDue: last.add(Duration(days: typical)),
-    confidence: confidence,
-  );
-}
-
-/* ============================
-   Storage
-============================ */
-
-class Storage {
-  static const _kEquipmentListKey = 'equipmentListV2';
-  static const _kMaintenanceListKey = 'maintenanceListV2';
-  static const _kThemeModeKey = 'themeModeV1';
-  static const _kMaintenanceRemindersEnabledKey = 'maintenanceRemindersEnabledV1';
-  static const _kBackupRemindersEnabledKey = 'backupRemindersEnabledV1';
-  static const _kLastBackupAtKey = 'lastBackupAtV1';
-
-
-  static Future<ThemeMode> loadThemeMode() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_kThemeModeKey) ?? 'system';
-    switch (raw) {
-      case 'light':
-        return ThemeMode.light;
-      case 'dark':
-        return ThemeMode.dark;
-      default:
-        return ThemeMode.system;
-    }
-  }
-
-  static Future<void> saveThemeMode(ThemeMode mode) async {
-    final prefs = await SharedPreferences.getInstance();
-    final value = switch (mode) {
-      ThemeMode.light => 'light',
-      ThemeMode.dark => 'dark',
-      _ => 'system',
-    };
-    await prefs.setString(_kThemeModeKey, value);
-  }
-
-  static Future<bool> loadMaintenanceRemindersEnabled() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_kMaintenanceRemindersEnabledKey) ?? false;
-  }
-
-  static Future<void> saveMaintenanceRemindersEnabled(bool enabled) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_kMaintenanceRemindersEnabledKey, enabled);
-  }
-
-  static Future<bool> loadBackupRemindersEnabled() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_kBackupRemindersEnabledKey) ?? true;
-  }
-
-  static Future<void> saveBackupRemindersEnabled(bool enabled) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_kBackupRemindersEnabledKey, enabled);
-  }
-
-  static Future<DateTime?> loadLastBackupAt() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_kLastBackupAtKey);
-    if (raw == null || raw.trim().isEmpty) return null;
-    return DateTime.tryParse(raw);
-  }
-
-  static Future<void> saveLastBackupAt(DateTime when) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kLastBackupAtKey, when.toIso8601String());
-  }
-
-
-  static Future<List<Equipment>> loadEquipment() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_kEquipmentListKey);
-    if (raw == null || raw.isEmpty) return [];
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! List) return [];
-      return decoded
-          .whereType<Map>()
-          .map((m) =>
-              Equipment.fromMap(m.map((k, v) => MapEntry(k.toString(), v))))
-          .toList();
-    } catch (_) {
-      return [];
-    }
-  }
-
-  static Future<void> saveEquipment(List<Equipment> list) async {
-    final prefs = await SharedPreferences.getInstance();
-    final payload = list.map((e) => e.toMap()).toList();
-    await prefs.setString(_kEquipmentListKey, jsonEncode(payload));
-  }
-
-  static Future<void> upsertEquipment(Equipment updated) async {
-    final list = await loadEquipment();
-    final idx = list.indexWhere((e) => e.id == updated.id);
-    if (idx == -1) {
-      list.insert(0, updated);
-    } else {
-      list[idx] = updated;
-    }
-    await saveEquipment(list);
-  }
-
-  static Future<List<MaintenanceRecord>> loadMaintenance() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_kMaintenanceListKey);
-    if (raw == null || raw.isEmpty) return [];
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! List) return [];
-      return decoded
-          .whereType<Map>()
-          .map((m) => MaintenanceRecord.fromMap(
-              m.map((k, v) => MapEntry(k.toString(), v))))
-          .toList();
-    } catch (_) {
-      return [];
-    }
-  }
-
-  static Future<void> saveMaintenance(List<MaintenanceRecord> list) async {
-    final prefs = await SharedPreferences.getInstance();
-    final payload = list.map((r) => r.toMap()).toList();
-    await prefs.setString(_kMaintenanceListKey, jsonEncode(payload));
-  }
-
-  // ===== Backup export/import =====
-
-  static Future<String> exportBackupJson() async {
-    final equipment = await loadEquipment();
-    final maintenance = await loadMaintenance();
-
-    final payload = {
-      'schema': 'ranch_hand_backup_v1',
-      'exportedAt': DateTime.now().toIso8601String(),
-      'equipment': equipment.map((e) => e.toMap()).toList(),
-      'maintenance': maintenance.map((m) => m.toMap()).toList(),
-    };
-
-    return jsonEncode(payload);
-  }
-
-  static Future<void> importBackupJson(String rawJson) async {
-    final decoded = jsonDecode(rawJson);
-    if (decoded is! Map) throw Exception('Invalid backup file.');
-
-    final schema = (decoded['schema'] ?? '').toString();
-    if (schema != 'ranch_hand_backup_v1') {
-      throw Exception('Unsupported backup format.');
-    }
-
-    final eqRaw = decoded['equipment'];
-    final mtRaw = decoded['maintenance'];
-
-    final equipment = (eqRaw is List)
-        ? eqRaw
-            .whereType<Map>()
-            .map((m) =>
-                Equipment.fromMap(m.map((k, v) => MapEntry(k.toString(), v))))
-            .toList()
-        : <Equipment>[];
-
-    final maintenance = (mtRaw is List)
-        ? mtRaw
-            .whereType<Map>()
-            .map((m) => MaintenanceRecord.fromMap(
-                m.map((k, v) => MapEntry(k.toString(), v))))
-            .toList()
-        : <MaintenanceRecord>[];
-
-    await saveEquipment(equipment);
-    await saveMaintenance(maintenance);
-  }
-}
-
-/* ============================
-   Helpers
-============================ */
-
-String fmtDateMDY(DateTime d) {
-  final mm = d.month.toString().padLeft(2, '0');
-  final dd = d.day.toString().padLeft(2, '0');
-  final yyyy = d.year.toString();
-  return '$mm/$dd/$yyyy';
-}
-
-String _normalizeText(String s) => s.replaceAll('\r', '\n');
-
-Map<String, String> _extractSpecSuggestionsFromOcr(String raw) {
-  final text = raw.toLowerCase();
-
-  // likely part numbers / codes
-  final codeRegex = RegExp(r'\b[a-z0-9\-]{5,}\b', caseSensitive: false);
-  final codes = codeRegex
-      .allMatches(raw)
-      .map((m) => raw.substring(m.start, m.end).trim())
-      .where(
-          (c) => RegExp(r'[a-zA-Z]').hasMatch(c) && RegExp(r'\d').hasMatch(c))
-      .toSet()
-      .toList();
-
-  String? pickCode() => codes.isNotEmpty ? codes.first : null;
-
-  // tire patterns
-  final tire1 = RegExp(r'\b\d{3}\/\d{2}R\d{2}\b', caseSensitive: false)
-      .firstMatch(raw)
-      ?.group(0);
-  final tire2 = RegExp(r'\b\d{2}x\d{2}(\.\d+)?-\d{2}\b', caseSensitive: false)
-      .firstMatch(raw)
-      ?.group(0);
-
-  final cca = RegExp(r'\b(\d{3,4})\s*CCA\b', caseSensitive: false)
-      .firstMatch(raw)
-      ?.group(1);
-
-  final Map<String, String> out = {};
-
-  if (text.contains('oil filter')) out['Oil filter #'] = pickCode() ?? '';
-  if (text.contains('air filter')) out['Air filter #'] = pickCode() ?? '';
-  if (text.contains('fuel filter')) out['Fuel filter #'] = pickCode() ?? '';
-  if (text.contains('hydraulic filter')) {
-    out['Hydraulic filter #'] = pickCode() ?? '';
-  }
-  if (text.contains('belt')) out['Belt'] = pickCode() ?? '';
-  if (text.contains('spark') && text.contains('plug')) {
-    out['Spark plug'] = pickCode() ?? '';
-  }
-
-  if (text.contains('battery')) {
-    out['Battery'] = [
-      if (cca != null) '$cca CCA',
-      if (cca == null) (pickCode() ?? ''),
-    ].where((s) => s.trim().isNotEmpty).join(' • ');
-  }
-
-  if (text.contains('hydraulic') && text.contains('fluid')) {
-    out['Hydraulic fluid type'] = '';
-  }
-  if (text.contains('coolant') || text.contains('antifreeze')) {
-    out['Coolant type'] = '';
-  }
-  if (text.contains('oil') &&
-      (text.contains('sae') || text.contains('5w') || text.contains('10w'))) {
-    out['Oil type'] = '';
-  }
-
-  if (tire1 != null) out['Tire size'] = tire1;
-  if (tire2 != null && (out['Tire size'] ?? '').isEmpty) out['Tire size'] = tire2;
-
-  if (out.isEmpty && codes.isNotEmpty) {
-    out['Notes'] = 'Scanned code(s): ${codes.take(3).join(', ')}';
-  }
-
-  return out;
-}
-
-/* ============================
-   Dashboard
-============================ */
-
-class DashboardScreen extends StatefulWidget {
-  final ThemeMode currentThemeMode;
-  final ValueChanged<ThemeMode> onThemeChanged;
-
-  const DashboardScreen({
-    super.key,
-    required this.currentThemeMode,
-    required this.onThemeChanged,
-  });
+class _AppRoot extends StatefulWidget {
+  const _AppRoot();
 
   @override
-  State<DashboardScreen> createState() => _DashboardScreenState();
+  State<_AppRoot> createState() => _AppRootState();
 }
-class _DashboardScreenState extends State<DashboardScreen> {
-  static const int _freeEquipmentLimit = 3;
 
-  // ---- Pro subscription / IAP ----
-  static const String _kYearlyProductId = 'ranchhand_pro_yearly';
-  static const String _kPrivacyUrl =
-      'https://mikeremington28.github.io/ranch-hand-privacy/';
-  static const String _kTermsUrl =
-      'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
+class _AppRootState extends State<_AppRoot> {
+  final AppState _state = AppState();
 
-  final InAppPurchase _iap = InAppPurchase.instance;
-  StreamSubscription<List<PurchaseDetails>>? _purchaseSub;
+  bool _unlocked = false;
 
-  bool _proEnabled = false;
-  bool get _isPro => _proEnabled;
-
-  bool _storeAvailable = false;
-  bool _iapLoading = true;
-  bool _purchaseInProgress = false;
-  ProductDetails? _yearlyProduct;
-  String? _iapError;
-
-  static const String _kPrefsProKey = 'ranchhand_pro_enabled';
-
-  Future<void> _loadProFlag() async {
-    final prefs = await SharedPreferences.getInstance();
-    final v = prefs.getBool(_kPrefsProKey) ?? false;
-    if (!mounted) return;
-    setState(() => _proEnabled = v);
+  @override
+  void initState() {
+    super.initState();
+    _state.ensureSeedData();
   }
 
-  Future<void> _setProFlag(bool v) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_kPrefsProKey, v);
-    if (!mounted) return;
-    setState(() => _proEnabled = v);
+  @override
+  Widget build(BuildContext context) {
+    // Usable-now mode: skip biometrics/unlock screen (local_auth removed for iOS 26 stability).
+    return HomeShell(state: _state);
   }
 
-  Future<void> _initIap() async {
-    await _loadProFlag();
+}
 
-    bool available = false;
+/// Simple in-memory state (replace with DB later).
+class AppState extends ChangeNotifier {
+  final List<UserProfile> _users = [];
+  final List<Rifle> _rifles = [];
+  final List<AmmoLot> _ammoLots = [];
+  final List<TrainingSession> _sessions = [];
+  final Map<String, Map<DistanceKey, DopeEntry>> _workingDopeRifleOnly = {};
+  final Map<String, Map<DistanceKey, DopeEntry>> _workingDopeRifleAmmo = {};
+
+  UserProfile? _activeUser;
+
+  List<UserProfile> get users => List.unmodifiable(_users);
+  List<Rifle> get rifles => List.unmodifiable(_rifles);
+  List<AmmoLot> get ammoLots => List.unmodifiable(_ammoLots);
+
+  List<TrainingSession> get sessions => List.unmodifiable(
+        _sessions.where((s) => s.userId == _activeUser?.id),
+      );
+
+  UserProfile? get activeUser => _activeUser;
+
+  Map<String, Map<DistanceKey, DopeEntry>> get workingDopeRifleOnly => _workingDopeRifleOnly;
+  Map<String, Map<DistanceKey, DopeEntry>> get workingDopeRifleAmmo => _workingDopeRifleAmmo;
+
+  void ensureSeedData() {
+    if (_users.isNotEmpty) return;
+
+    final u = UserProfile(
+      id: _newId(),
+      name: 'Demo User',
+      identifier: 'DEMO',
+    );
+    _users.add(u);
+    _activeUser = u;
+
+    final demoRifle = Rifle(
+      id: _newId(),
+      name: 'Demo Rifle',
+      caliber: '.308',
+      notes: 'Placeholder rifle',
+      dope: '',
+    );
+    _rifles.add(demoRifle);
+
+    final demoAmmo = AmmoLot(
+      id: _newId(),
+      name: 'Demo Ammo',
+      caliber: '.308',
+      bullet: '175gr',
+      notes: 'Placeholder ammo lot',
+    );
+    _ammoLots.add(demoAmmo);
+
+    _sessions.add(
+      TrainingSession(
+        id: _newId(),
+        userId: u.id,
+        dateTime: DateTime.now(),
+        locationName: 'Demo Range',
+        notes: 'Tap a session to add rifle/ammo and a cold bore entry.',
+        rifleId: demoRifle.id,
+        ammoLotId: demoAmmo.id,
+        shots: const [],
+        photos: const [],
+        trainingDope: const [],
+      ),
+    );
+
+    notifyListeners();
+  }
+
+  void addUser({required String name, required String identifier}) {
+    final u = UserProfile(
+      id: _newId(),
+      name: name.trim(),
+      identifier: identifier.trim(),
+    );
+    _users.add(u);
+    _activeUser ??= u;
+    notifyListeners();
+  }
+
+  void switchUser(UserProfile user) {
+    _activeUser = user;
+    notifyListeners();
+  }
+
+  void addRifle({
+    required String name,
+    required String caliber,
+    String notes = '',
+    String dope = '',
+  }) {
+    _rifles.add(
+      Rifle(
+        id: _newId(),
+        name: name.trim(),
+        caliber: caliber.trim(),
+        notes: notes.trim(),
+        dope: dope.trim(),
+      ),
+    );
+    notifyListeners();
+  }
+
+  void addRifleDopeEntry(String rifleId, RifleDopeEntry entry) {
+    final idx = _rifles.indexWhere((r) => r.id == rifleId);
+    if (idx == -1) return;
+    final r = _rifles[idx];
+    final list = List<RifleDopeEntry>.from(r.dopeEntries);
+    list.add(entry);
+    _rifles[idx] = r.copyWith(dopeEntries: list);
+    notifyListeners();
+  }
+
+  void updateRifleDopeEntry(String rifleId, RifleDopeEntry entry) {
+    final idx = _rifles.indexWhere((r) => r.id == rifleId);
+    if (idx == -1) return;
+    final r = _rifles[idx];
+    final list = List<RifleDopeEntry>.from(r.dopeEntries);
+    final eIdx = list.indexWhere((e) => e.id == entry.id);
+    if (eIdx == -1) return;
+    list[eIdx] = entry;
+    _rifles[idx] = r.copyWith(dopeEntries: list);
+    notifyListeners();
+  }
+
+  void deleteRifleDopeEntry(String rifleId, String entryId) {
+    final idx = _rifles.indexWhere((r) => r.id == rifleId);
+    if (idx == -1) return;
+    final r = _rifles[idx];
+    final list = r.dopeEntries.where((e) => e.id != entryId).toList();
+    _rifles[idx] = r.copyWith(dopeEntries: list);
+    notifyListeners();
+  }
+
+  void updateRifleDope({required String rifleId, required String dope}) {
+    final idx = _rifles.indexWhere((r) => r.id == rifleId);
+    if (idx < 0) return;
+    final r = _rifles[idx];
+    _rifles[idx] = r.copyWith(dope: dope.trim());
+    notifyListeners();
+  }
+
+  void addAmmoLot({
+    required String name,
+    required String caliber,
+    String bullet = '',
+    String notes = '',
+  }) {
+    _ammoLots.add(
+      AmmoLot(
+        id: _newId(),
+        name: name.trim(),
+        caliber: caliber.trim(),
+        bullet: bullet.trim(),
+        notes: notes.trim(),
+      ),
+    );
+    notifyListeners();
+  }
+
+  TrainingSession? addSession({
+    required String locationName,
+    required DateTime dateTime,
+    String notes = '',
+  }) {
+    final user = _activeUser;
+    if (user == null) return null;
+
+    final created = TrainingSession(
+      id: _newId(),
+      userId: user.id,
+      dateTime: dateTime,
+      locationName: locationName.trim(),
+      notes: notes.trim(),
+      latitude: latitude,
+      longitude: longitude,
+      temperatureF: temperatureF,
+      windSpeedMph: windSpeedMph,
+      windDirectionDeg: windDirectionDeg,
+      rifleId: null,
+      ammoLotId: null,
+      shots: const [],
+      photos: const [],
+      trainingDope: const [],
+    );
+
+    _sessions.add(created);
+    notifyListeners();
+    return created;
+  }
+
+  TrainingSession? getSessionById(String id) {
     try {
-      available = await _iap.isAvailable();
+      return _sessions.firstWhere((s) => s.id == id);
     } catch (_) {
-      available = false;
-    }
-
-    if (!mounted) return;
-    setState(() {
-      _storeAvailable = available;
-      _iapLoading = true;
-      _iapError = null;
-      _yearlyProduct = null;
-    });
-
-    if (!available) {
-      if (!mounted) return;
-      setState(() {
-        _iapLoading = false;
-        _iapError =
-            'Store is unavailable. Please check your internet connection and try again.';
-      });
-      return;
-    }
-
-    try {
-      final response = await _iap.queryProductDetails({_kYearlyProductId});
-      if (!mounted) return;
-
-      final product = response.productDetails
-          .where((p) => p.id == _kYearlyProductId)
-          .cast<ProductDetails?>()
-          .firstWhere((p) => p != null, orElse: () => null);
-
-      setState(() {
-        _yearlyProduct = product;
-        _iapLoading = false;
-        _iapError = response.error != null
-            ? (response.error!.message)
-            : (product == null
-                ? 'Subscription is not available right now.'
-                : null);
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _iapLoading = false;
-        _iapError = 'Unable to load subscription: $e';
-      });
+      return null;
     }
   }
 
-  void _listenToPurchases() {
-    _purchaseSub?.cancel();
-    _purchaseSub = _iap.purchaseStream.listen((purchases) async {
-      for (final p in purchases) {
-        if (p.status == PurchaseStatus.purchased ||
-            p.status == PurchaseStatus.restored) {
-          await _setProFlag(true);
+  Rifle? rifleById(String? id) {
+    if (id == null) return null;
+    try {
+      return _rifles.firstWhere((r) => r.id == id);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  AmmoLot? ammoById(String? id) {
+    if (id == null) return null;
+    try {
+      return _ammoLots.firstWhere((a) => a.id == id);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void updateSessionLoadout({
+    required String sessionId,
+    String? rifleId,
+    String? ammoLotId,
+  }) {
+    final idx = _sessions.indexWhere((s) => s.id == sessionId);
+    if (idx < 0) return;
+    final s = _sessions[idx];
+    _sessions[idx] = s.copyWith(
+      rifleId: rifleId,
+      ammoLotId: ammoLotId,
+    );
+    notifyListeners();
+  }
+
+  void updateSessionNotes({
+    required String sessionId,
+    required String notes,
+  }) {
+    final idx = _sessions.indexWhere((s) => s.id == sessionId);
+    if (idx < 0) return;
+    final s = _sessions[idx];
+    _sessions[idx] = s.copyWith(notes: notes.trim());
+    notifyListeners();
+  }
+
+  void addColdBoreEntry({
+    required String sessionId,
+    required DateTime time,
+    required String distance,
+    required String result,
+    String notes = '',
+  }) {
+    final idx = _sessions.indexWhere((s) => s.id == sessionId);
+    if (idx < 0) return;
+    final s = _sessions[idx];
+
+    final entry = ShotEntry(
+      id: _newId(),
+      time: time,
+      isColdBore: true,
+      isBaseline: false,
+      distance: distance.trim(),
+      result: result.trim(),
+      notes: notes.trim(),
+      photos: const [],
+    );
+
+    _sessions[idx] = s.copyWith(shots: [...s.shots, entry]);
+    notifyListeners();
+  }
+
+  void addTrainingDope({
+    required String sessionId,
+    required DopeEntry entry,
+    bool promote = false,
+    bool rifleOnly = true,
+  }) {
+    final idx = _sessions.indexWhere((s) => s.id == sessionId);
+    if (idx < 0) return;
+    final s = _sessions[idx];
+
+    final updatedEntry = RifleDopeEntry(
+      id: _newId(),
+      time: entry.time,
+      distance: entry.distance,
+      distanceUnit: entry.distanceUnit,
+      elevation: entry.elevation,
+      elevationUnit: entry.elevationUnit,
+      elevationNotes: entry.elevationNotes,
+      windType: entry.windType,
+      windValue: entry.windValue,
+      windNotes: entry.windNotes,
+      windageLeft: entry.windageLeft,
+      windageRight: entry.windageRight,
+    );
+
+    _sessions[idx] = s.copyWith(trainingDope: [...s.trainingDope, updatedEntry]);
+
+    if (promote) {
+      final rifleId = s.rifleId;
+      if (rifleId == null) return;
+
+      String key;
+      Map<String, Map<DistanceKey, DopeEntry>> workingMap;
+
+      if (rifleOnly || s.ammoLotId == null) {
+        key = rifleId;
+        workingMap = _workingDopeRifleOnly;
+      } else {
+        key = '${rifleId}_${s.ammoLotId}';
+        workingMap = _workingDopeRifleAmmo;
+      }
+
+      workingMap[key] ??= {};
+      final dk = DistanceKey(updatedEntry.distance, updatedEntry.distanceUnit);
+      workingMap[key]![dk] = updatedEntry;
+    }
+
+    notifyListeners();
+  }
+
+  ShotEntry? shotById({required String sessionId, required String shotId}) {
+    final s = getSessionById(sessionId);
+    if (s == null) return null;
+    try {
+      return s.shots.firstWhere((x) => x.id == shotId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Adds a cold-bore-only photo to a specific cold bore shot.
+  void addColdBorePhoto({
+    required String sessionId,
+    required String shotId,
+    required Uint8List bytes,
+    String? caption,
+  }) {
+    final sIdx = _sessions.indexWhere((s) => s.id == sessionId);
+    if (sIdx < 0) return;
+    final s = _sessions[sIdx];
+
+    final shotIdx = s.shots.indexWhere((x) => x.id == shotId);
+    if (shotIdx < 0) return;
+    final shot = s.shots[shotIdx];
+    if (!shot.isColdBore) return;
+
+    final photo = ColdBorePhoto(
+      id: _newId(),
+      time: DateTime.now(),
+      bytes: bytes,
+      caption: (caption ?? '').trim(),
+    );
+
+    final updatedShot = shot.copyWith(photos: [...shot.photos, photo]);
+    final updatedShots = [...s.shots];
+    updatedShots[shotIdx] = updatedShot;
+
+    _sessions[sIdx] = s.copyWith(shots: updatedShots);
+    notifyListeners();
+  }
+
+  /// Sets one cold bore entry as the baseline for the active user (and unsets any prior baseline).
+  void setBaselineColdBore({required String sessionId, required String shotId}) {
+    final user = _activeUser;
+    if (user == null) return;
+
+    for (var i = 0; i < _sessions.length; i++) {
+      final s = _sessions[i];
+      if (s.userId != user.id) continue;
+
+      final updatedShots = <ShotEntry>[];
+      for (final sh in s.shots) {
+        if (!sh.isColdBore) {
+          updatedShots.add(sh);
+          continue;
         }
 
-        if (p.status == PurchaseStatus.error) {
-          if (!mounted) continue;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(p.error?.message ?? 'Purchase failed.')),
+        final shouldBeBaseline = (s.id == sessionId && sh.id == shotId);
+        updatedShots.add(sh.copyWith(isBaseline: shouldBeBaseline));
+      }
+
+      _sessions[i] = s.copyWith(shots: updatedShots);
+    }
+
+    notifyListeners();
+  }
+
+  /// Returns the current baseline cold bore shot (if any) for the active user.
+  ShotEntry? baselineColdBoreShot() {
+    final user = _activeUser;
+    if (user == null) return null;
+
+    for (final s in _sessions.where((x) => x.userId == user.id)) {
+      for (final sh in s.shots.where((x) => x.isColdBore && x.isBaseline)) {
+        return sh;
+      }
+    }
+    return null;
+  }
+
+  /// Finds the session that contains a given shot (useful for baseline lookups).
+  TrainingSession? sessionContainingShot(String shotId) {
+    final user = _activeUser;
+    if (user == null) return null;
+    for (final s in _sessions.where((x) => x.userId == user.id)) {
+      if (s.shots.any((x) => x.id == shotId)) return s;
+    }
+    return null;
+  }
+
+  void addPhotoNote({
+    required String sessionId,
+    required DateTime time,
+    required String caption,
+  }) {
+    final idx = _sessions.indexWhere((s) => s.id == sessionId);
+    if (idx < 0) return;
+    final s = _sessions[idx];
+
+    final p = PhotoNote(
+      id: _newId(),
+      time: time,
+      caption: caption.trim(),
+    );
+
+    _sessions[idx] = s.copyWith(photos: [...s.photos, p]);
+    notifyListeners();
+  }
+
+  List<_ColdBoreRow> coldBoreRowsForActiveUser() {
+    final user = _activeUser;
+    if (user == null) return const [];
+
+    final rows = <_ColdBoreRow>[];
+    for (final s in _sessions.where((x) => x.userId == user.id)) {
+      for (final shot in s.shots.where((x) => x.isColdBore)) {
+        rows.add(
+          _ColdBoreRow(
+            session: s,
+            shot: shot,
+            rifle: rifleById(s.rifleId),
+            ammo: ammoById(s.ammoLotId),
+          ),
+        );
+      }
+    }
+
+    rows.sort((a, b) => b.shot.time.compareTo(a.shot.time));
+    return rows;
+  }
+
+  static String _newId() => DateTime.now().microsecondsSinceEpoch.toString();
+}
+
+class UserProfile {
+  final String id;
+  final String name;
+  final String identifier;
+
+  UserProfile({
+    required this.id,
+    required this.name,
+    required this.identifier,
+  });
+}
+
+class Rifle {
+  final String id;
+  final String name;
+  final String caliber;
+  final String notes;
+  final String dope;
+  final List<RifleDopeEntry> dopeEntries;
+
+  // Optional details
+  final String? serialNumber;
+  final String? barrelLength;
+  final String? twistRate;
+
+  Rifle({
+    required this.id,
+    required this.name,
+    required this.caliber,
+    required this.notes,
+    required this.dope,
+    this.dopeEntries = const [],
+    this.serialNumber,
+    this.barrelLength,
+    this.twistRate,
+  });
+
+  Rifle copyWith({
+    String? name,
+    String? caliber,
+    String? notes,
+    String? dope,
+    List<RifleDopeEntry>? dopeEntries,
+    String? serialNumber,
+    String? barrelLength,
+    String? twistRate,
+  }) {
+    return Rifle(
+      id: id,
+      name: name ?? this.name,
+      caliber: caliber ?? this.caliber,
+      notes: notes ?? this.notes,
+      dope: dope ?? this.dope,
+      dopeEntries: dopeEntries ?? this.dopeEntries,
+      serialNumber: serialNumber ?? this.serialNumber,
+      barrelLength: barrelLength ?? this.barrelLength,
+      twistRate: twistRate ?? this.twistRate,
+    );
+  }
+}
+
+class AmmoLot {
+  final String id;
+  final String name;
+  final String caliber;
+  final String bullet;
+  final String notes;
+
+  // Optional ballistics
+  final double? ballisticCoefficient;
+
+  AmmoLot({
+    required this.id,
+    required this.name,
+    required this.caliber,
+    required this.bullet,
+    required this.notes,
+    this.ballisticCoefficient,
+  });
+}
+
+class TrainingSession {
+  final String id;
+  final String userId;
+  final DateTime dateTime;
+  final String locationName;
+  final String notes;
+
+  // Optional GPS (saved only if user taps Use GPS)
+  final double? latitude;
+  final double? longitude;
+
+  // Optional Weather (stored on the session)
+  final double? temperatureF;
+  final double? windSpeedMph;
+  final int? windDirectionDeg;
+
+  final String? rifleId;
+  final String? ammoLotId;
+
+  final List<ShotEntry> shots;
+  final List<PhotoNote> photos;
+  final List<RifleDopeEntry> trainingDope;
+
+  TrainingSession({
+    required this.id,
+    required this.userId,
+    required this.dateTime,
+    required this.locationName,
+    required this.notes,
+    this.latitude,
+    this.longitude,
+    this.temperatureF,
+    this.windSpeedMph,
+    this.windDirectionDeg,
+    required this.rifleId,
+    required this.ammoLotId,
+    required this.shots,
+    required this.photos,
+    required this.trainingDope,
+  });
+
+  TrainingSession copyWith({
+    double? latitude,
+    double? longitude,
+    double? temperatureF,
+    double? windSpeedMph,
+    int? windDirectionDeg,
+    DateTime? dateTime,
+    String? locationName,
+    String? notes,
+    String? rifleId,
+    String? ammoLotId,
+    List<ShotEntry>? shots,
+    List<PhotoNote>? photos,
+    List<RifleDopeEntry>? trainingDope,
+  }) {
+    return TrainingSession(
+      id: id,
+      userId: userId,
+      dateTime: dateTime ?? this.dateTime,
+      locationName: locationName ?? this.locationName,
+      notes: notes ?? this.notes,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      temperatureF: temperatureF ?? this.temperatureF,
+      windSpeedMph: windSpeedMph ?? this.windSpeedMph,
+      windDirectionDeg: windDirectionDeg ?? this.windDirectionDeg,
+      rifleId: rifleId ?? this.rifleId,
+      ammoLotId: ammoLotId ?? this.ammoLotId,
+      shots: shots ?? this.shots,
+      photos: photos ?? this.photos,
+      trainingDope: trainingDope ?? this.trainingDope,
+    );
+  }
+}
+
+class ShotEntry {
+  final String id;
+  final DateTime time;
+  final bool isColdBore;
+
+  /// When true, this cold bore entry is the baseline "first shot" to compare against.
+  /// (We enforce a single baseline per active user, for now.)
+  final bool isBaseline;
+
+  final String distance;
+  final String result;
+  final String notes;
+
+  /// Cold-bore-only photos (stored in-memory as bytes for MVP).
+  final List<ColdBorePhoto> photos;
+
+  ShotEntry({
+    required this.id,
+    required this.time,
+    required this.isColdBore,
+    required this.isBaseline,
+    required this.distance,
+    required this.result,
+    required this.notes,
+    required this.photos,
+  });
+
+  ShotEntry copyWith({
+    DateTime? time,
+    bool? isColdBore,
+    bool? isBaseline,
+    String? distance,
+    String? result,
+    String? notes,
+    List<ColdBorePhoto>? photos,
+  }) {
+    return ShotEntry(
+      id: id,
+      time: time ?? this.time,
+      isColdBore: isColdBore ?? this.isColdBore,
+      isBaseline: isBaseline ?? this.isBaseline,
+      distance: distance ?? this.distance,
+      result: result ?? this.result,
+      notes: notes ?? this.notes,
+      photos: photos ?? this.photos,
+    );
+  }
+}
+
+class ColdBorePhoto {
+  final String id;
+  final DateTime time;
+  final Uint8List bytes;
+  final String caption;
+
+  ColdBorePhoto({
+    required this.id,
+    required this.time,
+    required this.bytes,
+    required this.caption,
+  });
+}
+
+/// MVP placeholder for *session-level* photos (until we wire storage).
+class PhotoNote {
+  final String id;
+  final DateTime time;
+  final String caption;
+
+  PhotoNote({
+    required this.id,
+    required this.time,
+    required this.caption,
+  });
+}
+
+class _ColdBoreRow {
+  final TrainingSession session;
+  final ShotEntry shot;
+  final Rifle? rifle;
+  final AmmoLot? ammo;
+  _ColdBoreRow({
+    required this.session,
+    required this.shot,
+    required this.rifle,
+    required this.ammo,
+  });
+}
+
+///
+/// Screens
+///
+
+
+
+class HomeShell extends StatefulWidget {
+  final AppState state;
+  const HomeShell({super.key, required this.state});
+
+  @override
+  State<HomeShell> createState() => _HomeShellState();
+}
+
+class _HomeShellState extends State<HomeShell> {
+  int _tab = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final pages = <Widget>[
+      SessionsScreen(state: widget.state),
+      ColdBoreScreen(state: widget.state),
+      EquipmentScreen(state: widget.state),
+      DataScreen(state: widget.state),
+      ExportPlaceholderScreen(state: widget.state),
+    ];
+
+    return AnimatedBuilder(
+      animation: widget.state,
+      builder: (context, _) {
+        final user = widget.state.activeUser;
+
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('Cold Bore'),
+            actions: [
+              if (user != null)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Center(
+                    child: Text(
+                      user.identifier,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ),
+              IconButton(
+                tooltip: 'Users',
+                onPressed: () async {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => UsersScreen(state: widget.state),
+                    ),
+                  );
+                  setState(() {});
+                },
+                icon: const Icon(Icons.person_outline),
+              ),
+            ],
+          ),
+          body: pages[_tab],
+          bottomNavigationBar: NavigationBar(
+            selectedIndex: _tab,
+            onDestinationSelected: (i) => setState(() => _tab = i),
+            destinations: const [
+              NavigationDestination(icon: Icon(Icons.event_note_outlined), label: 'Sessions'),
+              NavigationDestination(icon: Icon(Icons.ac_unit_outlined), label: 'Cold Bore'),
+              NavigationDestination(icon: Icon(Icons.build_outlined), label: 'Equipment'),
+              NavigationDestination(icon: Icon(Icons.list_alt_outlined), label: 'Data'),
+              NavigationDestination(icon: Icon(Icons.ios_share_outlined), label: 'Export'),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class DataScreen extends StatefulWidget {
+  final AppState state;
+  const DataScreen({super.key, required this.state});
+
+  @override
+  State<DataScreen> createState() => _DataScreenState();
+}
+
+class _DataScreenState extends State<DataScreen> {
+  bool _rifleOnly = true;
+  bool _allDistances = true;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: widget.state,
+      builder: (context, _) {
+        final rifles = widget.state.rifles;
+        final withDope = rifles.where((r) => r.dope.trim().isNotEmpty).toList();
+        final wmap = _rifleOnly ? widget.state.workingDopeRifleOnly : widget.state.workingDopeRifleAmmo;
+
+        final workingSections = <Widget>[];
+        if (wmap.isNotEmpty) {
+          final sortedKeys = wmap.keys.toList()..sort();
+          for (final key in sortedKeys) {
+            final inner = wmap[key]!;
+            var dks = inner.keys.toList();
+            dks.sort((a, b) => a.value.compareTo(b.value));
+            if (!_allDistances) {
+              dks = dks.where((dk) => (dk.value.round() % 25 == 0)).toList();
+            }
+
+            String title;
+            if (_rifleOnly) {
+              final rifle = widget.state.rifleById(key);
+              title = rifle?.name ?? 'Unknown Rifle';
+            } else {
+              final parts = key.split('_');
+              final rifle = widget.state.rifleById(parts[0]);
+              final ammo = widget.state.ammoById(parts[1]);
+              title = '${rifle?.name ?? 'Unknown'} / ${ammo?.name ?? 'Unknown'}';
+            }
+
+            workingSections.add(
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 8),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: DataTable(
+                        columns: const [
+                          DataColumn(label: Text('Distance')),
+                          DataColumn(label: Text('Elevation')),
+                          DataColumn(label: Text('Wind')),
+                          DataColumn(label: Text('Windage Left')),
+                          DataColumn(label: Text('Windage Right')),
+                        ],
+                        rows: dks.map((dk) {
+                          final e = inner[dk]!;
+                          return DataRow(cells: [
+                            DataCell(Text('${dk.value} ${dk.unit.name[0]}')),
+                            DataCell(Text('${e.elevation} ${e.elevationUnit.name} ${e.elevationNotes}')),
+                            DataCell(Text('${e.windType.name}: ${e.windValue} ${e.windNotes}')),
+                            DataCell(Text('${e.windageLeft}')),
+                            DataCell(Text('${e.windageRight}')),
+                          ]);
+                        }).toList(),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+        } else {
+          workingSections.add(
+            Text(
+              'No working DOPE yet. Promote from a session.',
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7)),
+            ),
           );
         }
 
-        if (p.pendingCompletePurchase) {
-          await _iap.completePurchase(p);
-        }
-      }
-
-      if (mounted) setState(() => _purchaseInProgress = false);
-    }, onError: (e) {
-      if (!mounted) return;
-      setState(() {
-        _purchaseInProgress = false;
-        _iapError = 'Purchase listener error: $e';
-      });
-    });
-  }
-
-  Future<void> _buyYearly() async {
-    // Always give visible feedback (Apple rejects silent failures).
-    if (_iapLoading) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Loading subscription… please try again.')),
-      );
-      return;
-    }
-    if (!_storeAvailable) {
-      await _showSimpleError(
-        title: 'Store unavailable',
-        message: 'In‑app purchases are not available on this device right now.',
-      );
-      return;
-    }
-    if (_yearlyProduct == null) {
-      await _showSimpleError(
-        title: 'Subscription unavailable',
-        message: _iapError ??
-            'The subscription could not be loaded. Please try again later.',
-      );
-      return;
-    }
-
-    setState(() => _purchaseInProgress = true);
-
-    // Safety timeout so the UI never looks “stuck” in review.
-    final timeout = Timer(const Duration(seconds: 15), () {
-      if (!mounted) return;
-      if (_purchaseInProgress) {
-        setState(() => _purchaseInProgress = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Purchase did not start. Please try again. If this continues, check your App Store connection.',
-            ),
-          ),
-        );
-      }
-    });
-
-    try {
-      final param = PurchaseParam(productDetails: _yearlyProduct!);
-      await _iap.buyNonConsumable(purchaseParam: param);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _purchaseInProgress = false);
-      await _showSimpleError(
-        title: 'Purchase failed',
-        message: 'Unable to start the purchase: $e',
-      );
-    } finally {
-      timeout.cancel();
-    }
-  }
-
-  Future<void> _restorePurchases() async {
-    setState(() => _purchaseInProgress = true);
-    try {
-      await _iap.restorePurchases();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Restoring purchases…')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _purchaseInProgress = false);
-      await _showSimpleError(
-        title: 'Restore failed',
-        message: 'Unable to restore purchases: $e',
-      );
-    }
-  }
-
-  Future<void> _showSimpleError({required String title, required String message}) async {
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _openUrl(String url) async {
-    final uri = Uri.tryParse(url);
-    if (uri == null) return;
-    try {
-      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (!ok && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Unable to open link: $url')),
-        );
-      }
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Unable to open link: $url')),
-      );
-    }
-  }
-
-  Future<void> _showUpgradeDialog() async {
-    final price = _yearlyProduct?.price ?? '\$9.99';
-    final upgradeEnabled = !_iapLoading && _yearlyProduct != null && !_purchaseInProgress;
-
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Ranch Hand Pro'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Yearly Subscription: $price / year'),
-            const SizedBox(height: 8),
-            const Text(
-              'Auto-renewable subscription. Cancel anytime in your Apple ID settings.',
-            ),
-            const SizedBox(height: 12),
-            if (_iapLoading)
-              const Row(
-                children: [
-                  SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-                  SizedBox(width: 8),
-                  Expanded(child: Text('Loading subscription…')),
-                ],
+        return Padding(
+          padding: const EdgeInsets.all(16),
+          child: ListView(
+            children: [
+              Text(
+                'Data & Quick Reference',
+                style: Theme.of(context).textTheme.titleLarge,
               ),
-            if (!_iapLoading && _iapError != null)
-              Text(_iapError!, style: const TextStyle(fontSize: 12)),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 12,
-              runSpacing: 8,
-              children: [
-                TextButton(
-                  onPressed: () => _openUrl(_kPrivacyUrl),
-                  child: const Text('Privacy Policy'),
+              const SizedBox(height: 12),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.my_location_outlined),
+                          const SizedBox(width: 8),
+                          Text('DOPE (Quick Reference)', style: Theme.of(context).textTheme.titleMedium),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      if (withDope.isEmpty)
+                        Text(
+                          'No DOPE saved yet. Add it under Equipment → Rifles.',
+                          style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7)),
+                        )
+                      else
+                        ...withDope.map(
+                          (r) => Padding(
+                            padding: const EdgeInsets.only(top: 10),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '${r.name} • ${r.caliber}',
+                                  style: const TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(r.dope),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
-                TextButton(
-                  onPressed: () => _openUrl(_kTermsUrl),
-                  child: const Text('Terms (EULA)'),
+              ),
+              const SizedBox(height: 12),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.table_chart_outlined),
+                          const SizedBox(width: 8),
+                          Text('Working DOPE Chart', style: Theme.of(context).textTheme.titleMedium),
+                          const Spacer(),
+                          const Text('Rifle only'),
+                          Switch(
+                            value: _rifleOnly,
+                            onChanged: (v) => setState(() => _rifleOnly = v),
+                          ),
+                          const Text('All distances'),
+                          Switch(
+                            value: _allDistances,
+                            onChanged: (v) => setState(() => _allDistances = v),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      ...workingSections,
+                    ],
+                  ),
                 ),
-              ],
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: _purchaseInProgress ? null : () => Navigator.of(ctx).pop(),
-            child: const Text('Close'),
+              ),
+              const SizedBox(height: 12),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.notifications_none),
+                          const SizedBox(width: 8),
+                          Text('Maintenance reminders', style: Theme.of(context).textTheme.titleMedium),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Coming next: round-count reminders, cleaning schedule, and per-rifle checklists.',
+                        style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: _purchaseInProgress ? null : _restorePurchases,
-            child: const Text('Restore'),
-          ),
-          ElevatedButton(
-            onPressed: upgradeEnabled
-                ? () async {
-                    Navigator.of(ctx).pop();
-                    await _buyYearly();
-                  }
-                : null,
-            child: _purchaseInProgress
-                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('Upgrade'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  bool _loading = true;
-  final List<Equipment> _equipment = [];
-  final List<MaintenanceRecord> _maintenance = [];
-
-  bool _maintenanceRemindersEnabled = false;
-  bool _backupRemindersEnabled = true;
-  DateTime? _lastBackupAt;
-  _EquipmentFilter _filter = _EquipmentFilter.all;
-
-  @override
-  void initState() {
-    super.initState();
-    _listenToPurchases();
-    unawaited(_initIap());
-    _loadAll();
-  }
-
-  @override
-  void dispose() {
-    _purchaseSub?.cancel();
-    super.dispose();
-  }
-
-  Future<void> _loadAll() async {
-    final eq = await Storage.loadEquipment();
-    final mt = await Storage.loadMaintenance();
-
-    final remindersEnabled = await Storage.loadMaintenanceRemindersEnabled();
-    final backupRemEnabled = await Storage.loadBackupRemindersEnabled();
-    final lastBackupAt = await Storage.loadLastBackupAt();
-
-    eq.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-
-    if (!mounted) return;
-    setState(() {
-      _equipment
-        ..clear()
-        ..addAll(eq);
-      _maintenance
-        ..clear()
-        ..addAll(mt);
-      _maintenanceRemindersEnabled = remindersEnabled;
-      _backupRemindersEnabled = backupRemEnabled;
-      _lastBackupAt = lastBackupAt;
-      _loading = false;
-    });
-  }
-
-  Future<void> _saveAll() async {
-    await Storage.saveEquipment(_equipment);
-    await Storage.saveMaintenance(_maintenance);
-  }
-
-  // Share sheet export (AirDrop, Messages, etc.)
-  Future<void> _exportBackupShare() async {
-    try {
-      final jsonText = await Storage.exportBackupJson();
-      final stamp = DateTime.now().toIso8601String().replaceAll(':', '-');
-      final name = 'RanchHand_Backup_$stamp.json';
-
-      final bytes = Uint8List.fromList(utf8.encode(jsonText));
-      final xfile = XFile.fromData(bytes, mimeType: 'application/json', name: name);
-
-            // iPad sometimes requires sharePositionOrigin. Use a safe on-screen rect.
-      final overlayBox = Overlay.of(context).context.findRenderObject() as RenderBox?;
-      final origin = overlayBox != null
-          ? Rect.fromCenter(
-              center: overlayBox.size.center(Offset.zero),
-              width: 1,
-              height: 1,
-            )
-          : const Rect.fromLTWH(0, 0, 1, 1);
-await Share.shareXFiles(
-        [xfile],
-        text: 'Ranch Hand backup file',
-        sharePositionOrigin: origin,
-      );
-
-      final now = DateTime.now();
-      await Storage.saveLastBackupAt(now);
-      if (mounted) setState(() => _lastBackupAt = now);
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Backup created. Choose where to save it.')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Backup failed: $e')),
-      );
-    }
-  }
-
-  // Files/iCloud Drive save (user picks location)
-  Future<void> _importBackup() async {
-  try {
-    // iOS requires non-empty uniformTypeIdentifiers (UTIs).
-    final typeGroup = XTypeGroup(
-      label: 'Ranch Hand Backup',
-      extensions: const ['json'],
-      uniformTypeIdentifiers: const ['public.json'],
-    );
-
-    final XFile? file = await openFile(acceptedTypeGroups: [typeGroup]);
-    if (file == null) return;
-
-    final raw = await file.readAsString();
-    await Storage.importBackupJson(raw);
-
-    await _loadAll();
-
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Backup restored successfully.')),
-    );
-  } catch (e) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Restore failed: $e')),
+        );
+      },
     );
   }
 }
 
+class UsersScreen extends StatefulWidget {
+  final AppState state;
+  const UsersScreen({super.key, required this.state});
 
-  Future<void> _openAddEquipment() async {
-    if (!_isPro && _equipment.length >= _freeEquipmentLimit) {
-      await _showUpgradeDialog();
-      return;
-    }
-    final result = await Navigator.of(context).push<Equipment>(
-      MaterialPageRoute(builder: (_) => const AddEquipmentScreen()),
+  @override
+  State<UsersScreen> createState() => _UsersScreenState();
+}
+
+class _UsersScreenState extends State<UsersScreen> {
+  Future<void> _addUser() async {
+    final res = await showDialog<_NewUserResult>(
+      context: context,
+      builder: (_) => const _NewUserDialog(),
     );
-
-    if (result == null) return;
-
-    setState(() => _equipment.insert(0, result));
-    await _saveAll();
-
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Added "${result.name}"')),
-    );
-  }
-
-  Future<void> _openEquipmentDetails(Equipment e) async {
-    final result = await Navigator.of(context).push<_EquipmentDetailsResult>(
-      MaterialPageRoute(
-        builder: (_) => EquipmentDetailsScreen(
-          equipment: e,
-          allMaintenance: _maintenance,
-        ),
-      ),
-    );
-
-    if (result == null) {
-      await _loadAll(); // autosave may have occurred
-      return;
-    }
-
-    if (result.deletedEquipmentId != null) {
-      setState(() {
-        _equipment.removeWhere((x) => x.id == result.deletedEquipmentId);
-        _maintenance
-          ..clear()
-          ..addAll(result.updatedMaintenance);
-      });
-      await _saveAll();
-      return;
-    }
-
-    if (result.updatedEquipment != null) {
-      final idx = _equipment.indexWhere((x) => x.id == result.updatedEquipment!.id);
-      if (idx != -1) setState(() => _equipment[idx] = result.updatedEquipment!);
-    }
-
-    setState(() {
-      _maintenance
-        ..clear()
-        ..addAll(result.updatedMaintenance);
-    });
-
-    _equipment.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    await _saveAll();
-  }
-
-  Future<void> _quickAddMaintenance() async {
-    if (_equipment.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Add equipment first.')),
-      );
-      return;
-    }
-
-    final chosen = await Navigator.of(context).push<Equipment>(
-      MaterialPageRoute(builder: (_) => ChooseEquipmentScreen(equipment: _equipment)),
-    );
-    if (chosen == null) return;
-
-    final result = await Navigator.of(context).push<List<MaintenanceRecord>>(
-      MaterialPageRoute(
-        builder: (_) => AddMaintenanceScreen(equipment: chosen, existing: _maintenance),
-      ),
-    );
-    if (result == null) return;
-
-    setState(() {
-      _maintenance
-        ..clear()
-        ..addAll(result);
-    });
-    await _saveAll();
+    if (res == null) return;
+    widget.state.addUser(name: res.name, identifier: res.identifier);
   }
 
   @override
   Widget build(BuildContext context) {
-    final count = _equipment.length;
-    final lastAdded = _equipment.isNotEmpty ? fmtDateMDY(_equipment.first.createdAt) : '—';
+    final users = widget.state.users;
+    final active = widget.state.activeUser;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Ranch Hand'),
-        actions: [
-          IconButton(
-            tooltip: 'Settings',
-            icon: const Icon(Icons.settings),
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => SettingsPage(
-                    currentThemeMode: widget.currentThemeMode,
-                    onThemeChanged: widget.onThemeChanged,
-                    onExportBackupShare: _exportBackupShare,
-                    onImportBackup: _importBackup,
-                    maintenanceRemindersEnabled: _maintenanceRemindersEnabled,
-                    onMaintenanceRemindersChanged: (v) {
-                      setState(() => _maintenanceRemindersEnabled = v);
-                      unawaited(Storage.saveMaintenanceRemindersEnabled(v));
-                      if (!v) setState(() => _filter = _EquipmentFilter.all);
-                    },
-                    backupRemindersEnabled: _backupRemindersEnabled,
-                    onBackupRemindersChanged: (v) {
-                      setState(() => _backupRemindersEnabled = v);
-                      unawaited(Storage.saveBackupRemindersEnabled(v));
-                    },
-                    lastBackupAt: _lastBackupAt,
-                  ),
-                ),
+      appBar: AppBar(title: const Text('Users')),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _addUser,
+        icon: const Icon(Icons.add),
+        label: const Text('Add user'),
+      ),
+      body: ListView.separated(
+        itemCount: users.length,
+        separatorBuilder: (_, __) => const Divider(height: 1),
+        itemBuilder: (context, index) {
+          final u = users[index];
+          final isActive = active?.id == u.id;
+          return ListTile(
+            title: Text(u.name),
+            subtitle: Text(u.identifier),
+            trailing: isActive ? const Icon(Icons.check_circle_outline) : null,
+            onTap: () {
+              widget.state.switchUser(u);
+              Navigator.of(context).pop();
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class SessionsScreen extends StatelessWidget {
+  final AppState state;
+  const SessionsScreen({super.key, required this.state});
+
+  Future<void> _newSession(BuildContext context) async {
+    final res = await showDialog<_NewSessionResult>(
+      context: context,
+      builder: (_) => const _NewSessionDialog(),
+    );
+    if (res == null) return;
+    final created = state.addSession(
+      locationName: res.locationName,
+      dateTime: res.dateTime,
+      notes: res.notes,
+    );
+
+    if (created == null) return;
+    // Automatically open the newly created session.
+    if (context.mounted) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => SessionDetailScreen(state: state, sessionId: created.id),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: state,
+      builder: (context, _) {
+        final user = state.activeUser;
+        final sessions = state.sessions;
+
+        if (user == null) {
+          return const _EmptyState(
+            icon: Icons.person_outline,
+            title: 'No active user',
+            message: 'Create or select a user to start logging sessions.',
+          );
+        }
+
+        if (sessions.isEmpty) {
+          return _EmptyState(
+            icon: Icons.event_note_outlined,
+            title: 'No sessions yet',
+            message: 'Tap “New Session” to add your first training day.',
+            actionLabel: 'New Session',
+            onAction: () => _newSession(context),
+          );
+        }
+
+        return Scaffold(
+          floatingActionButton: FloatingActionButton.extended(
+            onPressed: () => _newSession(context),
+            icon: const Icon(Icons.add),
+            label: const Text('New Session'),
+          ),
+          body: ListView.separated(
+            itemCount: sessions.length,
+            separatorBuilder: (_, __) => const Divider(height: 1),
+            itemBuilder: (context, index) {
+              final s = sessions[index];
+              final rifle = state.rifleById(s.rifleId);
+              final ammo = state.ammoById(s.ammoLotId);
+              final subtitleBits = <String>[
+                _fmtDateTime(s.dateTime),
+                if (rifle != null) rifle.name,
+                if (ammo != null) ammo.name,
+              ];
+
+              return ListTile(
+                title: Text(s.locationName),
+                subtitle: Text(subtitleBits.join(' • ')),
+                trailing: s.shots.any((x) => x.isColdBore)
+                    ? const Icon(Icons.ac_unit_outlined)
+                    : null,
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => SessionDetailScreen(state: state, sessionId: s.id),
+                    ),
+                  );
+                },
               );
             },
           ),
-        ],
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(Icons.agriculture),
-                            const SizedBox(width: 10),
-                            Text('Ranch Hand',
-                                style: Theme.of(context).textTheme.titleLarge),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        Text('Track equipment and maintenance in one place.',
-                            style: Theme.of(context).textTheme.bodyMedium),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Text('Equipment: $count'),
-                            const SizedBox(width: 18),
-                            Text('Last added: $lastAdded'),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                if (_backupRemindersEnabled &&
-                    (_lastBackupAt == null ||
-                        DateTime.now().difference(_lastBackupAt!).inDays >= 30))
-                  Card(
-                    child: ListTile(
-                      leading: const Icon(Icons.info_outline),
-                      title: const Text('Backup recommended'),
-                      subtitle: Text(
-                        _lastBackupAt == null
-                            ? 'You haven\'t created a backup yet.'
-                            : 'Last backup was ${fmtDateMDY(_lastBackupAt!)}.',
-                      ),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: _exportBackupShare,
-                    ),
-                  ),
-                const SizedBox(height: 16),
-                Text('Quick actions', style: Theme.of(context).textTheme.titleLarge),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Card(
-                        child: ListTile(
-                          leading: const Icon(Icons.add_box_outlined),
-                          title: const Text('Add equipment'),
-                          subtitle: const Text('Create a new item'),
-                          onTap: _openAddEquipment,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Card(
-                        child: ListTile(
-                          leading: const Icon(Icons.build_circle_outlined),
-                          title: const Text('Maintenance'),
-                          subtitle: const Text('Log a service'),
-                          onTap: _quickAddMaintenance,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                                const SizedBox(height: 16),
-                Text('Your equipment',
-                    style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 8),
-                if (count == 0)
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Text(
-                        'No equipment yet.\n\nTap "Add equipment" to create your first item.',
-                        style: Theme.of(context).textTheme.bodyLarge,
-                      ),
-                    ),
-                  )
-                else
-                  ...[
-                    if (_maintenanceRemindersEnabled)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            ChoiceChip(
-                              label: const Text('All'),
-                              selected: _filter == _EquipmentFilter.all,
-                              onSelected: (_) => setState(() => _filter = _EquipmentFilter.all),
-                            ),
-                            ChoiceChip(
-                              label: const Text('Due soon'),
-                              selected: _filter == _EquipmentFilter.dueSoon,
-                              onSelected: (_) => setState(() => _filter = _EquipmentFilter.dueSoon),
-                            ),
-                            ChoiceChip(
-                              label: const Text('Overdue'),
-                              selected: _filter == _EquipmentFilter.overdue,
-                              onSelected: (_) => setState(() => _filter = _EquipmentFilter.overdue),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ..._equipment.map((e) {
-                    final subtitleParts = <String>[];
-
-                    final type = e.type.trim();
-                    if (type.isNotEmpty) subtitleParts.add(type);
-
-                    final makeModel = [
-                      (e.manufacturer ?? '').trim(),
-                      (e.model ?? '').trim(),
-                    ].where((s) => s.isNotEmpty).join(' ');
-                    if (makeModel.isNotEmpty) subtitleParts.add(makeModel);
-
-                    final serviceDates = _maintenance
-                        .where((m) => m.equipmentId == e.id && m.serviceDate != null)
-                        .map((m) => m.serviceDate!)
-                        .toList()
-                      ..sort();
-
-                    final pred = predictNextDueFromDates(serviceDates);
-                    final hasAnyNextDue = _maintenance.any(
-                      (m) => m.equipmentId == e.id && m.hasNextDue,
-                    );
-                    IconData leadIcon = Icons.agriculture;
-
-                    if (_maintenanceRemindersEnabled && pred.nextDue != null) {
-                      final daysUntil = pred.nextDue!.difference(DateTime.now()).inDays;
-
-                      if (_filter == _EquipmentFilter.overdue && daysUntil >= 0) {
-                        return const SizedBox.shrink();
-                      }
-                      if (_filter == _EquipmentFilter.dueSoon &&
-                          (daysUntil < 0 || daysUntil > 7)) {
-                        return const SizedBox.shrink();
-                      }
-
-                      if (daysUntil < 0) {
-                        leadIcon = Icons.warning_amber_rounded;
-                      } else if (daysUntil <= 7) {
-                        leadIcon = Icons.schedule;
-                      } else {
-                        leadIcon = Icons.check_circle_outline;
-                      }
-
-                      subtitleParts.add('Due ${fmtDateMDY(pred.nextDue!)}');
-                    } else {
-                      if (_maintenanceRemindersEnabled &&
-                          (_filter == _EquipmentFilter.overdue ||
-                              _filter == _EquipmentFilter.dueSoon)) {
-                        return const SizedBox.shrink();
-                      }
-                      if (serviceDates.isNotEmpty) {
-                        subtitleParts.add('Last service ${fmtDateMDY(serviceDates.last)}');
-                      } else {
-                        subtitleParts.add('No maintenance yet');
-                      }
-                    }
-
-                    return Card(
-                      child: ListTile(
-                        leading: Icon(leadIcon),
-                        title: Text(e.name),
-                        subtitle: Text(subtitleParts.join(' • ')),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (hasAnyNextDue) const Icon(Icons.calendar_month, size: 18),
-                            if (hasAnyNextDue) const SizedBox(width: 8),
-                            const Icon(Icons.chevron_right),
-                          ],
-                        ),
-                        onTap: () => _openEquipmentDetails(e),
-                      ),
-                    );
-                  }), 
-                  ],
-                const SizedBox(height: 90),
-              ],
-            ),
-      bottomNavigationBar: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        child: SizedBox(
-          width: double.infinity,
-          height: 56,
-          child: FilledButton.icon(
-            onPressed: _openAddEquipment,
-            icon: const Icon(Icons.add),
-            label: const Text('Add Equipment'),
-          ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
 
-/* ============================
-   Add Equipment
-============================ */
+class _DopeResult {
+  final DopeEntry entry;
+  final bool promote;
+  final bool rifleOnly;
 
-
-
-class SettingsPage extends StatefulWidget {
-  final ThemeMode currentThemeMode;
-  final ValueChanged<ThemeMode> onThemeChanged;
-
-  final Future<void> Function() onExportBackupShare;
-  final Future<void> Function() onImportBackup;
-
-  final bool maintenanceRemindersEnabled;
-  final ValueChanged<bool> onMaintenanceRemindersChanged;
-
-  final bool backupRemindersEnabled;
-  final ValueChanged<bool> onBackupRemindersChanged;
-
-  final DateTime? lastBackupAt;
-
-  const SettingsPage({
-    super.key,
-    required this.currentThemeMode,
-    required this.onThemeChanged,
-    required this.onExportBackupShare,
-    required this.onImportBackup,
-    required this.maintenanceRemindersEnabled,
-    required this.onMaintenanceRemindersChanged,
-    required this.backupRemindersEnabled,
-    required this.onBackupRemindersChanged,
-    required this.lastBackupAt,
-  });
-
-  @override
-  State<SettingsPage> createState() => _SettingsPageState();
+  _DopeResult(this.entry, this.promote, this.rifleOnly);
 }
 
-class _SettingsPageState extends State<SettingsPage> {
-  late bool _maintenanceRemindersEnabled;
-  late bool _backupRemindersEnabled;
+class _DopeEntryDialog extends StatefulWidget {
+  final DateTime defaultTime;
+  const _RifleDopeEntryDialog({required this.defaultTime});
 
   @override
-  void initState() {
-    super.initState();
-    _maintenanceRemindersEnabled = widget.maintenanceRemindersEnabled;
-    _backupRemindersEnabled = widget.backupRemindersEnabled;
-  }
+  State<_DopeEntryDialog> createState() => _DopeEntryDialogState();
+}
+
+class _DopeEntryDialogState extends State<_DopeEntryDialog> {
+  final _distanceCtrl = TextEditingController();
+  DistanceUnit _distanceUnit = DistanceUnit.yards;
+  double _elevation = 0.0;
+  ElevationUnit _elevationUnit = ElevationUnit.mil;
+  final _elevationNotesCtrl = TextEditingController();
+  WindType _windType = WindType.fullValue;
+  final _windValueCtrl = TextEditingController();
+  final _windNotesCtrl = TextEditingController();
+  double _windageLeft = 0.0;
+  double _windageRight = 0.0;
+  bool _promote = false;
+  bool _rifleOnly = true;
 
   @override
-  void didUpdateWidget(covariant SettingsPage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // Keep local state in sync if the parent value changes for any reason.
-    if (oldWidget.maintenanceRemindersEnabled != widget.maintenanceRemindersEnabled) {
-      _maintenanceRemindersEnabled = widget.maintenanceRemindersEnabled;
-    }
-    if (oldWidget.backupRemindersEnabled != widget.backupRemindersEnabled) {
-      _backupRemindersEnabled = widget.backupRemindersEnabled;
-    }
+  void dispose() {
+    _distanceCtrl.dispose();
+    _elevationNotesCtrl.dispose();
+    _windValueCtrl.dispose();
+    _windNotesCtrl.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final lastBackupAt = widget.lastBackupAt;
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          const Text(
-            'Preferences',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 12),
-          Card(
-            child: SwitchListTile(
-              title: const Text('Maintenance reminders'),
-              subtitle: const Text('Show due-soon and overdue indicators'),
-              value: _maintenanceRemindersEnabled,
-              onChanged: (v) {
-                setState(() => _maintenanceRemindersEnabled = v);
-                widget.onMaintenanceRemindersChanged(v);
-              },
-            ),
-          ),
-          const SizedBox(height: 12),
-          Card(
-            child: SwitchListTile(
-              title: const Text('Backup reminders'),
-              subtitle: Text(
-                lastBackupAt == null
-                    ? 'No backup created yet'
-                    : 'Last backup: ${fmtDateMDY(lastBackupAt)}',
-              ),
-              value: _backupRemindersEnabled,
-              onChanged: (v) {
-                setState(() => _backupRemindersEnabled = v);
-                widget.onBackupRemindersChanged(v);
-              },
-            ),
-          ),
-          const SizedBox(height: 20),
-          const Text(
-            'Backup & Restore',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 12),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.ios_share),
-              title: const Text('Export / Save backup'),
-              subtitle: const Text('Creates a JSON backup and lets you save it to Files/iCloud or share it'),
-              onTap: widget.onExportBackupShare,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.cloud_download),
-              title: const Text('Import backup'),
-              subtitle: const Text('Restore equipment and maintenance from a JSON file'),
-              onTap: widget.onImportBackup,
-            ),
-          ),
-          const SizedBox(height: 20),
-          const Text(
-            'Theme',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 12),
-          Card(
-            child: Column(
+    return AlertDialog(
+      title: const Text('Add Training DOPE'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
               children: [
-                RadioListTile<ThemeMode>(
-                  title: const Text('System'),
-                  value: ThemeMode.system,
-                  groupValue: widget.currentThemeMode,
-                  onChanged: (v) => widget.onThemeChanged(v!),
+                Expanded(
+                  child: TextField(
+                    controller: _distanceCtrl,
+                    decoration: const InputDecoration(labelText: 'Distance'),
+                    keyboardType: TextInputType.number,
+                  ),
                 ),
-                RadioListTile<ThemeMode>(
-                  title: const Text('Light'),
-                  value: ThemeMode.light,
-                  groupValue: widget.currentThemeMode,
-                  onChanged: (v) => widget.onThemeChanged(v!),
-                ),
-                RadioListTile<ThemeMode>(
-                  title: const Text('Dark'),
-                  value: ThemeMode.dark,
-                  groupValue: widget.currentThemeMode,
-                  onChanged: (v) => widget.onThemeChanged(v!),
+                const SizedBox(width: 8),
+                DropdownButton<DistanceUnit>(
+                  value: _distanceUnit,
+                  items: DistanceUnit.values
+                      .map((u) => DropdownMenuItem(value: u, child: Text(u.name)))
+                      .toList(),
+                  onChanged: (v) => setState(() => _distanceUnit = v!),
                 ),
               ],
             ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class AddEquipmentScreen extends StatefulWidget {
-  const AddEquipmentScreen({super.key});
-
-  @override
-  State<AddEquipmentScreen> createState() => _AddEquipmentScreenState();
-}
-
-class _AddEquipmentScreenState extends State<AddEquipmentScreen> {
-  final _name = TextEditingController();
-  final _type = TextEditingController();
-
-  // Details
-  final _manufacturer = TextEditingController();
-  final _model = TextEditingController();
-
-  final _vin = TextEditingController();
-  final _serialNumber = TextEditingController();
-  DateTime? _purchaseDate;
-
-  bool _showMoreDetails = false;
-  final _vendor = TextEditingController();
-  final _purchasePrice = TextEditingController();
-  DateTime? _warrantyUntil;
-  final _location = TextEditingController();
-  final _notes = TextEditingController();
-
-  @override
-  void dispose() {
-    _name.dispose();
-    _type.dispose();
-    _manufacturer.dispose();
-    _model.dispose();
-    _vin.dispose();
-    _serialNumber.dispose();
-    _vendor.dispose();
-    _purchasePrice.dispose();
-    _location.dispose();
-    _notes.dispose();
-    super.dispose();
-  }
-
-  void _save() {
-    final name = _name.text.trim();
-    if (name.isEmpty) return;
-
-    final eq = Equipment(
-      id: DateTime.now().microsecondsSinceEpoch.toString(),
-      name: name,
-      type: _type.text.trim(),
-      manufacturer: _manufacturer.text.trim().isEmpty ? null : _manufacturer.text.trim(),
-      model: _model.text.trim().isEmpty ? null : _model.text.trim(),
-      vin: _vin.text.trim().isEmpty ? null : _vin.text.trim(),
-      serialNumber:
-          _serialNumber.text.trim().isEmpty ? null : _serialNumber.text.trim(),
-      purchaseDate: _purchaseDate,
-      vendor: _vendor.text.trim().isEmpty ? null : _vendor.text.trim(),
-      purchasePrice: _purchasePrice.text.trim().isEmpty ? null : double.tryParse(_purchasePrice.text.trim()),
-      warrantyUntil: _warrantyUntil,
-      location: _location.text.trim().isEmpty ? null : _location.text.trim(),
-      notes: _notes.text.trim(),
-      createdAt: DateTime.now(),
-    );
-
-    Navigator.of(context).pop(eq);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Add equipment')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  TextField(
-                    controller: _name,
-                    decoration: const InputDecoration(
-                      labelText: 'Nickname',
-                      hintText: 'e.g., Ford F150',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _type,
-                    decoration: const InputDecoration(
-                      labelText: 'Type (optional)',
-                      hintText: 'e.g., Truck / Tractor / ATV',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _manufacturer,
-                    decoration: const InputDecoration(
-                      labelText: 'Manufacturer (optional)',
-                      hintText: 'Brand',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _model,
-                    decoration: const InputDecoration(
-                      labelText: 'Model (optional)',
-                      hintText: 'Model',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _vin,
-                    decoration: const InputDecoration(
-                      labelText: 'VIN (optional)',
-                      hintText: 'Vehicle identification number',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _serialNumber,
-                    decoration: const InputDecoration(
-                      labelText: 'Serial number (optional)',
-                      hintText: 'Serial number',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Purchase date (optional)'),
-                    subtitle: Text(
-                      _purchaseDate == null
-                          ? 'Not set'
-                          : fmtDateMDY(_purchaseDate!),
-                    ),
-                    trailing: const Icon(Icons.calendar_month),
-                    onTap: () async {
-                      final now = DateTime.now();
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: _purchaseDate ?? now,
-                        firstDate: DateTime(1970),
-                        lastDate: DateTime(now.year + 5),
-                      );
-                      if (picked == null) return;
-                      setState(() => _purchaseDate = picked);
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _vendor,
-                    decoration: const InputDecoration(
-                      labelText: 'Vendor (optional)',
-                      hintText: 'Where you bought it',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _purchasePrice,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(
-                      labelText: 'Purchase price (optional)',
-                      prefixText: '\$',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Warranty until (optional)'),
-                    subtitle: Text(
-                      _warrantyUntil == null ? 'Not set' : fmtDateMDY(_warrantyUntil!),
-                    ),
-                    trailing: const Icon(Icons.calendar_month),
-                    onTap: () async {
-                      final now = DateTime.now();
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: _warrantyUntil ?? now,
-                        firstDate: DateTime(1970),
-                        lastDate: DateTime(now.year + 10),
-                      );
-                      if (picked == null) return;
-                      setState(() => _warrantyUntil = picked);
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _location,
-                    decoration: const InputDecoration(
-                      labelText: 'Location (optional)',
-                      hintText: 'Barn, shop, field, etc.',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _notes,
-                    maxLines: 3,
-                    decoration: const InputDecoration(
-                      labelText: 'Notes (optional)',
-                      hintText: 'Anything you want to remember',
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: FilledButton.icon(
-                      onPressed: _save,
-                      icon: const Icon(Icons.check),
-                      label: const Text('Save'),
-                    ),
-                  ),
-                ],
+            Column(
+              children: [
+                const Text('Elevation'),
+                Slider(
+                  value: _elevation,
+                  min: 0.0,
+                  max: 20.0, // Adjust max as needed
+                  divisions: 200,
+                  label: _elevation.toStringAsFixed(1),
+                  onChanged: (v) => setState(() => _elevation = v),
+                ),
+                DropdownButton<ElevationUnit>(
+                  value: _elevationUnit,
+                  items: ElevationUnit.values
+                      .map((u) => DropdownMenuItem(value: u, child: Text(u.name.toUpperCase())))
+                      .toList(),
+                  onChanged: (v) => setState(() => _elevationUnit = v!),
+                ),
+              ],
+            ),
+            TextField(
+              controller: _elevationNotesCtrl,
+              decoration: const InputDecoration(labelText: 'Elevation notes (optional)'),
+            ),
+            const SizedBox(height: 8),
+            const Text('Wind format:'),
+            RadioListTile<WindType>(
+              title: const Text('Full value (e.g. 0.8L)'),
+              value: WindType.fullValue,
+              groupValue: _windType,
+              onChanged: (v) => setState(() => _windType = v!),
+            ),
+            RadioListTile<WindType>(
+              title: const Text('Clock system (e.g. 3 o\'clock, 8 mph)'),
+              value: WindType.clock,
+              groupValue: _windType,
+              onChanged: (v) => setState(() => _windType = v!),
+            ),
+            TextField(
+              controller: _windValueCtrl,
+              decoration: const InputDecoration(labelText: 'Wind value'),
+            ),
+            TextField(
+              controller: _windNotesCtrl,
+              decoration: const InputDecoration(labelText: 'Wind notes (optional)'),
+            ),
+            Column(
+              children: [
+                const Text('Windage Left'),
+                Slider(
+                  value: _windageLeft,
+                  min: 0.0,
+                  max: 10.0, // Adjust max as needed
+                  divisions: 100,
+                  label: _windageLeft.toStringAsFixed(1),
+                  onChanged: (v) => setState(() => _windageLeft = v),
+                ),
+              ],
+            ),
+            Column(
+              children: [
+                const Text('Windage Right'),
+                Slider(
+                  value: _windageRight,
+                  min: 0.0,
+                  max: 10.0, // Adjust max as needed
+                  divisions: 100,
+                  label: _windageRight.toStringAsFixed(1),
+                  onChanged: (v) => setState(() => _windageRight = v),
+                ),
+              ],
+            ),
+            CheckboxListTile(
+              title: const Text('Promote to Working DOPE'),
+              value: _promote,
+              onChanged: (v) => setState(() => _promote = v!),
+            ),
+            if (_promote)
+              CheckboxListTile(
+                title: const Text('Rifle only (uncheck for Rifle + Ammo)'),
+                value: _rifleOnly,
+                onChanged: (v) => setState(() => _rifleOnly = v!),
               ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/* ============================
-   Equipment Details (Autosave + Scan)
-============================ */
-
-class EquipmentDetailsScreen extends StatefulWidget {
-  final Equipment equipment;
-  final List<MaintenanceRecord> allMaintenance;
-
-  const EquipmentDetailsScreen({
-    super.key,
-    required this.equipment,
-    required this.allMaintenance,
-  });
-
-  @override
-  State<EquipmentDetailsScreen> createState() => _EquipmentDetailsScreenState();
-}
-
-class _EquipmentDetailsScreenState extends State<EquipmentDetailsScreen> {
-  late final TextEditingController _name;
-  late final TextEditingController _type;
-  late final TextEditingController _vin;
-  late final TextEditingController _serialNumber;
-  DateTime? _purchaseDate;
-
-  // More optional details
-  late final TextEditingController _manufacturer;
-  late final TextEditingController _model;
-  late final TextEditingController _vendor;
-  late final TextEditingController _purchasePrice;
-  DateTime? _warrantyUntil;
-  late final TextEditingController _location;
-
-  late final TextEditingController _notes;
-
-  late Equipment _working;
-
-  bool _showMoreDetails = false;
-  late List<MaintenanceRecord> _maintenanceWorking;
-
-  static const List<String> _specOptions = [
-    'Tire size',
-    'Front tire size',
-    'Rear tire size',
-    'Oil type',
-    'Oil capacity',
-    'Hydraulic fluid type',
-    'Hydraulic capacity',
-    'Coolant type',
-    'Fuel type',
-    'Fuel capacity',
-    'Oil filter #',
-    'Air filter #',
-    'Fuel filter #',
-    'Hydraulic filter #',
-    'Battery',
-    'Spark plug',
-    'Belt',
-    'Grease type',
-  ];
-
-  String? _specToAdd;
-
-  Timer? _autosaveTimer;
-  bool _autosaveInFlight = false;
-
-  final Map<String, TextEditingController> _specControllers = {};
-
-  @override
-  void initState() {
-    super.initState();
-
-    _working = Equipment(
-      id: widget.equipment.id,
-      name: widget.equipment.name,
-      type: widget.equipment.type,
-      vin: widget.equipment.vin,
-      serialNumber: widget.equipment.serialNumber,
-      purchaseDate: widget.equipment.purchaseDate,
-      manufacturer: widget.equipment.manufacturer,
-      model: widget.equipment.model,
-      vendor: widget.equipment.vendor,
-      purchasePrice: widget.equipment.purchasePrice,
-      warrantyUntil: widget.equipment.warrantyUntil,
-      location: widget.equipment.location,
-      notes: widget.equipment.notes,
-      createdAt: widget.equipment.createdAt,
-      specs: Map<String, String>.from(widget.equipment.specs),
-    );
-
-    _maintenanceWorking = List<MaintenanceRecord>.from(widget.allMaintenance);
-
-    _name = TextEditingController(text: _working.name);
-    _type = TextEditingController(text: _working.type);
-    _vin = TextEditingController(text: _working.vin ?? '');
-    _serialNumber = TextEditingController(text: _working.serialNumber ?? '');
-    _purchaseDate = _working.purchaseDate;
-
-    _manufacturer = TextEditingController(text: _working.manufacturer ?? '');
-    _model = TextEditingController(text: _working.model ?? '');
-    _vendor = TextEditingController(text: _working.vendor ?? '');
-    _purchasePrice = TextEditingController(
-        text: _working.purchasePrice == null ? '' : _working.purchasePrice!.toString());
-    _warrantyUntil = _working.warrantyUntil;
-    _location = TextEditingController(text: _working.location ?? '');
-
-    _notes = TextEditingController(text: _working.notes);
-
-    _syncSpecControllersFromWorking();
-  }
-
-  void _syncSpecControllersFromWorking() {
-    // create missing controllers
-    for (final entry in _working.specs.entries) {
-      _specControllers.putIfAbsent(
-        entry.key,
-        () => TextEditingController(text: entry.value),
-      );
-      _specControllers[entry.key]!.text = entry.value;
-    }
-
-    // dispose controllers for removed keys
-    final keysToRemove =
-        _specControllers.keys.where((k) => !_working.specs.containsKey(k)).toList();
-    for (final k in keysToRemove) {
-      _specControllers[k]?.dispose();
-      _specControllers.remove(k);
-    }
-  }
-
-  @override
-  void dispose() {
-    _autosaveTimer?.cancel();
-    _name.dispose();
-    _type.dispose();
-    _manufacturer.dispose();
-    _model.dispose();
-    _vin.dispose();
-    _serialNumber.dispose();
-    _vendor.dispose();
-    _purchasePrice.dispose();
-    _location.dispose();
-    _notes.dispose();
-    for (final c in _specControllers.values) {
-      c.dispose();
-    }
-    super.dispose();
-  }
-
-  void _scheduleAutosave() {
-    _autosaveTimer?.cancel();
-    _autosaveTimer = Timer(const Duration(milliseconds: 450), () async {
-      await _autosaveNow();
-    });
-  }
-
-  Future<void> _autosaveNow() async {
-    if (_autosaveInFlight) return;
-    if (_working.name.trim().isEmpty) return;
-
-    _autosaveInFlight = true;
-    try {
-      await Storage.upsertEquipment(
-        Equipment(
-          id: _working.id,
-          name: _working.name.trim(),
-          type: _working.type.trim(),
-          vin: _working.vin,
-          serialNumber: _working.serialNumber,
-          purchaseDate: _working.purchaseDate,
-          notes: _working.notes.trim(),
-          createdAt: _working.createdAt,
-          specs: Map<String, String>.from(_working.specs),
+          ],
         ),
-      );
-    } finally {
-      _autosaveInFlight = false;
-    }
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        ElevatedButton(
+          onPressed: () {
+            final dist = double.tryParse(_distanceCtrl.text.trim());
+            if (dist == null) return;
+
+            final entry = RifleDopeEntry(
+              id: '', // will be set in state
+              time: DateTime.now(),
+              distance: dist,
+              distanceUnit: _distanceUnit,
+              elevation: _elevation,
+              elevationUnit: _elevationUnit,
+              elevationNotes: _elevationNotesCtrl.text.trim(),
+              windType: _windType,
+              windValue: _windValueCtrl.text.trim(),
+              windNotes: _windNotesCtrl.text.trim(),
+              windageLeft: _windageLeft,
+              windageRight: _windageRight,
+            );
+
+            Navigator.pop(context, _DopeResult(entry, _promote, _rifleOnly));
+          },
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
+class SessionDetailScreen extends StatelessWidget {
+  final AppState state;
+  final String sessionId;
+  const SessionDetailScreen({super.key, required this.state, required this.sessionId});
+
+  Future<void> _addColdBore(BuildContext context, TrainingSession s) async {
+    final res = await showDialog<_ColdBoreResult>(
+      context: context,
+      builder: (_) => _ColdBoreDialog(defaultTime: s.dateTime),
+    );
+    if (res == null) return;
+
+    state.addColdBoreEntry(
+      sessionId: s.id,
+      time: res.time,
+      distance: res.distance,
+      result: res.result,
+      notes: res.notes,
+    );
   }
 
-  Future<void> _scanPackageAndSuggestSpecs() async {
-    try {
-      final picker = ImagePicker();
-      final photo = await picker.pickImage(source: ImageSource.camera, imageQuality: 85);
-      if (photo == null) return;
+  Future<void> _addPhotoNote(BuildContext context, TrainingSession s) async {
+    final res = await showDialog<String>(
+      context: context,
+      builder: (_) => const _PhotoNoteDialog(),
+    );
+    if (res == null || res.trim().isEmpty) return;
 
-      final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
-      final inputImage = InputImage.fromFilePath(photo.path);
-      final result = await recognizer.processImage(inputImage);
-      await recognizer.close();
+    state.addPhotoNote(sessionId: s.id, time: DateTime.now(), caption: res);
+  }
 
-      final raw = _normalizeText(result.text);
-      final suggestions = _extractSpecSuggestionsFromOcr(raw);
+  Future<void> _editTrainingNotes(BuildContext context, TrainingSession s) async {
+    final res = await showDialog<String>(
+      context: context,
+      builder: (_) => _EditNotesDialog(initialNotes: s.notes),
+    );
+    if (res == null) return;
+    state.updateSessionNotes(sessionId: s.id, notes: res);
+  }
 
-      if (!mounted) return;
+  Future<void> _addDope(BuildContext context, TrainingSession s) async {
+    final res = await showDialog<_DopeResult>(
+      context: context,
+      builder: (_) => _DopeEntryDialog(defaultTime: DateTime.now()),
+    );
+    if (res == null) return;
 
-      if (suggestions.isEmpty) {
-        await showDialog<void>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Nothing found'),
-            content: const Text(
-              'Could not detect usable specs from that photo. Try a closer shot of the part number label.',
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
-            ],
-          ),
+    if (res.promote) {
+      if (s.rifleId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Select a rifle in Loadout to promote DOPE.')),
+        );
+        return;
+      }
+      if (!res.rifleOnly && s.ammoLotId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Select ammo to promote to Rifle + Ammo scope.')),
         );
         return;
       }
 
-      final controllers = <String, TextEditingController>{
-        for (final e in suggestions.entries) e.key: TextEditingController(text: e.value),
-      };
+      final key = res.rifleOnly ? s.rifleId! : '${s.rifleId}_${s.ammoLotId}';
+      final wmap = res.rifleOnly ? state.workingDopeRifleOnly[key] ?? {} : state.workingDopeRifleAmmo[key] ?? {};
+      final dk = DistanceKey(res.entry.distance, res.entry.distanceUnit);
 
-      final approved = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Add scanned specs?'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: SingleChildScrollView(
-              child: Column(
-                children: [
-                  ...controllers.entries.map((e) {
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: TextField(
-                        controller: e.value,
-                        decoration: InputDecoration(labelText: e.key),
-                      ),
-                    );
-                  }),
-                ],
-              ),
-            ),
+      if (wmap.containsKey(dk)) {
+        final confirm = await showDialog<bool>(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text('Replace existing?'),
+            content: Text('Replace existing DOPE at ${dk.value} ${dk.unit.name}?'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+              FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Replace')),
+            ],
           ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Add')),
-          ],
-        ),
-      );
-
-      if (approved == true) {
-        setState(() {
-          for (final entry in controllers.entries) {
-            final key = entry.key;
-            final value = entry.value.text.trim();
-
-            if (key == 'Notes') {
-              if (value.isNotEmpty) {
-                final existing = _working.notes.trim();
-                _working.notes = existing.isEmpty ? value : '$existing\n$value';
-                _notes.text = _working.notes;
-              }
-            } else {
-              _working.specs[key] = value;
-            }
-          }
-          _syncSpecControllersFromWorking();
-        });
-
-        await _autosaveNow();
-
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Specs added from scan.')),
         );
+        if (confirm != true) return;
       }
 
-      for (final c in controllers.values) {
-        c.dispose();
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Scan failed: $e')),
+      state.addTrainingDope(
+        sessionId: s.id,
+        entry: res.entry,
+        promote: res.promote,
+        rifleOnly: res.rifleOnly,
       );
+    } else {
+      state.addTrainingDope(sessionId: s.id, entry: res.entry);
     }
-  }
-
-  Future<void> _openAddMaintenance() async {
-    final result = await Navigator.of(context).push<List<MaintenanceRecord>>(
-      MaterialPageRoute(
-        builder: (_) => AddMaintenanceScreen(
-          equipment: _working,
-          existing: _maintenanceWorking,
-        ),
-      ),
-    );
-
-    if (result == null) return;
-
-    setState(() {
-      _maintenanceWorking
-        ..clear()
-        ..addAll(result);
-    });
-
-    await _autosaveNow();
-  }
-
-  Future<void> _openMaintenanceList() async {
-    final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => MaintenanceListScreen(
-          equipment: _working,
-          allMaintenance: _maintenanceWorking,
-        ),
-      ),
-    );
-
-    // Maintenance edits/deletes happen on a separate screen and persist to Storage.
-    // Reload when returning so the top Service Status card always reflects the latest data.
-    if (changed == true) {
-      final latest = await Storage.loadMaintenance();
-      if (!mounted) return;
-      setState(() {
-        _maintenanceWorking = latest;
-      });
-    }
-  }
-
-  Future<void> _deleteThisEquipment() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete this equipment?'),
-        content: const Text(
-          'This will permanently delete this equipment and all of its maintenance records.\n\nThis cannot be undone.',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
-        ],
-      ),
-    );
-
-    if (ok != true) return;
-
-    final updatedMaintenance =
-        widget.allMaintenance.where((m) => m.equipmentId != widget.equipment.id).toList();
-
-    Navigator.of(context).pop(
-      _EquipmentDetailsResult(
-        deletedEquipmentId: widget.equipment.id,
-        updatedEquipment: null,
-        updatedMaintenance: updatedMaintenance,
-      ),
-    );
-  }
-
-  void _saveAndReturn() async {
-    final name = _name.text.trim();
-    if (name.isEmpty) return;
-
-    _working.name = name;
-    _working.type = _type.text.trim();
-    _working.notes = _notes.text.trim();
-
-    await _autosaveNow();
-
-    Navigator.of(context).pop(
-      _EquipmentDetailsResult(
-        deletedEquipmentId: null,
-        updatedEquipment: _working,
-        updatedMaintenance: _maintenanceWorking,
-      ),
-    );
-  }
-
-  void _removeSpec(String key) {
-    setState(() {
-      _working.specs.remove(key);
-      _syncSpecControllersFromWorking();
-    });
-    _scheduleAutosave();
   }
 
   @override
   Widget build(BuildContext context) {
-    final availableSpecs = _specOptions.where((s) => !_working.specs.containsKey(s)).toList();
-
-    // Trend-based service prediction (learned from past maintenance history)
-    final serviceDates = _maintenanceWorking
-        .where((m) => m.equipmentId == widget.equipment.id && m.serviceDate != null)
-        .map((m) => m.serviceDate!)
-        .toList();
-    final prediction = predictNextDueFromDates(serviceDates);
-    final now = DateTime.now();
-    final int? daysUntilDue = prediction.nextDue == null ? null : prediction.nextDue!.difference(now).inDays;
-
-    // Earliest scheduled next service (user-entered) replaces prediction if present.
-    final recordsForEq = _maintenanceWorking
-        .where((m) => m.equipmentId == widget.equipment.id)
-        .toList()
-      ..sort((a, b) => (b.serviceDate ?? DateTime.fromMillisecondsSinceEpoch(0))
-          .compareTo(a.serviceDate ?? DateTime.fromMillisecondsSinceEpoch(0)));
-
-    final completedForEq = recordsForEq.where((m) => m.serviceDate != null).toList()
-      ..sort((a, b) => (b.serviceDate ?? DateTime.fromMillisecondsSinceEpoch(0))
-          .compareTo(a.serviceDate ?? DateTime.fromMillisecondsSinceEpoch(0)));
-    final MaintenanceRecord? lastCompleted = completedForEq.isEmpty ? null : completedForEq.first;
-
-    final scheduledWithDate = recordsForEq
-        .where((m) => m.nextDueDate != null)
-        .toList()
-      ..sort((a, b) => a.nextDueDate!.compareTo(b.nextDueDate!));
-
-    final int currentHoursEstimate = completedForEq
-        .where((m) => m.hours != null)
-        .map((m) => m.hours!)
-        .fold<int>(0, (p, e) => e > p ? e : p);
-    final int currentMileageEstimate = completedForEq
-        .where((m) => m.mileage != null)
-        .map((m) => m.mileage!)
-        .fold<int>(0, (p, e) => e > p ? e : p);
-
-    // Pick the soonest scheduled item across all services.
-    MaintenanceRecord? nextScheduled;
-    if (scheduledWithDate.isNotEmpty) {
-      nextScheduled = scheduledWithDate.first;
-    } else {
-      MaintenanceRecord? best;
-      int? bestDelta;
-
-      final withHours = recordsForEq.where((m) => m.nextDueHours != null).toList()
-        ..sort((a, b) => a.nextDueHours!.compareTo(b.nextDueHours!));
-      for (final m in withHours) {
-        final delta = m.nextDueHours! - currentHoursEstimate;
-        if (delta < 0) continue;
-        if (bestDelta == null || delta < bestDelta!) {
-          bestDelta = delta;
-          best = m;
+    return AnimatedBuilder(
+      animation: state,
+      builder: (context, _) {
+        final s = state.getSessionById(sessionId);
+        if (s == null) {
+          return const Scaffold(body: Center(child: Text('Session not found')));
         }
-      }
 
-      final withMileage = recordsForEq.where((m) => m.nextDueMileage != null).toList()
-        ..sort((a, b) => a.nextDueMileage!.compareTo(b.nextDueMileage!));
-      for (final m in withMileage) {
-        final delta = m.nextDueMileage! - currentMileageEstimate;
-        if (delta < 0) continue;
-        if (bestDelta == null || delta < bestDelta!) {
-          bestDelta = delta;
-          best = m;
-        }
-      }
+        final rifle = state.rifleById(s.rifleId);
+        final ammo = state.ammoById(s.ammoLotId);
 
-      // If we couldn't compute a "soonest" delta (missing estimates), fall back to smallest absolute.
-      nextScheduled = best ??
-          (withHours.isNotEmpty ? withHours.first : null) ??
-          (withMileage.isNotEmpty ? withMileage.first : null);
-    }
-
-final bool showingScheduled = nextScheduled != null;
-    final DateTime? topDueDate =
-        showingScheduled ? nextScheduled!.nextDueDate : prediction.nextDue;
-    final int? topDueHours = showingScheduled ? nextScheduled!.nextDueHours : null;
-    final int? topDueMileage = showingScheduled ? nextScheduled!.nextDueMileage : null;
-    final String predictedServiceName = (lastCompleted != null &&
-            lastCompleted!.serviceType.trim().isNotEmpty)
-        ? lastCompleted!.serviceType
-        : 'Service';
-
-    final String topServiceName =
-        showingScheduled ? nextScheduled!.serviceType : predictedServiceName;
-
-
-
-    return WillPopScope(
-      onWillPop: () async {
-        await _autosaveNow();
-        return true;
-      },
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Equipment'),
-          actions: [
-            IconButton(
-              tooltip: 'Delete equipment',
-              onPressed: _deleteThisEquipment,
-              icon: const Icon(Icons.delete_outline),
-            ),
-            TextButton(onPressed: _saveAndReturn, child: const Text('Save')),
-          ],
-        ),
-        body: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            if (prediction.nextDue != null)
-              
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('Session'),
+            actions: [
+              IconButton(
+                tooltip: 'Edit training notes',
+                onPressed: () => _editTrainingNotes(context, s),
+                icon: const Icon(Icons.edit_note_outlined),
+              ),
+            ],
+          ),
+          floatingActionButton: FloatingActionButton.extended(
+            onPressed: () => _addColdBore(context, s),
+            icon: const Icon(Icons.ac_unit_outlined),
+            label: const Text('Add Cold Bore'),
+          ),
+          body: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Text(s.locationName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 6),
+              Text(_fmtDateTime(s.dateTime)),
+              const SizedBox(height: 16),
+              _SectionTitle('Notes'),
+              const SizedBox(height: 8),
               Card(
                 child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Stack(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 56),
-                        child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Service status',
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
-                          const SizedBox(height: 8),
-
-                          // Service name (scheduled overrides prediction)
-                          Text(
-                            topServiceName,
-                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                          ),
-
-                          const SizedBox(height: 8),
-
-                          // Last completed
-                          Text(
-                            lastCompleted == null
-                                ? 'Last completed: —'
-                                : 'Last completed: ${fmtDateMDY(lastCompleted!.serviceDate!)}'
-                                    '${lastCompleted!.hours != null ? ' @ ${lastCompleted!.hours} hrs' : ''}'
-                                    '${lastCompleted!.mileage != null ? ' @ ${lastCompleted!.mileage} mi' : ''}',
-                          ),
-
-                          const SizedBox(height: 8),
-
-                          // Next due (scheduled or predicted)
-                          Text(
-                            (() {
-                              if (showingScheduled) {
-                                if (topDueDate != null) {
-                                  return 'Next due (scheduled): ${fmtDateMDY(topDueDate!)}';
-                                }
-                                if (topDueHours != null) {
-                                  return 'Next due (scheduled): ${topDueHours} hrs';
-                                }
-                                if (topDueMileage != null) {
-                                  return 'Next due (scheduled): ${topDueMileage} mi';
-                                }
-                                return 'Next due: —';
-                              } else {
-                                return topDueDate == null
-                                    ? 'Next due: —'
-                                    : 'Next due (predicted): ~${fmtDateMDY(topDueDate!)}';
-                              }
-                            })(),
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                          ),
-
-                          const SizedBox(height: 8),
-
-                          if (prediction.typicalIntervalDays != null)
-                            Text('Typical interval: ~${prediction.typicalIntervalDays} days'),
-
-                          const SizedBox(height: 4),
-                          Text('Confidence: ${prediction.confidence}'),
-
-                          const SizedBox(height: 8),
-
-                          Builder(builder: (context) {
-                            if (topDueDate == null && topDueHours == null && topDueMileage == null) {
-                              return const SizedBox.shrink();
-                            }
-
-                            bool overdue = false;
-                            bool dueSoon = false;
-
-                            if (topDueDate != null) {
-                              final daysUntil = topDueDate!.difference(now).inDays;
-                              final int? intervalDays = prediction.typicalIntervalDays;
-                              overdue = daysUntil < 0;
-                              dueSoon = overdue ||
-                                  daysUntil <= 14 ||
-                                  (intervalDays != null && daysUntil <= (intervalDays * 0.2).round());
-                            } else if (topDueHours != null) {
-                              final delta = topDueHours! - currentHoursEstimate;
-                              overdue = delta < 0;
-                              // Heuristic for "soon" when we only have hours.
-                              dueSoon = overdue || delta <= 10;
-                            } else if (topDueMileage != null) {
-                              final delta = topDueMileage! - currentMileageEstimate;
-                              overdue = delta < 0;
-                              // Heuristic for "soon" when we only have mileage.
-                              dueSoon = overdue || delta <= 200;
-                            }
-
-                            final statusText = overdue
-                                ? 'Status: Overdue'
-                                : (dueSoon ? 'Status: Due soon' : 'Status: On track');
-
-                            final statusIcon = overdue ? '🔴' : (dueSoon ? '🟡' : '🟢');
-                            return Text('$statusIcon $statusText');
-                          }),
-
-                          const SizedBox(height: 4),
-                          if (showingScheduled) const Text('Using your scheduled next service.'),
-                        ],
+                      Text(
+                        s.notes.isEmpty ? 'No notes yet. Tap Edit to add training notes.' : s.notes,
                       ),
+                      const SizedBox(height: 8),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton.icon(
+                          onPressed: () => _editTrainingNotes(context, s),
+                          icon: const Icon(Icons.edit_note_outlined),
+                          label: const Text('Edit'),
+                        ),
                       ),
-
-                      Positioned(
-                        right: 0,
-                        bottom: 0,
-                        child: OutlinedButton.icon(
-                          onPressed: () {
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              _SectionTitle('Loadout'),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<String?>(
+                      value: s.rifleId,
+                      decoration: const InputDecoration(labelText: 'Rifle'),
+                      items: [
+                        const DropdownMenuItem<String?>(value: null, child: Text('— None —')),
+                        ...state.rifles.map(
+                          (r) => DropdownMenuItem<String?>(value: r.id, child: Text('${r.name} (${r.caliber})')),
+                        ),
+                      ],
+                      onChanged: (v) => state.updateSessionLoadout(sessionId: s.id, rifleId: v, ammoLotId: s.ammoLotId),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: DropdownButtonFormField<String?>(
+                      value: s.ammoLotId,
+                      decoration: const InputDecoration(labelText: 'Ammo'),
+                      items: [
+                        const DropdownMenuItem<String?>(value: null, child: Text('— None —')),
+                        ...state.ammoLots.map(
+                          (a) => DropdownMenuItem<String?>(value: a.id, child: Text('${a.name} (${a.caliber})')),
+                        ),
+                      ],
+                      onChanged: (v) => state.updateSessionLoadout(sessionId: s.id, rifleId: s.rifleId, ammoLotId: v),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              _SectionTitle('Cold Bore Entries'),
+              const SizedBox(height: 8),
+              if (s.shots.where((x) => x.isColdBore).isEmpty)
+                _HintCard(
+                  icon: Icons.ac_unit_outlined,
+                  title: 'No cold bore entries yet',
+                  message: 'Tap “Add Cold Bore” to log the first shot for this session.',
+                )
+              else
+                ...s.shots.where((x) => x.isColdBore).map(
+                      (shot) => Card(
+                        child: ListTile(
+                          leading: Icon(
+                            shot.isBaseline ? Icons.star : Icons.ac_unit_outlined,
+                          ),
+                          title: Text('${shot.distance} • ${shot.result}'),
+                          subtitle: Text(
+                            '${_fmtDateTime(shot.time)}'
+                            '${shot.photos.isEmpty ? '' : ' • ${shot.photos.length} photo(s)'}',
+                          ),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () {
                             Navigator.of(context).push(
                               MaterialPageRoute(
-                                builder: (_) => MaintenanceScheduleScreen(
-                                  equipment: _working,
-                                  records: recordsForEq,
+                                builder: (_) => ColdBoreEntryScreen(
+                                  state: state,
+                                  sessionId: s.id,
+                                  shotId: shot.id,
                                 ),
                               ),
                             );
                           },
-                          icon: const Icon(Icons.table_chart),
-                          label: const Text('View full maintenance schedule'),
                         ),
                       ),
-                    ],
-                  ),
-                ),
+                    ),
+              const SizedBox(height: 16),
+              _SectionTitle('Training DOPE'),
+              const SizedBox(height: 8),
+              if (s.trainingDope.isEmpty)
+                _HintCard(
+                  icon: Icons.my_location_outlined,
+                  title: 'No training DOPE yet',
+                  message: 'Tap Add to log DOPE during this session.',
+                  actionLabel: 'Add DOPE',
+                  onAction: () => _addDope(context, s),
+                )
+              else
+                ...s.trainingDope.map(
+                      (e) => Card(
+                        child: ListTile(
+                          title: Text('${e.distance} ${e.distanceUnit.name} • ${e.elevation} ${e.elevationUnit.name}'),
+                          subtitle: Text('${e.windType.name}: ${e.windValue} • Left: ${e.windageLeft} • Right: ${e.windageRight}'),
+                        ),
+                      ),
+                    ),
+              const SizedBox(height: 16),
+              _SectionTitle('Photos'),
+              const SizedBox(height: 8),
+              _HintCard(
+                icon: Icons.photo_camera_outlined,
+                title: 'Photo capture is next',
+                message: 'For now, add a photo caption as a placeholder. Next step: wire real photo picking.',
+                actionLabel: 'Add photo note',
+                onAction: () => _addPhotoNote(context, s),
               ),
-            if (prediction.nextDue != null) const SizedBox(height: 12),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Basics', style: Theme.of(context).textTheme.titleMedium),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _name,
-                      decoration: const InputDecoration(labelText: 'Nickname'),
-                      onChanged: (v) {
-                        _working.name = v;
-                        _scheduleAutosave();
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _type,
-                      decoration: const InputDecoration(labelText: 'Type (optional)'),
-                      onChanged: (v) {
-                        _working.type = v;
-                        _scheduleAutosave();
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _manufacturer,
-                      decoration: const InputDecoration(labelText: 'Manufacturer (optional)'),
-                      onChanged: (v) {
-                        final vv = v.trim();
-                        _working.manufacturer = vv.isEmpty ? null : vv;
-                        _scheduleAutosave();
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _model,
-                      decoration: const InputDecoration(labelText: 'Model (optional)'),
-                      onChanged: (v) {
-                        final vv = v.trim();
-                        _working.model = vv.isEmpty ? null : vv;
-                        _scheduleAutosave();
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    const SizedBox(height: 12),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: TextButton.icon(
-                        onPressed: () {
-                          setState(() => _showMoreDetails = !_showMoreDetails);
-                        },
-                        icon: Icon(_showMoreDetails ? Icons.expand_less : Icons.expand_more),
-                        label: Text(_showMoreDetails ? 'View less' : 'View more'),
+              if (s.photos.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                ...s.photos.map(
+                      (p) => Card(
+                        child: ListTile(
+                          leading: const Icon(Icons.photo_outlined),
+                          title: Text(p.caption),
+                          subtitle: Text(_fmtDateTime(p.time)),
+                        ),
                       ),
                     ),
-                    if (_showMoreDetails) ...[
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: _vin,
-                        decoration:
-                            const InputDecoration(labelText: 'VIN (optional)'),
-                        onChanged: (v) {
-                          final vv = v.trim();
-                          _working.vin = vv.isEmpty ? null : vv;
-                          _scheduleAutosave();
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: _serialNumber,
-                        decoration: const InputDecoration(
-                            labelText: 'Serial number (optional)'),
-                        onChanged: (v) {
-                          final vv = v.trim();
-                          _working.serialNumber = vv.isEmpty ? null : vv;
-                          _scheduleAutosave();
-                        },
-                      ),
-                      
-
-                      const SizedBox(height: 12),
-                                          ListTile(
-                                            contentPadding: EdgeInsets.zero,
-                                            title: const Text('Purchase date (optional)'),
-                                            subtitle: Text(_purchaseDate == null
-                                                ? 'Not set'
-                                                : fmtDateMDY(_purchaseDate!)),
-                                            trailing: const Icon(Icons.calendar_month),
-                                            onTap: () async {
-                                              final now = DateTime.now();
-                                              final picked = await showDatePicker(
-                                                context: context,
-                                                initialDate: _purchaseDate ?? now,
-                                                firstDate: DateTime(1970),
-                                                lastDate: DateTime(now.year + 5),
-                                              );
-                                              if (picked == null) return;
-                                              setState(() => _purchaseDate = picked);
-                                              _working.purchaseDate = picked;
-                                              _scheduleAutosave();
-                                            },
-                                          ),
-                                          const SizedBox(height: 12),
-                                          TextField(
-                                            controller: _vendor,
-                                            decoration: const InputDecoration(labelText: 'Vendor (optional)'),
-                                            onChanged: (v) {
-                                              final vv = v.trim();
-                                              _working.vendor = vv.isEmpty ? null : vv;
-                                              _scheduleAutosave();
-                                            },
-                                          ),
-                                          const SizedBox(height: 12),
-                                          TextField(
-                                            controller: _purchasePrice,
-                                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                            decoration: const InputDecoration(labelText: 'Purchase price (optional)', prefixText: '\$'),
-                                            onChanged: (v) {
-                                              final vv = v.trim();
-                                              _working.purchasePrice = vv.isEmpty ? null : double.tryParse(vv);
-                                              _scheduleAutosave();
-                                            },
-                                          ),
-                                          const SizedBox(height: 12),
-                                          ListTile(
-                                            contentPadding: EdgeInsets.zero,
-                                            title: const Text('Warranty until (optional)'),
-                                            subtitle: Text(_warrantyUntil == null ? 'Not set' : fmtDateMDY(_warrantyUntil!)),
-                                            trailing: const Icon(Icons.calendar_month),
-                                            onTap: () async {
-                                              final now = DateTime.now();
-                                              final picked = await showDatePicker(
-                                                context: context,
-                                                initialDate: _warrantyUntil ?? now,
-                                                firstDate: DateTime(1970),
-                                                lastDate: DateTime(now.year + 10),
-                                              );
-                                              if (picked == null) return;
-                                              setState(() => _warrantyUntil = picked);
-                                              _working.warrantyUntil = picked;
-                                              _scheduleAutosave();
-                                            },
-                                          ),
-                                          const SizedBox(height: 12),
-                                          TextField(
-                                            controller: _location,
-                                            decoration: const InputDecoration(labelText: 'Location (optional)'),
-                                            onChanged: (v) {
-                                              final vv = v.trim();
-                                              _working.location = vv.isEmpty ? null : vv;
-                                              _scheduleAutosave();
-                                            },
-                                          ),
-                                          const SizedBox(height: 12),
-                                          TextField(
-                                            controller: _notes,
-                                            maxLines: 3,
-                                            decoration: const InputDecoration(labelText: 'Notes (optional)'),
-                                            onChanged: (v) {
-                                              _working.notes = v;
-                                              _scheduleAutosave();
-                                            },
-                                          ),
-                    
-                    ],
-const SizedBox(height: 14),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        onPressed: _openAddMaintenance,
-                        icon: const Icon(Icons.add),
-                        label: const Text('Add maintenance'),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        onPressed: _openMaintenanceList,
-                        icon: const Icon(Icons.receipt_long),
-                        label: const Text('View maintenance records'),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: Text('Vehicle specs', style: Theme.of(context).textTheme.titleLarge),
-                ),
               ],
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _scanPackageAndSuggestSpecs,
-                icon: const Icon(Icons.document_scanner_outlined),
-                label: const Text('Scan package (photo)'),
+              const SizedBox(height: 8),
+              const Divider(),
+              const SizedBox(height: 8),
+              Text(
+                'Loadout: ${rifle?.name ?? '—'} / ${ammo?.name ?? '—'}',
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7)),
               ),
-            ),
-            const SizedBox(height: 10),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Add spec field', style: Theme.of(context).textTheme.titleSmall),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<String>(
-                      value: _specToAdd,
-                      items: availableSpecs
-                          .map((s) => DropdownMenuItem<String>(value: s, child: Text(s)))
-                          .toList(),
-                      onChanged: availableSpecs.isEmpty ? null : (v) => setState(() => _specToAdd = v),
-                      decoration: const InputDecoration(labelText: 'Choose a spec'),
-                    ),
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton(
-                        onPressed: (_specToAdd == null)
-                            ? null
-                            : () {
-                                final key = _specToAdd!;
-                                setState(() {
-                                  _working.specs[key] = _working.specs[key] ?? '';
-                                  _specToAdd = null;
-                                  _syncSpecControllersFromWorking();
-                                });
-                                _scheduleAutosave();
-                              },
-                        child: const Text('Add selected spec'),
-                      ),
-                    ),
-                  ],
-                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class ColdBoreScreen extends StatelessWidget {
+  final AppState state;
+  const ColdBoreScreen({super.key, required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: state,
+      builder: (context, _) {
+        final user = state.activeUser;
+        if (user == null) {
+          return const _EmptyState(
+            icon: Icons.person_outline,
+            title: 'No active user',
+            message: 'Create or select a user to view cold bore history.',
+          );
+        }
+
+        final rows = state.coldBoreRowsForActiveUser();
+        if (rows.isEmpty) {
+          return const _EmptyState(
+            icon: Icons.ac_unit_outlined,
+            title: 'No cold bore entries yet',
+            message: 'Open a session and tap “Add Cold Bore”.',
+          );
+        }
+
+        return ListView.separated(
+          itemCount: rows.length,
+          separatorBuilder: (_, __) => const Divider(height: 1),
+          itemBuilder: (context, i) {
+            final r = rows[i];
+            final rifle = r.rifle;
+            final ammo = r.ammo;
+            return ListTile(
+              leading: Icon(r.shot.isBaseline ? Icons.star : Icons.ac_unit_outlined),
+              title: Text('${r.shot.distance} • ${r.shot.result}' + (r.shot.photos.isEmpty ? '' : ' • ${r.shot.photos.length} photo(s)')),
+              subtitle: Text(
+                [
+                  _fmtDateTime(r.shot.time),
+                  r.session.locationName,
+                  if (rifle != null) rifle.name,
+                  if (ammo != null) ammo.name,
+                ].join(' • '),
               ),
-            ),
-            const SizedBox(height: 10),
-            if (_working.specs.isEmpty)
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(
-                    'No specs added yet.\n\nUse the dropdown above to add things like tire size, oil type, filter #s, etc.',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                ),
-              )
-            else
-              ..._working.specs.keys.map((key) {
-                final controller = _specControllers[key]!;
-                return Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: controller,
-                            decoration: InputDecoration(labelText: key),
-                            onChanged: (v) {
-                              _working.specs[key] = v;
-                              _scheduleAutosave();
-                            },
-                          ),
-                        ),
-                        IconButton(
-                          tooltip: 'Remove',
-                          onPressed: () => _removeSpec(key),
-                          icon: const Icon(Icons.delete_outline),
-                        ),
-                      ],
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ColdBoreEntryScreen(
+                      state: state,
+                      sessionId: r.session.id,
+                      shotId: r.shot.id,
                     ),
                   ),
                 );
-              }),
-            const SizedBox(height: 16),
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.calendar_today_outlined),
-                title: const Text('Added'),
-                subtitle: Text(fmtDateMDY(_working.createdAt)),
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class ColdBoreEntryScreen extends StatefulWidget {
+  final AppState state;
+  final String sessionId;
+  final String shotId;
+  const ColdBoreEntryScreen({
+    super.key,
+    required this.state,
+    required this.sessionId,
+    required this.shotId,
+  });
+
+  @override
+  State<ColdBoreEntryScreen> createState() => _ColdBoreEntryScreenState();
+}
+
+class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
+  final ImagePicker _picker = ImagePicker();
+
+  Future<void> _pick({required ImageSource source}) async {
+    try {
+      final x = await _picker.pickImage(
+        source: source,
+        imageQuality: 92,
+        maxWidth: 2200,
+      );
+      if (x == null) return;
+
+      final bytes = await x.readAsBytes();
+      widget.state.addColdBorePhoto(
+        sessionId: widget.sessionId,
+        shotId: widget.shotId,
+        bytes: bytes,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Photo failed: $e')),
+      );
+    }
+  }
+
+  void _setBaseline() {
+    widget.state.setBaselineColdBore(sessionId: widget.sessionId, shotId: widget.shotId);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Marked as baseline (first shot).')),
+    );
+  }
+
+  void _compare() {
+    final baseline = widget.state.baselineColdBoreShot();
+    if (baseline == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No baseline set yet. Tap “Mark as Baseline” first.')),
+      );
+      return;
+    }
+    final current = widget.state.shotById(sessionId: widget.sessionId, shotId: widget.shotId);
+    if (current == null) return;
+
+    if (baseline.id == current.id) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This entry is already the baseline.')),
+      );
+      return;
+    }
+
+    showDialog<void>(
+      context: context,
+      builder: (_) {
+        final baseImg = baseline.photos.isNotEmpty ? baseline.photos.last.bytes : null;
+        final curImg = current.photos.isNotEmpty ? current.photos.last.bytes : null;
+        return AlertDialog(
+          title: const Text('Compare to Baseline'),
+          content: SizedBox(
+            width: 520,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('Baseline: ${baseline.distance} • ${baseline.result}'),
+                  const SizedBox(height: 8),
+                  if (baseImg != null)
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.memory(baseImg, fit: BoxFit.cover),
+                    )
+                  else
+                    const Text('No baseline photo yet.'),
+                  const SizedBox(height: 16),
+                  Text('Selected: ${current.distance} • ${current.result}'),
+                  const SizedBox(height: 8),
+                  if (curImg != null)
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.memory(curImg, fit: BoxFit.cover),
+                    )
+                  else
+                    const Text('No photo on this entry yet.'),
+                ],
               ),
             ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: FilledButton.icon(
-                onPressed: _saveAndReturn,
-                icon: const Icon(Icons.save),
-                label: const Text('Save changes'),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+          ],
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: widget.state,
+      builder: (context, _) {
+        final s = widget.state.getSessionById(widget.sessionId);
+        final shot = widget.state.shotById(sessionId: widget.sessionId, shotId: widget.shotId);
+        if (s == null || shot == null) {
+          return const Scaffold(body: Center(child: Text('Entry not found')));
+        }
+
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(shot.isBaseline ? 'Cold Bore (Baseline)' : 'Cold Bore'),
+            actions: [
+              IconButton(
+                tooltip: 'Compare to baseline',
+                onPressed: _compare,
+                icon: const Icon(Icons.compare_outlined),
               ),
+            ],
+          ),
+          body: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Row(
+                children: [
+                  Expanded(child: Text('${shot.distance} • ${shot.result}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700))),
+                  const SizedBox(width: 8),
+                  if (shot.isBaseline)
+                    const Chip(label: Text('Baseline'), avatar: Icon(Icons.star, size: 18)),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(_fmtDateTime(shot.time) + ' • ' + s.locationName),
+              if (shot.notes.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(shot.notes),
+              ],
+              const SizedBox(height: 16),
+              _SectionTitle('Cold Bore Photos'),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  ElevatedButton.icon(
+                    onPressed: () => _pick(source: ImageSource.camera),
+                    icon: const Icon(Icons.photo_camera_outlined),
+                    label: const Text('Take Photo'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () => _pick(source: ImageSource.gallery),
+                    icon: const Icon(Icons.photo_library_outlined),
+                    label: const Text('Pick from Library'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _setBaseline,
+                    icon: const Icon(Icons.star_border),
+                    label: const Text('Mark as Baseline'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (shot.photos.isEmpty)
+                _HintCard(
+                  icon: Icons.photo_outlined,
+                  title: 'No cold bore photos yet',
+                  message: 'Add a photo here. These photos stay attached to this cold bore entry only.',
+                )
+              else
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: shot.photos
+                      .map(
+                        (p) => ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.memory(
+                            p.bytes,
+                            width: 140,
+                            height: 140,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
+              const SizedBox(height: 16),
+              Text(
+                'Tip: Set a baseline once, then open another cold bore entry and tap Compare.',
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7)),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class EquipmentScreen extends StatefulWidget {
+  final AppState state;
+  const EquipmentScreen({super.key, required this.state});
+
+  @override
+  State<EquipmentScreen> createState() => _EquipmentScreenState();
+}
+
+class _EquipmentScreenState extends State<EquipmentScreen> {
+  int _seg = 0;
+
+  Future<void> _addRifle() async {
+    final res = await showDialog<_NewRifleResult>(
+      context: context,
+      builder: (_) => const _NewRifleDialog(),
+    );
+    if (res == null) return;
+    widget.state.addRifle(
+      name: res.name,
+      caliber: res.caliber,
+      notes: res.notes,
+      dope: res.dope,
+      serialNumber: res.serialNumber,
+      barrelLength: res.barrelLength,
+      twistRate: res.twistRate,
+    );
+  }
+
+  Future<void> _addAmmo() async {
+    final res = await showDialog<_NewAmmoResult>(
+      context: context,
+      builder: (_) => const _NewAmmoDialog(),
+    );
+    if (res == null) return;
+    widget.state.addAmmoLot(
+      name: res.name,
+      caliber: res.caliber,
+      bullet: res.bullet,
+      notes: res.notes,
+      ballisticCoefficient: res.ballisticCoefficient,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: widget.state,
+      builder: (context, _) {
+        final rifles = widget.state.rifles;
+        final ammo = widget.state.ammoLots;
+
+        return Scaffold(
+          floatingActionButton: FloatingActionButton.extended(
+            onPressed: _seg == 0 ? _addRifle : _addAmmo,
+            icon: const Icon(Icons.add),
+            label: Text(_seg == 0 ? 'Add Rifle' : 'Add Ammo'),
+          ),
+          body: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SegmentedButton<int>(
+                  segments: const [
+                    ButtonSegment(value: 0, label: Text('Rifles'), icon: Icon(Icons.sports_martial_arts_outlined)),
+                    ButtonSegment(value: 1, label: Text('Ammo'), icon: Icon(Icons.inventory_2_outlined)),
+                  ],
+                  selected: {_seg},
+                  onSelectionChanged: (s) => setState(() => _seg = s.first),
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: _seg == 0
+                      ? _EquipmentList(
+                          emptyTitle: 'No rifles yet',
+                          emptyMessage: 'Tap “Add Rifle” to create your first rifle.',
+                          items: rifles
+                              .map(
+                                (r) => ListTile(
+                                  leading: const Icon(Icons.sports_martial_arts_outlined),
+                                  title: Text(r.name),
+                                  subtitle: Text(
+                                    r.caliber +
+                                        (r.notes.isEmpty ? '' : ' • ${r.notes}') +
+                                        (r.dope.trim().isEmpty ? '' : ' • DOPE saved'),
+                                  ),
+                                  trailing: IconButton(
+                                    tooltip: 'Edit DOPE',
+                                    icon: const Icon(Icons.edit_note_outlined),
+                                    onPressed: () async {
+                                      final updated = await showDialog<String>(
+                                        context: context,
+                                        builder: (_) => _EditDopeDialog(initialValue: r.dope),
+                                      );
+                                      if (updated == null) return;
+                                      widget.state.updateRifleDope(rifleId: r.id, dope: updated);
+                                    },
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                        )
+                      : _EquipmentList(
+                          emptyTitle: 'No ammo lots yet',
+                          emptyMessage: 'Tap “Add Ammo” to create your first ammo lot.',
+                          items: ammo
+                              .map(
+                                (a) => ListTile(
+                                  leading: const Icon(Icons.inventory_2_outlined),
+                                  title: Text(a.name),
+                                  subtitle: Text(
+                                    a.caliber +
+                                        (a.bullet.isEmpty ? '' : ' • ${a.bullet}') +
+                                        (a.notes.isEmpty ? '' : ' • ${a.notes}'),
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                        ),
+                ),
+              ],
             ),
-            const SizedBox(height: 24),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _EquipmentList extends StatelessWidget {
+  final String emptyTitle;
+  final String emptyMessage;
+  final List<Widget> items;
+
+  const _EquipmentList({
+    required this.emptyTitle,
+    required this.emptyMessage,
+    required this.items,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (items.isEmpty) {
+      return _HintCard(
+        icon: Icons.info_outline,
+        title: emptyTitle,
+        message: emptyMessage,
+      );
+    }
+
+    return ListView.separated(
+      itemCount: items.length,
+      separatorBuilder: (_, __) => const Divider(height: 1),
+      itemBuilder: (context, i) => items[i],
+    );
+  }
+}
+
+class ExportPlaceholderScreen extends StatelessWidget {
+  final AppState state;
+  const ExportPlaceholderScreen({super.key, required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    return const _EmptyState(
+      icon: Icons.ios_share_outlined,
+      title: 'Export',
+      message: 'Next we’ll add PDF/CSV export options and redaction.',
+    );
+  }
+}
+
+///
+/// Widgets
+///
+
+class _EmptyState extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String message;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  const _EmptyState({
+    required this.icon,
+    required this.title,
+    required this.message,
+    this.actionLabel,
+    this.onAction,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 56, color: cs.onSurface.withOpacity(0.7)),
+            const SizedBox(height: 12),
+            Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Text(message, textAlign: TextAlign.center),
+            if (actionLabel != null && onAction != null) ...[
+              const SizedBox(height: 16),
+              ElevatedButton(onPressed: onAction, child: Text(actionLabel!)),
+            ],
           ],
         ),
       ),
@@ -2675,1026 +2221,930 @@ const SizedBox(height: 14),
   }
 }
 
-class _EquipmentDetailsResult {
-  final String? deletedEquipmentId;
-  final Equipment? updatedEquipment;
-  final List<MaintenanceRecord> updatedMaintenance;
-
-  _EquipmentDetailsResult({
-    required this.deletedEquipmentId,
-    required this.updatedEquipment,
-    required this.updatedMaintenance,
-  });
-}
-
-/* ============================
-   Choose equipment
-============================ */
-
-class ChooseEquipmentScreen extends StatelessWidget {
-  final List<Equipment> equipment;
-  const ChooseEquipmentScreen({super.key, required this.equipment});
+class _SectionTitle extends StatelessWidget {
+  final String text;
+  const _SectionTitle(this.text);
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Choose equipment')),
-      body: ListView(
-        children: equipment
-            .map((e) => Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.agriculture),
-                    title: Text(e.name),
-                    subtitle: e.type.trim().isEmpty ? null : Text(e.type.trim()),
-                    onTap: () => Navigator.of(context).pop(e),
-                  ),
-                ))
-            .toList(),
+    return Text(text, style: const TextStyle(fontWeight: FontWeight.w800));
+  }
+}
+
+class _HintCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String message;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  const _HintCard({
+    required this.icon,
+    required this.title,
+    required this.message,
+    this.actionLabel,
+    this.onAction,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Icon(icon),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 6),
+                  Text(message),
+                  if (actionLabel != null && onAction != null) ...[
+                    const SizedBox(height: 10),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: OutlinedButton(onPressed: onAction, child: Text(actionLabel!)),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-/* ============================
-   Maintenance: Add + List
-============================ */
+///
+/// Dialogs
+///
 
-class AddMaintenanceScreen extends StatefulWidget {
-  final Equipment equipment;
-  final List<MaintenanceRecord> existing;
-
-  const AddMaintenanceScreen({
-    super.key,
-    required this.equipment,
-    required this.existing,
-  });
-
-  @override
-  State<AddMaintenanceScreen> createState() => _AddMaintenanceScreenState();
+class _NewUserResult {
+  final String name;
+  final String identifier;
+  _NewUserResult(this.name, this.identifier);
 }
 
-class _AddMaintenanceScreenState extends State<AddMaintenanceScreen> {
-  static const List<String> _serviceTypes = [
-    'Oil change',
-    'Grease',
-    'Air filter',
-    'Fuel filter',
-    'Hydraulic filter',
-    'Hydraulic fluid',
-    'Coolant',
-    'Spark plugs',
-    'Belt',
-    'Tires',
-    'Battery',
-    'General inspection',
-    'Other',
-  ];
+class _NewUserDialog extends StatefulWidget {
+  const _NewUserDialog();
 
-  String _serviceType = _serviceTypes.first;
-  DateTime? _serviceDate;
+  @override
+  State<_NewUserDialog> createState() => _NewUserDialogState();
+}
 
-  final _hours = TextEditingController();
-  final _mileage = TextEditingController();
+class _NewUserDialogState extends State<_NewUserDialog> {
+  final _name = TextEditingController();
+  final _id = TextEditingController();
 
-  // Next due (optional)
-  DateTime? _nextDueDate;
-  final _nextDueHours = TextEditingController();
-  final _nextDueMileage = TextEditingController();
+  @override
+  void dispose() {
+    _name.dispose();
+    _id.dispose();
+    super.dispose();
+  }
 
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Add user'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _name,
+            decoration: const InputDecoration(labelText: 'Name'),
+            textInputAction: TextInputAction.next,
+          ),
+          TextField(
+            controller: _id,
+            decoration: const InputDecoration(labelText: 'Identifier (badge/initials)'),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        ElevatedButton(
+          onPressed: () {
+            final name = _name.text.trim();
+            final identifier = _id.text.trim();
+            if (name.isEmpty || identifier.isEmpty) return;
+            Navigator.of(context).pop(_NewUserResult(name, identifier));
+          },
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
+class _NewSessionResult {
+  final String locationName;
+  final DateTime dateTime;
+  final String notes;
+  final double? latitude;
+  final double? longitude;
+  final double? temperatureF;
+  final double? windSpeedMph;
+  final int? windDirectionDeg;
+  _NewSessionResult({
+    required this.locationName,
+    required this.dateTime,
+    required this.notes,
+    this.latitude,
+    this.longitude,
+    this.temperatureF,
+    this.windSpeedMph,
+    this.windDirectionDeg,
+  });
+}
+
+class _NewSessionDialog extends StatefulWidget {
+  const _NewSessionDialog();
+
+  @override
+  State<_NewSessionDialog> createState() => _NewSessionDialogState();
+}
+
+class _NewSessionDialogState extends State<_NewSessionDialog> {
+  final _location = TextEditingController();
+  final _notes = TextEditingController();
+  final _tempF = TextEditingController();
+  final _windMph = TextEditingController();
+  final _windDir = TextEditingController();
+  DateTime _dateTime = DateTime.now();
+  double? _lat;
+  double? _lon;
+  bool _busy = false;
+  String? _gpsError;
+
+  @override
+  void dispose() {
+    _location.dispose();
+    _notes.dispose();
+    _tempF.dispose();
+    _windMph.dispose();
+    _windDir.dispose();
+    super.dispose();
+  }
+
+  
+  Future<void> _useGps() async {
+    setState(() {
+      _busy = true;
+      _gpsError = null;
+    });
+    try {
+      final enabled = await Geolocator.isLocationServiceEnabled();
+      if (!enabled) {
+        setState(() => _gpsError = 'Location Services are off.');
+        return;
+      }
+
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
+        setState(() => _gpsError = 'Location permission denied.');
+        return;
+      }
+
+      final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      _lat = pos.latitude;
+      _lon = pos.longitude;
+      _location.text = '${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)}';
+    } catch (e) {
+      setState(() => _gpsError = 'GPS failed: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _fetchWeather() async {
+    if (_lat == null || _lon == null) {
+      setState(() => _gpsError = 'Tap "Use GPS" first (or enter coordinates).');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _gpsError = null;
+    });
+    try {
+      final uri = Uri.parse(
+        'https://api.open-meteo.com/v1/forecast'
+        '?latitude=${_lat}&longitude=${_lon}'
+        '&current=temperature_2m,wind_speed_10m,wind_direction_10m'
+        '&temperature_unit=fahrenheit&wind_speed_unit=mph',
+      );
+      final resp = await http.get(uri);
+      if (resp.statusCode != 200) {
+        throw 'HTTP ${resp.statusCode}';
+      }
+      final data = jsonDecode(resp.body) as Map<String, dynamic>;
+      final current = data['current'] as Map<String, dynamic>?;
+      if (current == null) throw 'No current weather data.';
+      final t = (current['temperature_2m'] as num?)?.toDouble();
+      final w = (current['wind_speed_10m'] as num?)?.toDouble();
+      final d = (current['wind_direction_10m'] as num?)?.toInt();
+      if (t != null) _tempF.text = t.toStringAsFixed(1);
+      if (w != null) _windMph.text = w.toStringAsFixed(1);
+      if (d != null) _windDir.text = d.toString();
+    } catch (e) {
+      setState(() => _gpsError = 'Weather fetch failed: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+Future<void> _pickDateTime() async {
+    final now = DateTime.now();
+    final d = await showDatePicker(
+      context: context,
+      firstDate: DateTime(now.year - 5),
+      lastDate: DateTime(now.year + 1),
+      initialDate: _dateTime,
+    );
+    if (d == null) return;
+    if (!mounted) return;
+
+    final t = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_dateTime),
+    );
+    if (t == null) return;
+
+    setState(() {
+      _dateTime = DateTime(d.year, d.month, d.day, t.hour, t.minute);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('New session'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _location,
+            decoration: const InputDecoration(labelText: 'Named location'),
+            textInputAction: TextInputAction.next,
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(child: Text(_fmtDateTime(_dateTime))),
+              TextButton(onPressed: _pickDateTime, child: const Text('Change')),
+            ],
+          ),
+          TextField(
+            controller: _notes,
+            decoration: const InputDecoration(labelText: 'Notes (optional)'),
+            maxLines: 3,
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        ElevatedButton(
+          onPressed: () {
+            final loc = _location.text.trim();
+            if (loc.isEmpty) return;
+            Navigator.of(context).pop(
+              _NewSessionResult(locationName: loc, dateTime: _dateTime, notes: _notes.text),
+            );
+          },
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
+class _ColdBoreResult {
+  final DateTime time;
+  final String distance;
+  final String result;
+  final String notes;
+  _ColdBoreResult({required this.time, required this.distance, required this.result, required this.notes});
+}
+
+class _ColdBoreDialog extends StatefulWidget {
+  final DateTime defaultTime;
+  const _ColdBoreDialog({required this.defaultTime});
+
+  @override
+  State<_ColdBoreDialog> createState() => _ColdBoreDialogState();
+}
+
+class _ColdBoreDialogState extends State<_ColdBoreDialog> {
+  final _distance = TextEditingController(text: '100 yd');
+  final _result = TextEditingController(text: 'Impact OK');
+  final _notes = TextEditingController();
+  late DateTime _time;
+
+  @override
+  void initState() {
+    super.initState();
+    _time = widget.defaultTime;
+  }
+
+  @override
+  void dispose() {
+    _distance.dispose();
+    _result.dispose();
+    _notes.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickTime() async {
+    final t = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_time),
+    );
+    if (t == null) return;
+    setState(() {
+      _time = DateTime(_time.year, _time.month, _time.day, t.hour, t.minute);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Cold bore entry'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Expanded(child: Text('Time: ${_fmtDateTime(_time)}')),
+              TextButton(onPressed: _pickTime, child: const Text('Edit')),
+            ],
+          ),
+          TextField(
+            controller: _distance,
+            decoration: const InputDecoration(labelText: 'Distance'),
+            textInputAction: TextInputAction.next,
+          ),
+          TextField(
+            controller: _result,
+            decoration: const InputDecoration(labelText: 'Result'),
+            textInputAction: TextInputAction.next,
+          ),
+          TextField(
+            controller: _notes,
+            decoration: const InputDecoration(labelText: 'Notes (optional)'),
+            maxLines: 2,
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        ElevatedButton(
+          onPressed: () {
+            final distance = _distance.text.trim();
+            final result = _result.text.trim();
+            if (distance.isEmpty || result.isEmpty) return;
+            Navigator.of(context).pop(
+              _ColdBoreResult(time: _time, distance: distance, result: result, notes: _notes.text),
+            );
+          },
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
+class _EditNotesDialog extends StatefulWidget {
+  final String initialNotes;
+  const _EditNotesDialog({required this.initialNotes});
+
+  @override
+  State<_EditNotesDialog> createState() => _EditNotesDialogState();
+}
+
+class _EditNotesDialogState extends State<_EditNotesDialog> {
+  late final TextEditingController _c;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = TextEditingController(text: widget.initialNotes);
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Notes'),
+      content: TextField(
+        controller: _c,
+        maxLines: 6,
+        decoration: const InputDecoration(
+          hintText: 'Add training notes for this session…',
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(null),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_c.text),
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
+class _PhotoNoteDialog extends StatefulWidget {
+  const _PhotoNoteDialog();
+
+  @override
+  State<_PhotoNoteDialog> createState() => _PhotoNoteDialogState();
+}
+
+class _PhotoNoteDialogState extends State<_PhotoNoteDialog> {
+  final _caption = TextEditingController();
+
+  @override
+  void dispose() {
+    _caption.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Photo note'),
+      content: TextField(
+        controller: _caption,
+        decoration: const InputDecoration(labelText: 'Caption'),
+        maxLines: 2,
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        ElevatedButton(
+          onPressed: () => Navigator.of(context).pop(_caption.text),
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
+class _EditDopeDialog extends StatefulWidget {
+  final String initialValue;
+  const _EditDopeDialog({required this.initialValue});
+
+  @override
+  State<_EditDopeDialog> createState() => _EditDopeDialogState();
+}
+
+class _EditDopeDialogState extends State<_EditDopeDialog> {
+  late final TextEditingController _c;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = TextEditingController(text: widget.initialValue);
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Edit DOPE'),
+      content: TextField(
+        controller: _c,
+        decoration: const InputDecoration(
+          labelText: 'DOPE / Come-ups',
+          hintText: 'Example: 100y 0.0 | 200y 0.6 | 300y 1.4 ...',
+        ),
+        maxLines: 6,
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        ElevatedButton(
+          onPressed: () => Navigator.of(context).pop(_c.text),
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
+class _NewRifleResult {
+  final String name;
+  final String caliber;
+  final String notes;
+  final String dope;
+  final List<RifleDopeEntry> dopeEntries;
+  final String? serialNumber;
+  final String? barrelLength;
+  final String? twistRate;
+  _NewRifleResult({
+    required this.name,
+    required this.caliber,
+    required this.notes,
+    required this.dope,
+    this.dopeEntries = const [],
+    this.serialNumber,
+    this.barrelLength,
+    this.twistRate,
+  });
+}
+
+class _NewRifleDialog extends StatefulWidget {
+  const _NewRifleDialog();
+
+  @override
+  State<_NewRifleDialog> createState() => _NewRifleDialogState();
+}
+
+class _NewRifleDialogState extends State<_NewRifleDialog> {
+  final _name = TextEditingController();
+  final _caliber = TextEditingController();
+  final _notes = TextEditingController();
+  final _dope = TextEditingController();
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _caliber.dispose();
+    _notes.dispose();
+    _dope.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Add rifle'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _name,
+            decoration: const InputDecoration(labelText: 'Name'),
+            textInputAction: TextInputAction.next,
+          ),
+          TextField(
+            controller: _caliber,
+            decoration: const InputDecoration(labelText: 'Caliber'),
+            textInputAction: TextInputAction.next,
+          ),
+          TextField(
+            controller: _notes,
+            decoration: const InputDecoration(labelText: 'Notes (optional)'),
+            maxLines: 2,
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _dope,
+            decoration: const InputDecoration(
+              labelText: 'DOPE (quick reference)',
+              hintText: 'Example: 100y 0.0 | 200y 0.6 | 300y 1.4 ...',
+            ),
+            maxLines: 4,
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        ElevatedButton(
+          onPressed: () {
+            final name = _name.text.trim();
+            final caliber = _caliber.text.trim();
+            if (name.isEmpty || caliber.isEmpty) return;
+            Navigator.of(context).pop(
+              _NewRifleResult(
+                name: name,
+                caliber: caliber,
+                notes: _notes.text,
+                dope: _dope.text,
+              ),
+            );
+          },
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
+class _NewAmmoResult {
+  final String name;
+  final String caliber;
+  final String bullet;
+  final String notes;
+  final double? ballisticCoefficient;
+  _NewAmmoResult({
+    required this.name,
+    required this.caliber,
+    required this.bullet,
+    required this.notes,
+    this.ballisticCoefficient,
+  });
+}
+
+class _NewAmmoDialog extends StatefulWidget {
+  const _NewAmmoDialog();
+
+  @override
+  State<_NewAmmoDialog> createState() => _NewAmmoDialogState();
+}
+
+class _NewAmmoDialogState extends State<_NewAmmoDialog> {
+  final _name = TextEditingController();
+  final _caliber = TextEditingController();
+  final _bullet = TextEditingController();
   final _notes = TextEditingController();
 
   @override
   void dispose() {
-    _hours.dispose();
-    _mileage.dispose();
-    _nextDueHours.dispose();
-    _nextDueMileage.dispose();
+    _name.dispose();
+    _caliber.dispose();
+    _bullet.dispose();
     _notes.dispose();
     super.dispose();
   }
 
-  Future<void> _pickDate() async {
-    final now = DateTime.now();
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _serviceDate,
-      firstDate: DateTime(now.year - 30, 1, 1),
-      lastDate: DateTime(now.year + 1, 12, 31),
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Add ammo lot'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _name,
+            decoration: const InputDecoration(labelText: 'Name'),
+            textInputAction: TextInputAction.next,
+          ),
+          TextField(
+            controller: _caliber,
+            decoration: const InputDecoration(labelText: 'Caliber'),
+            textInputAction: TextInputAction.next,
+          ),
+          TextField(
+            controller: _bullet,
+            decoration: const InputDecoration(labelText: 'Bullet (optional)'),
+            textInputAction: TextInputAction.next,
+          ),
+          TextField(
+            controller: _notes,
+            decoration: const InputDecoration(labelText: 'Notes (optional)'),
+            maxLines: 2,
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        ElevatedButton(
+          onPressed: () {
+            final name = _name.text.trim();
+            final caliber = _caliber.text.trim();
+            if (name.isEmpty || caliber.isEmpty) return;
+            Navigator.of(context).pop(
+              _NewAmmoResult(name: name, caliber: caliber, bullet: _bullet.text, notes: _notes.text),
+            );
+          },
+          child: const Text('Save'),
+        ),
+      ],
     );
-    if (picked == null) return;
-    setState(() => _serviceDate = picked);
   }
+}
 
-  Future<void> _save() async {
-    final hours = int.tryParse(_hours.text.trim());
-    final mileage = int.tryParse(_mileage.text.trim());
-    final nextDueHours = int.tryParse(_nextDueHours.text.trim());
-    final nextDueMileage = int.tryParse(_nextDueMileage.text.trim());
+String _fmtDateTime(DateTime dt) {
+  final m = dt.month.toString().padLeft(2, '0');
+  final d = dt.day.toString().padLeft(2, '0');
+  final y = dt.year.toString();
+  final hh = dt.hour.toString().padLeft(2, '0');
+  final mm = dt.minute.toString().padLeft(2, '0');
+  return '$m/$d/$y $hh:$mm';
+}
 
-    final hasAnyNextDue = _nextDueDate != null ||
-        _nextDueHours.text.trim().isNotEmpty ||
-        _nextDueMileage.text.trim().isNotEmpty;
-    if (_serviceDate == null && !hasAnyNextDue) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Set a service date or a next due to save.')),
-      );
-      return;
-    }
-
-    final rec = MaintenanceRecord(
-      id: DateTime.now().microsecondsSinceEpoch.toString(),
-      equipmentId: widget.equipment.id,
-      equipmentName: widget.equipment.name,
-      serviceType: _serviceType,
-      serviceDate: _serviceDate,
-      hours: hours,
-      mileage: mileage,
-      notes: _notes.text.trim(),
-      nextDueDate: _nextDueDate,
-      nextDueHours: nextDueHours,
-      nextDueMileage: nextDueMileage,
-    );
-
-    final updated = List<MaintenanceRecord>.from(widget.existing)..add(rec);
-    updated.sort((a, b) => (b.serviceDate ?? DateTime.fromMillisecondsSinceEpoch(0)).compareTo(a.serviceDate ?? DateTime.fromMillisecondsSinceEpoch(0)));
-
-    await Storage.saveMaintenance(updated);
-
-    if (!mounted) return;
-    Navigator.of(context).pop(updated);
-  }
+class DopeManagerScreen extends StatelessWidget {
+  final AppState state;
+  final Rifle rifle;
+  const DopeManagerScreen({super.key, required this.state, required this.rifle});
 
   @override
   Widget build(BuildContext context) {
+    final entries = rifle.dopeEntries;
     return Scaffold(
-      appBar: AppBar(title: Text('Add maintenance • ${widget.equipment.name}')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Card(
-            child: Padding(
+      appBar: AppBar(
+        title: Text('DOPE • ${rifle.name}'),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () async {
+          final res = await showDialog<RifleDopeEntry>(
+            context: context,
+            builder: (_) => const _RifleDopeEntryDialog(),
+          );
+          if (res != null) {
+            state.addRifleRifleDopeEntry(
+              rifle.id,
+              RifleRifleDopeEntry(
+                id: state.newIdForChild(),
+                distance: res.distance,
+                elevation: res.elevation,
+                windage: res.windage,
+                notes: res.notes,
+              ),
+            );
+          }
+        },
+        child: const Icon(Icons.add),
+      ),
+      body: entries.isEmpty
+          ? Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  DropdownButtonFormField<String>(
-                    value: _serviceType,
-                    items: _serviceTypes
-                        .map((s) => DropdownMenuItem<String>(value: s, child: Text(s)))
-                        .toList(),
-                    onChanged: (v) => setState(() => _serviceType = v ?? _serviceTypes.first),
-                    decoration: const InputDecoration(labelText: 'Service type'),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: InputDecorator(
-                          decoration: const InputDecoration(
-                            labelText: 'Service date',
-                            border: OutlineInputBorder(),
-                          ),
-                          child: Text(_serviceDate == null ? 'Not set' : fmtDateMDY(_serviceDate!)),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      FilledButton.icon(
-                        onPressed: _pickDate,
-                        icon: const Icon(Icons.calendar_month),
-                        label: const Text('Pick'),
-                      ),
-                      IconButton(
-                        tooltip: 'Clear date',
-                        onPressed: () => setState(() => _serviceDate = null),
-                        icon: const Icon(Icons.clear),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _hours,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: 'Hours (optional)'),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _mileage,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: 'Mileage (optional)'),
-                  ),
-
-                  const SizedBox(height: 16),
-                  const Divider(height: 20),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'Next due (optional)',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
+                  const Text(
+                    'No DOPE entries yet.',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 8),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Next due date'),
-                    subtitle: Text(
-                      _nextDueDate == null ? 'Not set' : fmtDateMDY(_nextDueDate!),
+                  const Text('Tap + to add your first DOPE entry.'),
+                  if (rifle.dope.trim().isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Legacy DOPE (single field)',
+                      style: TextStyle(fontWeight: FontWeight.w600),
                     ),
-                    trailing: const Icon(Icons.calendar_month),
-                    onTap: () async {
-                      final now = DateTime.now();
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: _nextDueDate ?? now,
-                        firstDate: DateTime(now.year - 30, 1, 1),
-                        lastDate: DateTime(now.year + 10, 12, 31),
-                      );
-                      if (picked == null) return;
-                      setState(() => _nextDueDate = picked);
-                    },
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _nextDueHours,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(labelText: 'Next due hours'),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextField(
-                          controller: _nextDueMileage,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(labelText: 'Next due mileage'),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  const Divider(height: 20),
-
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _notes,
-                    maxLines: 3,
-                    decoration: const InputDecoration(labelText: 'Notes (optional)'),
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: FilledButton.icon(
-                      onPressed: _save,
-                      icon: const Icon(Icons.check),
-                      label: const Text('Save maintenance'),
-                    ),
-                  ),
+                    const SizedBox(height: 6),
+                    Text(rifle.dope),
+                  ],
                 ],
               ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class MaintenanceListScreen extends StatefulWidget {
-  final Equipment equipment;
-  final List<MaintenanceRecord> allMaintenance;
-
-  const MaintenanceListScreen({
-    super.key,
-    required this.equipment,
-    required this.allMaintenance,
-  });
-
-  @override
-  State<MaintenanceListScreen> createState() => _MaintenanceListScreenState();
-}
-
-class _MaintenanceListScreenState extends State<MaintenanceListScreen> {
-  bool _loading = true;
-  late List<MaintenanceRecord> _all;
-  bool _changed = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _reload();
-  }
-
-  Future<void> _reload() async {
-    setState(() => _loading = true);
-    _all = await Storage.loadMaintenance();
-    if (!mounted) return;
-    setState(() => _loading = false);
-  }
-
-  List<MaintenanceRecord> get _recordsForThisEquipment {
-    final records = _all.where((r) => r.equipmentId == widget.equipment.id).toList()
-      ..sort((a, b) => (b.serviceDate ?? DateTime.fromMillisecondsSinceEpoch(0)).compareTo(a.serviceDate ?? DateTime.fromMillisecondsSinceEpoch(0)));
-    return records;
-  }
-
-  Future<Uint8List> _buildPdf(List<MaintenanceRecord> records) async {
-    final doc = pw.Document();
-
-    final title = widget.equipment.name.trim().isEmpty ? 'Equipment' : widget.equipment.name.trim();
-    final generated = fmtDateMDY(DateTime.now());
-
-    doc.addPage(
-      pw.MultiPage(
-        pageFormat: PdfPageFormat.letter,
-        margin: const pw.EdgeInsets.all(24),
-        build: (context) => [
-          pw.Text(
-            'Ranch Hand — Maintenance Records',
-            style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
-          ),
-          pw.SizedBox(height: 6),
-          pw.Text('Equipment: $title'),
-          pw.Text('Generated: $generated'),
-          pw.SizedBox(height: 16),
-          if (records.isEmpty)
-            pw.Text('No maintenance records.')
-          else
-            pw.Table.fromTextArray(
-              headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-              headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
-              cellAlignment: pw.Alignment.topLeft,
-              cellPadding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 6),
-              columnWidths: const {
-                0: pw.FlexColumnWidth(1.2),
-                1: pw.FlexColumnWidth(1.6),
-                2: pw.FlexColumnWidth(1.0),
-                3: pw.FlexColumnWidth(1.0),
-                4: pw.FlexColumnWidth(2.2),
-              },
-              headers: const ['Date', 'Service', 'Hours', 'Miles', 'Notes'],
-              data: records.map((r) {
-                return [
-                  r.serviceDate == null ? 'Scheduled' : fmtDateMDY(r.serviceDate!),
-                  r.serviceType,
-                  r.hours?.toString() ?? '',
-                  r.mileage?.toString() ?? '',
-                  r.notes.trim(),
-                ];
-              }).toList(),
-            ),
-        ],
-      ),
-    );
-
-    return doc.save();
-  }
-
-  Future<void> _export(BuildContext context, List<MaintenanceRecord> records) async {
-    if (records.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No maintenance records to export.')),
-      );
-      return;
-    }
-
-    final bytes = await _buildPdf(records);
-
-    final safeName = widget.equipment.name.trim().isEmpty ? 'equipment' : widget.equipment.name.trim();
-    final fileName = 'RanchHand_Maintenance_$safeName.pdf';
-
-    await Printing.sharePdf(bytes: bytes, filename: fileName);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final records = _loading ? <MaintenanceRecord>[] : _recordsForThisEquipment;
-
-    return WillPopScope(
-      onWillPop: () async {
-        Navigator.of(context).pop(_changed);
-        return false;
-      },
-      child: Scaffold(
-        appBar: AppBar(
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () => Navigator.of(context).pop(_changed),
-          ),
-        title: Text('Maintenance • ${widget.equipment.name}'),
-        actions: [
-          IconButton(
-            tooltip: 'Export PDF',
-            onPressed: _loading ? null : () => _export(context, records),
-            icon: const Icon(Icons.picture_as_pdf),
-          ),
-        ],
-        ),
-        body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : records.isEmpty
-              ? const Center(child: Text('No maintenance records yet.'))
-              : ListView(
-                  padding: const EdgeInsets.all(16),
-                  children: records.map((r) {
-                    final chips = <String>[];
-                    if (r.hours != null) chips.add('Hours: ${r.hours}');
-                    if (r.mileage != null) chips.add('Miles: ${r.mileage}');
-
-                    return Card(
-                      child: ListTile(
-                        leading: const Icon(Icons.build),
-                        title: Text(r.serviceType),
-                        subtitle: Text(
-                          [
-                            r.serviceDate == null ? 'Scheduled' : fmtDateMDY(r.serviceDate!),
-                            if (chips.isNotEmpty) chips.join(' • '),
-                            if (r.notes.trim().isNotEmpty) 'Notes added',
-                          ].join(' • '),
+            )
+          : ListView.separated(
+              padding: const EdgeInsets.all(12),
+              itemCount: entries.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (context, i) {
+                final e = entries[i];
+                return ListTile(
+                  title: Text('${e.distance} • Elev ${e.elevation} • Wind ${e.windage}'),
+                  subtitle: e.notes.trim().isEmpty ? null : Text(e.notes),
+                  onTap: () async {
+                    final edited = await showDialog<RifleDopeEntry>(
+                      context: context,
+                      builder: (_) => _RifleDopeEntryDialog(existing: e),
+                    );
+                    if (edited != null) {
+                      state.updateRifleRifleDopeEntry(
+                        rifle.id,
+                        e.copyWith(
+                          distance: edited.distance,
+                          elevation: edited.elevation,
+                          windage: edited.windage,
+                          notes: edited.notes,
                         ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (r.hasNextDue) const Icon(Icons.calendar_month, size: 18),
-                            if (r.hasNextDue) const SizedBox(width: 8),
-                            const Icon(Icons.chevron_right),
+                      );
+                    }
+                  },
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: () async {
+                      final ok = await showDialog<bool>(
+                        context: context,
+                        builder: (_) => AlertDialog(
+                          title: const Text('Delete DOPE entry?'),
+                          content: const Text('This cannot be undone.'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              child: const Text('Cancel'),
+                            ),
+                            FilledButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              child: const Text('Delete'),
+                            ),
                           ],
                         ),
-                        onTap: () async {
-                          final result = await Navigator.of(context).push<_MaintenanceDetailsResult>(
-                            MaterialPageRoute(builder: (_) => MaintenanceDetailsScreen(record: r)),
-                          );
-
-                          if (result == null) return;
-
-                          if (result.isDeleted) {
-                            _all.removeWhere((x) => x.id == result.deletedId);
-                            await Storage.saveMaintenance(_all);
-                            await _reload();
-                            _changed = true;
-                            if (!mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Maintenance record deleted')),
-                            );
-                            return;
-                          }
-
-                          if (result.updated != null) {
-                            final idx = _all.indexWhere((x) => x.id == result.updated!.id);
-                            if (idx != -1) {
-                              _all[idx] = result.updated!;
-                              await Storage.saveMaintenance(_all);
-                              await _reload();
-                              _changed = true;
-                              if (!mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Maintenance record updated')),
-                              );
-                            }
-                          }
-                        },
-                      ),
-                    );
-                  }).toList(),
-                ),
-      ),
+                      );
+                      if (ok == true) {
+                        state.deleteRifleRifleDopeEntry(rifle.id, e.id);
+                      }
+                    },
+                  ),
+                );
+              },
+            ),
     );
   }
 }
 
-/* ============================
-   Maintenance Details
-============================ */
-
-class _MaintenanceDetailsResult {
-  final MaintenanceRecord? updated; // null if deleted
-  final String? deletedId; // non-null if deleted
-
-  const _MaintenanceDetailsResult._({this.updated, this.deletedId});
-
-  factory _MaintenanceDetailsResult.updated(MaintenanceRecord r) =>
-      _MaintenanceDetailsResult._(updated: r);
-
-  factory _MaintenanceDetailsResult.deleted(String id) =>
-      _MaintenanceDetailsResult._(deletedId: id);
-
-  bool get isDeleted => deletedId != null;
-}
-
-
-class MaintenanceScheduleScreen extends StatelessWidget {
-  final Equipment equipment;
-  final List<MaintenanceRecord> records;
-
-  const MaintenanceScheduleScreen({
-    super.key,
-    required this.equipment,
-    required this.records,
-  });
+class _RifleDopeEntryDialog extends StatefulWidget {
+  final RifleDopeEntry? existing;
+  const _RifleDopeEntryDialog({this.existing});
 
   @override
-  Widget build(BuildContext context) {
-    final now = DateTime.now();
-
-    // Group by service type (one row per type)
-    final types = records.map((r) => r.serviceType).toSet().toList()..sort();
-
-    if (types.isEmpty) {
-      return Scaffold(
-        appBar: AppBar(title: Text('${equipment.name} schedule')),
-        body: const Center(child: Text('No services yet.')),
-      );
-    }
-
-    String fmtNextDue({
-      required MaintenanceRecord? scheduled,
-      required TrendPrediction predicted,
-    }) {
-      if (scheduled != null) {
-        if (scheduled.nextDueDate != null) {
-          return 'Scheduled: ${fmtDateMDY(scheduled.nextDueDate!)}';
-        }
-        if (scheduled.nextDueHours != null) {
-          return 'Scheduled: ${scheduled.nextDueHours} hrs';
-        }
-        if (scheduled.nextDueMileage != null) {
-          return 'Scheduled: ${scheduled.nextDueMileage} mi';
-        }
-      }
-      if (predicted.nextDue != null) {
-        return 'Predicted: ~${fmtDateMDY(predicted.nextDue!)}';
-      }
-      return '—';
-    }
-
-    String fmtLastCompleted(MaintenanceRecord? last) {
-      if (last == null || last.serviceDate == null) return '—';
-      final parts = <String>[fmtDateMDY(last.serviceDate!)];
-      if (last.hours != null) parts.add('${last.hours} hrs');
-      if (last.mileage != null) parts.add('${last.mileage} mi');
-      return parts.join(' @ ');
-    }
-
-    String fmtInterval(TrendPrediction pred) {
-      if (pred.typicalIntervalDays == null) return '—';
-      return '~${pred.typicalIntervalDays} days';
-    }
-
-    String fmtStatus({
-      required MaintenanceRecord? scheduled,
-      required TrendPrediction predicted,
-      required int currentHoursEstimate,
-      required int currentMileageEstimate,
-    }) {
-      bool overdue = false;
-      bool dueSoon = false;
-
-      if (scheduled?.nextDueDate != null) {
-        final daysUntil = scheduled!.nextDueDate!.difference(now).inDays;
-        final intervalDays = predicted.typicalIntervalDays;
-        overdue = daysUntil < 0;
-        dueSoon = overdue ||
-            daysUntil <= 14 ||
-            (intervalDays != null && daysUntil <= (intervalDays * 0.2).round());
-      } else if (scheduled?.nextDueHours != null) {
-        final delta = scheduled!.nextDueHours! - currentHoursEstimate;
-        overdue = delta < 0;
-        dueSoon = overdue || delta <= 10;
-      } else if (scheduled?.nextDueMileage != null) {
-        final delta = scheduled!.nextDueMileage! - currentMileageEstimate;
-        overdue = delta < 0;
-        dueSoon = overdue || delta <= 200;
-      } else if (predicted.nextDue != null) {
-        final daysUntil = predicted.nextDue!.difference(now).inDays;
-        final intervalDays = predicted.typicalIntervalDays;
-        overdue = daysUntil < 0;
-        dueSoon = overdue ||
-            daysUntil <= 14 ||
-            (intervalDays != null && daysUntil <= (intervalDays * 0.2).round());
-      } else {
-        return '—';
-      }
-
-      final icon = overdue ? '🔴' : (dueSoon ? '🟡' : '🟢');
-      final text = overdue ? 'Overdue' : (dueSoon ? 'Due soon' : 'On track');
-      return '$icon $text';
-    }
-
-    MaintenanceRecord? pickSoonestScheduledForType(
-      String type,
-      int currentHoursEstimate,
-      int currentMileageEstimate,
-    ) {
-      final perType = records.where((r) => r.serviceType == type).toList();
-
-      final withDate = perType.where((r) => r.nextDueDate != null).toList()
-        ..sort((a, b) => a.nextDueDate!.compareTo(b.nextDueDate!));
-      if (withDate.isNotEmpty) return withDate.first;
-
-      MaintenanceRecord? best;
-      int? bestDelta;
-
-      final withHours = perType.where((r) => r.nextDueHours != null).toList()
-        ..sort((a, b) => a.nextDueHours!.compareTo(b.nextDueHours!));
-      for (final r in withHours) {
-        final delta = r.nextDueHours! - currentHoursEstimate;
-        if (delta < 0) continue;
-        if (bestDelta == null || delta < bestDelta!) {
-          bestDelta = delta;
-          best = r;
-        }
-      }
-
-      final withMiles = perType.where((r) => r.nextDueMileage != null).toList()
-        ..sort((a, b) => a.nextDueMileage!.compareTo(b.nextDueMileage!));
-      for (final r in withMiles) {
-        final delta = r.nextDueMileage! - currentMileageEstimate;
-        if (delta < 0) continue;
-        if (bestDelta == null || delta < bestDelta!) {
-          bestDelta = delta;
-          best = r;
-        }
-      }
-
-      return best ??
-          (withHours.isNotEmpty ? withHours.first : null) ??
-          (withMiles.isNotEmpty ? withMiles.first : null);
-    }
-
-    return Scaffold(
-      appBar: AppBar(title: Text('${equipment.name} schedule')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: DataTable(
-            columns: const [
-              DataColumn(label: Text('Service')),
-              DataColumn(label: Text('Last Completed')),
-              DataColumn(label: Text('Next Due')),
-              DataColumn(label: Text('Interval')),
-              DataColumn(label: Text('Status')),
-            ],
-            rows: [
-              for (final type in types)
-                () {
-                  final completed = records
-                      .where((r) => r.serviceType == type && r.serviceDate != null)
-                      .toList()
-                    ..sort((a, b) => b.serviceDate!.compareTo(a.serviceDate!));
-                  final last = completed.isEmpty ? null : completed.first;
-
-                  final currentHoursEstimate = completed
-                      .where((m) => m.hours != null)
-                      .map((m) => m.hours!)
-                      .fold<int>(0, (p, e) => e > p ? e : p);
-                  final currentMileageEstimate = completed
-                      .where((m) => m.mileage != null)
-                      .map((m) => m.mileage!)
-                      .fold<int>(0, (p, e) => e > p ? e : p);
-
-                  final predicted = predictNextDueFromDates(
-                    completed.map((r) => r.serviceDate!).toList(),
-                  );
-
-                  final scheduled = pickSoonestScheduledForType(
-                    type,
-                    currentHoursEstimate,
-                    currentMileageEstimate,
-                  );
-
-                  return DataRow(
-                    cells: [
-                      DataCell(Text(type)),
-                      DataCell(Text(fmtLastCompleted(last))),
-                      DataCell(Text(fmtNextDue(scheduled: scheduled, predicted: predicted))),
-                      DataCell(Text(fmtInterval(predicted))),
-                      DataCell(Text(fmtStatus(
-                        scheduled: scheduled,
-                        predicted: predicted,
-                        currentHoursEstimate: currentHoursEstimate,
-                        currentMileageEstimate: currentMileageEstimate,
-                      ))),
-                    ],
-                  );
-                }(),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  State<_RifleDopeEntryDialog> createState() => _RifleDopeEntryDialogState();
 }
 
-class MaintenanceDetailsScreen extends StatefulWidget {
-  final MaintenanceRecord record;
-
-  const MaintenanceDetailsScreen({
-    super.key,
-    required this.record,
-  });
-
-  @override
-  State<MaintenanceDetailsScreen> createState() => _MaintenanceDetailsScreenState();
-}
-
-class _MaintenanceDetailsScreenState extends State<MaintenanceDetailsScreen> {
-  late TextEditingController _serviceType;
-  late TextEditingController _hours;
-  late TextEditingController _mileage;
-
-  // Next due (optional)
-  DateTime? _nextDueDate;
-  late TextEditingController _nextDueHours;
-  late TextEditingController _nextDueMileage;
-
-  late TextEditingController _notes;
-
-  DateTime? _serviceDate;
+class _RifleDopeEntryDialogState extends State<_RifleDopeEntryDialog> {
+  late final TextEditingController _distance;
+  late final TextEditingController _elev;
+  late final TextEditingController _wind;
+  late final TextEditingController _notes;
 
   @override
   void initState() {
     super.initState();
-    _serviceType = TextEditingController(text: widget.record.serviceType);
-    _hours = TextEditingController(text: widget.record.hours?.toString() ?? '');
-    _mileage = TextEditingController(text: widget.record.mileage?.toString() ?? '');
-    _nextDueDate = widget.record.nextDueDate;
-    _nextDueHours = TextEditingController(text: widget.record.nextDueHours?.toString() ?? '');
-    _nextDueMileage = TextEditingController(text: widget.record.nextDueMileage?.toString() ?? '');
-    _notes = TextEditingController(text: widget.record.notes);
-
-    _serviceDate = widget.record.serviceDate;
+    _distance = TextEditingController(text: widget.existing?.distance ?? '');
+    _elev = TextEditingController(text: widget.existing?.elevation ?? '');
+    _wind = TextEditingController(text: widget.existing?.windage ?? '');
+    _notes = TextEditingController(text: widget.existing?.notes ?? '');
   }
 
   @override
   void dispose() {
-    _serviceType.dispose();
-    _hours.dispose();
-    _mileage.dispose();
-    _nextDueHours.dispose();
-    _nextDueMileage.dispose();
+    _distance.dispose();
+    _elev.dispose();
+    _wind.dispose();
     _notes.dispose();
     super.dispose();
   }
 
-  Future<void> _pickDate() async {
-    final now = DateTime.now();
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _serviceDate,
-      firstDate: DateTime(now.year - 30, 1, 1),
-      lastDate: DateTime(now.year + 5, 12, 31),
-    );
-    if (picked == null) return;
-    setState(() => _serviceDate = picked);
-  }
-
-  void _save() {
-    final hasAnyNextDue = _nextDueDate != null ||
-        _nextDueHours.text.trim().isNotEmpty ||
-        _nextDueMileage.text.trim().isNotEmpty;
-    if (_serviceDate == null && !hasAnyNextDue) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Set a service date or a next due to save.')),
-      );
-      return;
-    }
-    if (_serviceType.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Service type is required.')),
-      );
-      return;
-    }
-    final nextDueHours = int.tryParse(_nextDueHours.text.trim());
-    final nextDueMileage = int.tryParse(_nextDueMileage.text.trim());
-
-    final updated = MaintenanceRecord(
-      id: widget.record.id,
-      equipmentId: widget.record.equipmentId,
-      equipmentName: widget.record.equipmentName,
-      serviceType: _serviceType.text.trim().isEmpty ? widget.record.serviceType : _serviceType.text.trim(),
-      serviceDate: _serviceDate,
-      hours: int.tryParse(_hours.text.trim()),
-      mileage: int.tryParse(_mileage.text.trim()),
-      notes: _notes.text.trim(),
-      nextDueDate: _nextDueDate,
-      nextDueHours: nextDueHours,
-      nextDueMileage: nextDueMileage,
-    );
-
-    Navigator.of(context).pop(_MaintenanceDetailsResult.updated(updated));
-  }
-
-  Future<void> _delete() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete this record?'),
-        content: const Text('This cannot be undone.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
-        ],
-      ),
-    );
-
-    if (ok != true) return;
-
-    Navigator.of(context).pop(_MaintenanceDetailsResult.deleted(widget.record.id));
-  }
-
   @override
   Widget build(BuildContext context) {
-    final hasNextDue = _nextDueDate != null ||
-        _nextDueHours.text.trim().isNotEmpty ||
-        _nextDueMileage.text.trim().isNotEmpty;
-    return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          children: [
-            const Expanded(child: Text('Maintenance Details')),
-            if (hasNextDue) const Icon(Icons.calendar_month, size: 18),
-          ],
-        ),
-        actions: [
-          IconButton(tooltip: 'Delete', onPressed: _delete, icon: const Icon(Icons.delete_outline)),
-          TextButton(onPressed: _save, child: const Text('Save')),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  TextField(
-                    controller: _serviceType,
-                    decoration: const InputDecoration(labelText: 'Service type'),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: InputDecorator(
-                          decoration: const InputDecoration(
-                            labelText: 'Service date',
-                            border: OutlineInputBorder(),
-                          ),
-                          child: Text(_serviceDate == null ? 'Not set' : fmtDateMDY(_serviceDate!)),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      FilledButton.icon(
-                        onPressed: _pickDate,
-                        icon: const Icon(Icons.calendar_month),
-                        label: const Text('Pick'),
-                      ),
-                      IconButton(
-                        tooltip: 'Clear date',
-                        onPressed: () => setState(() => _serviceDate = null),
-                        icon: const Icon(Icons.clear),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _hours,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: 'Hours (optional)'),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _mileage,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: 'Mileage (optional)'),
-                  ),
-
-                  const SizedBox(height: 16),
-                  const Divider(height: 20),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'Next due (optional)',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Next due date'),
-                    subtitle: Text(
-                      _nextDueDate == null ? 'Not set' : fmtDateMDY(_nextDueDate!),
-                    ),
-                    trailing: const Icon(Icons.calendar_month),
-                    onTap: () async {
-                      final now = DateTime.now();
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: _nextDueDate ?? now,
-                        firstDate: DateTime(now.year - 30, 1, 1),
-                        lastDate: DateTime(now.year + 10, 12, 31),
-                      );
-                      if (picked == null) return;
-                      setState(() => _nextDueDate = picked);
-                    },
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _nextDueHours,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(labelText: 'Next due hours'),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextField(
-                          controller: _nextDueMileage,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(labelText: 'Next due mileage'),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  const Divider(height: 20),
-
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _notes,
-                    maxLines: 4,
-                    decoration: const InputDecoration(labelText: 'Notes (optional)'),
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: FilledButton.icon(
-                      onPressed: _save,
-                      icon: const Icon(Icons.save),
-                      label: const Text('Save changes'),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: _delete,
-                      icon: const Icon(Icons.delete_outline),
-                      label: const Text('Delete record'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-class BackupRestorePage extends StatelessWidget {
-  final Future<void> Function() onExportBackup;
-  final Future<void> Function() onImportBackup;
-
-  const BackupRestorePage({
-    super.key,
-    required this.onExportBackup,
-    required this.onImportBackup,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Backup & Restore')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
+    return AlertDialog(
+      title: Text(widget.existing == null ? 'Add DOPE' : 'Edit DOPE'),
+      content: SingleChildScrollView(
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            ElevatedButton.icon(
-              onPressed: onExportBackup,
-              icon: const Icon(Icons.upload_file),
-              label: const Text('Export Backup'),
+            TextField(
+              controller: _distance,
+              decoration: const InputDecoration(labelText: 'Distance (yd/m)'),
             ),
-            const SizedBox(height: 12),
-            ElevatedButton.icon(
-              onPressed: onImportBackup,
-              icon: const Icon(Icons.download),
-              label: const Text('Restore Backup'),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _elev,
+              decoration: const InputDecoration(labelText: 'Elevation (dial)'),
             ),
-            const SizedBox(height: 24),
-            const Text(
-              'Tip: Save backups to iCloud Drive so they survive phone swaps.',
+            const SizedBox(height: 10),
+            TextField(
+              controller: _wind,
+              decoration: const InputDecoration(labelText: 'Windage (e.g., R0.2 / L0.1 / 0)'),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _notes,
+              maxLines: 3,
+              decoration: const InputDecoration(labelText: 'Notes (optional)'),
             ),
           ],
         ),
       ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () {
+            Navigator.pop(
+              context,
+              RifleRifleRifleDopeEntry(
+                id: 'tmp',
+                distance: _distance.text.trim(),
+                elevation: _elev.text.trim(),
+                windage: _wind.text.trim(),
+                notes: _notes.text.trim(),
+              ),
+            );
+          },
+          child: const Text('Save'),
+        ),
+      ],
     );
   }
 }
