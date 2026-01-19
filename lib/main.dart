@@ -654,7 +654,7 @@ class Rifle {
       notes: notes ?? this.notes,
       dope: dope ?? this.dope,
       dopeEntries: dopeEntries ?? this.dopeEntries,
-      serialNumber: serialNumber ?? this.serialNumber,
+
       barrelLength: barrelLength ?? this.barrelLength,
       twistRate: twistRate ?? this.twistRate,
     );
@@ -989,10 +989,10 @@ class _DataScreenState extends State<DataScreen> {
                           final e = inner[dk]!;
                           return DataRow(cells: [
                             DataCell(Text('${dk.value} ${dk.unit.name[0]}')),
-                            DataCell(Text('${e.elevation} ${e.elevationUnit.name} ${e.elevationNotes}')),
-                            DataCell(Text('${e.windType.name}: ${e.windValue} ${e.windNotes}')),
-                            DataCell(Text('${e.windageLeft}')),
-                            DataCell(Text('${e.windageRight}')),
+                            DataCell(Text('')),
+                            DataCell(Text('')),
+                            DataCell(Text('')),
+                            DataCell(Text('')),
                           ]);
                         }).toList(),
                       ),
@@ -1686,8 +1686,7 @@ class SessionDetailScreen extends StatelessWidget {
                 ...s.trainingDope.map(
                       (e) => Card(
                         child: ListTile(
-                          title: Text('${e.distance} ${e.distanceUnit.name} • ${e.elevation} ${e.elevationUnit.name}'),
-                          subtitle: Text('${e.windType.name}: ${e.windValue} • Left: ${e.windageLeft} • Right: ${e.windageRight}'),
+                          title: Text('\ � \'),\r\n                          subtitle: Text('\\'),
                         ),
                       ),
                     ),
@@ -2025,7 +2024,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
       caliber: res.caliber,
       notes: res.notes,
       dope: res.dope,
-      serialNumber: res.serialNumber,
+
       barrelLength: res.barrelLength,
       twistRate: res.twistRate,
     );
@@ -2042,7 +2041,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
       caliber: res.caliber,
       bullet: res.bullet,
       notes: res.notes,
-      ballisticCoefficient: res.ballisticCoefficient,
+
     );
   }
 
