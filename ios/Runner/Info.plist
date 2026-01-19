@@ -39,16 +39,15 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-	<key>NSFaceIDUsageDescription</key>
-	<string>Allow biometric authentication to unlock the app.</string>
+
 	<key>NSCameraUsageDescription</key>
 	<string>Allow camera access to take photos for cold bore entries.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Allow photo library access to select images for cold bore entries.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Allow saving photos to your library if needed.</string>
-	<key>NSFaceIDUsageDescription</key>
-    <string>Use Face ID to securely access your data.</string>
 
+	<key>NSFaceIDUsageDescription</key>
+	<string>Use Face ID to securely access your data.</string>
 </dict>
 </plist>
