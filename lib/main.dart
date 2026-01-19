@@ -745,40 +745,20 @@ class UnlockScreen extends StatefulWidget {
 }
 
 class _UnlockScreenState extends State<UnlockScreen> {
-  final LocalAuthentication _auth = LocalAuthentication();
   bool _busy = false;
   String? _error;
 
   Future<void> _unlock() async {
-    if (_busy) return;
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
+  if (!mounted) return;
+  setState(() {
+    _busy = false;
+    _error = null;
+  });
 
-    try {
-      final canCheck = await _auth.canCheckBiometrics;
-      final isSupported = await _auth.isDeviceSupported();
-      bool ok = false;
-
-      if (isSupported && canCheck) {
-        final didAuth = await _auth.authenticate(
-          localizedReason: 'Authenticate to continue',
-        );
-        ok = didAuth;
-      } else {
-        // Device doesn't support biometrics — in MVP we allow unlock.
-        ok = true;
-      }
-
-      if (!mounted) return;
-
-      if (ok) {
-        widget.onUnlocked();
-      } else {
-        setState(() => _error = 'Unlock canceled.');
-      }
-    } catch (e) {
+  // TEMPORARY: Skip biometrics (local_auth_darwin crashes on iOS 26.2 at plugin registration).
+  Navigator.of(context).pop(true);
+}
+ catch (e) {
       if (!mounted) return;
       // In MVP we still allow unlock if auth fails unexpectedly.
       setState(() => _error = 'Biometric error (allowed to continue): $e');
