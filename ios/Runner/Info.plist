@@ -4,8 +4,6 @@
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
-	<key>CFBundleDisplayName</key>
-	<string>Cold Bore</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -13,7 +11,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>cold_bore</string>
+	<string>Cold Bore</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -41,19 +39,13 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-	<key>CADisableMinimumFrameDurationOnPhone</key>
-	<true/>
-	<key>UIApplicationSupportsIndirectInputEvents</key>
-	<true/>
-	<key>NSCameraUsageDescription</key>
-        <string>Used to take cold bore photos.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	    <string>Used to attach cold bore photos from your library.</string>
 	<key>NSFaceIDUsageDescription</key>
-		<string>Allows biometric authentication for app unlock.</string>
+	<string>Allow biometric authentication to unlock the app.</string>
 	<key>NSCameraUsageDescription</key>
-		<string>Allows taking photos for cold bore entries.</string>
+	<string>Allow camera access to take photos for cold bore entries.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-		<string>Allows selecting photos from library for cold bore entries.</string>
+	<string>Allow photo library access to select images for cold bore entries.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Allow saving photos to your library if needed.</string>
 </dict>
 </plist>
