@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:image_picker/image_picker.dart';
 
@@ -61,6 +62,42 @@ class DopeEntry {
     this.windage = '',
     this.notes = '',
   });
+
+
+  DopeEntry copyWith({
+    String? id,
+    DateTime? time,
+    double? distance,
+    DistanceUnit? distanceUnit,
+    double? elevation,
+    ElevationUnit? elevationUnit,
+    String? elevationNotes,
+    WindType? windType,
+    String? windValue,
+    String? windNotes,
+    double? windageLeft,
+    double? windageRight,
+    String? windage,
+    String? notes,
+  }) {
+    return DopeEntry(
+      id: id ?? this.id,
+      time: time ?? this.time,
+      distance: distance ?? this.distance,
+      distanceUnit: distanceUnit ?? this.distanceUnit,
+      elevation: elevation ?? this.elevation,
+      elevationUnit: elevationUnit ?? this.elevationUnit,
+      elevationNotes: elevationNotes ?? this.elevationNotes,
+      windType: windType ?? this.windType,
+      windValue: windValue ?? this.windValue,
+      windNotes: windNotes ?? this.windNotes,
+      windageLeft: windageLeft ?? this.windageLeft,
+      windageRight: windageRight ?? this.windageRight,
+      windage: windage ?? this.windage,
+      notes: notes ?? this.notes,
+    );
+  }
+
 }
 
 void main() {
@@ -130,6 +167,34 @@ class AppState extends ChangeNotifier {
   final Map<String, Map<DistanceKey, DopeEntry>> _workingDopeRifleAmmo = {};
 
   UserProfile? _activeUser;
+
+  // Captured environment for the next session (optional).
+  double? _latitude;
+  double? _longitude;
+  double? _temperatureF;
+  double? _windSpeedMph;
+  int? _windDirectionDeg;
+
+  double? get latitude => _latitude;
+  double? get longitude => _longitude;
+  double? get temperatureF => _temperatureF;
+  double? get windSpeedMph => _windSpeedMph;
+  int? get windDirectionDeg => _windDirectionDeg;
+
+  void setEnvironment({
+    double? latitude,
+    double? longitude,
+    double? temperatureF,
+    double? windSpeedMph,
+    int? windDirectionDeg,
+  }) {
+    _latitude = latitude;
+    _longitude = longitude;
+    _temperatureF = temperatureF;
+    _windSpeedMph = windSpeedMph;
+    _windDirectionDeg = windDirectionDeg;
+    notifyListeners();
+  }
 
   List<UserProfile> get users => List.unmodifiable(_users);
   List<Rifle> get rifles => List.unmodifiable(_rifles);
@@ -212,6 +277,9 @@ class AppState extends ChangeNotifier {
     required String caliber,
     String notes = '',
     String dope = '',
+    String? serialNumber,
+    String? barrelLength,
+    String? twistRate,
   }) {
     _rifles.add(
       Rifle(
@@ -220,6 +288,9 @@ class AppState extends ChangeNotifier {
         caliber: caliber.trim(),
         notes: notes.trim(),
         dope: dope.trim(),
+        serialNumber: serialNumber?.trim(),
+        barrelLength: barrelLength?.trim(),
+        twistRate: twistRate?.trim(),
       ),
     );
     notifyListeners();
@@ -269,6 +340,7 @@ class AppState extends ChangeNotifier {
     required String caliber,
     String bullet = '',
     String notes = '',
+    double? ballisticCoefficient,
   }) {
     _ammoLots.add(
       AmmoLot(
@@ -277,6 +349,7 @@ class AppState extends ChangeNotifier {
         caliber: caliber.trim(),
         bullet: bullet.trim(),
         notes: notes.trim(),
+        ballisticCoefficient: ballisticCoefficient,
       ),
     );
     notifyListeners();
@@ -2940,13 +3013,7 @@ class DopeManagerScreen extends StatelessWidget {
           if (res != null) {
             state.addDopeEntry(
               rifle.id,
-              DopeEntry(
-                id: state.newIdForChild(),
-                distance: res.distance,
-                elevation: res.elevation,
-                windage: res.windage,
-                notes: res.notes,
-              ),
+              res.copyWith(id: state.newIdForChild()),
             );
           }
         },
@@ -3051,8 +3118,8 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
   @override
   void initState() {
     super.initState();
-    _distance = TextEditingController(text: widget.existing?.distance ?? '');
-    _elev = TextEditingController(text: widget.existing?.elevation ?? '');
+    _distance = TextEditingController(text: widget.existing?.distance.toString() ?? '');
+    _elev = TextEditingController(text: widget.existing?.elevation.toString() ?? '');
     _wind = TextEditingController(text: widget.existing?.windage ?? '');
     _notes = TextEditingController(text: widget.existing?.notes ?? '');
   }
@@ -3108,8 +3175,15 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
               context,
               DopeEntry(
                 id: 'tmp',
-                distance: _distance.text.trim(),
-                elevation: _elev.text.trim(),
+                time: DateTime.now(),
+                distance: double.tryParse(_distance.text.trim()) ?? 0.0,
+                distanceUnit: DistanceUnit.yards,
+                elevation: double.tryParse(_elev.text.trim()) ?? 0.0,
+                elevationUnit: ElevationUnit.moa,
+                elevationNotes: '',
+                windType: WindType.fullValue,
+                windValue: _wind.text.trim(),
+                windNotes: _notes.text.trim(),
                 windage: _wind.text.trim(),
                 notes: _notes.text.trim(),
               ),
