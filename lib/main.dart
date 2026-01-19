@@ -78,7 +78,7 @@ class ColdBoreApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueGrey),
         useMaterial3: true,
       ),
-      home: const HomeScreen(),
+      home: const _AppRoot(),
     );
   }
 }
@@ -103,14 +103,10 @@ class _AppRootState extends State<_AppRoot> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_unlocked) {
-      return HomeScreen(
-        onUnlocked: () => setState(() => _unlocked = true),
-      );
-    }
-
+    // Usable-now mode: skip biometrics/unlock screen (local_auth removed for iOS 26 stability).
     return HomeShell(state: _state);
   }
+
 }
 
 /// Simple in-memory state (replace with DB later).
