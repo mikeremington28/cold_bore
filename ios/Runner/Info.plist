@@ -49,5 +49,11 @@
         <string>Used to take cold bore photos.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	    <string>Used to attach cold bore photos from your library.</string>
+	<key>NSFaceIDUsageDescription</key>
+		<string>Allows biometric authentication for app unlock.</string>
+	<key>NSCameraUsageDescription</key>
+		<string>Allows taking photos for cold bore entries.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+		<string>Allows selecting photos from library for cold bore entries.</string>
 </dict>
 </plist>
