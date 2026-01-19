@@ -747,17 +747,28 @@ class UnlockScreen extends StatefulWidget {
 class _UnlockScreenState extends State<UnlockScreen> {
   bool _busy = false;
   String? _error;
-
   Future<void> _unlock() async {
-  if (!mounted) return;
-  setState(() {
-    _busy = false;
-    _error = null;
-  });
+    if (_busy) return;
+    if (!mounted) return;
 
-  // TEMPORARY: Skip biometrics (local_auth_darwin crashes on iOS 26.2 at plugin registration).
-  Navigator.of(context).pop(true);
-}
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+
+    try {
+      // TEMPORARY: Skip biometrics (local_auth_darwin crashes on iOS 26.2 at plugin registration).
+      // We simply mark the app as unlocked.
+      widget.onUnlocked();
+    } catch (e) {
+      if (!mounted) return;
+      // In MVP we still allow unlock if something unexpected happens.
+      setState(() => _error = 'Unlock error (allowed to continue): $e');
+      widget.onUnlocked();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
  catch (e) {
       if (!mounted) return;
       // In MVP we still allow unlock if auth fails unexpectedly.
