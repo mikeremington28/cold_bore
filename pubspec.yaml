@@ -3,7 +3,7 @@ description: "Cold Bore"
 publish_to: "none"
 
 # Bump this build number every time you upload to TestFlight/App Store Connect.
-version: 1.0.0+8
+version: 1.0.0+9
 environment:
   sdk: ^3.10.4
 
@@ -11,9 +11,6 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
-
-  # Face ID / Touch ID (updated for iOS 26 stability)
-  local_auth: ^3.0.0
 
   # Photos (camera/gallery)
   image_picker: ^1.0.7

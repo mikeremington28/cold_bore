@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:local_auth/local_auth.dart';
 import 'dart:typed_data';
 import 'package:image_picker/image_picker.dart';
 
