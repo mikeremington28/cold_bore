@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:local_auth/local_auth.dart';
 import 'dart:typed_data';
 import 'package:image_picker/image_picker.dart';
 
@@ -79,7 +78,7 @@ class ColdBoreApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueGrey),
         useMaterial3: true,
       ),
-      home: const _AppRoot(),
+      home: const HomeScreen(),
     );
   }
 }
@@ -105,8 +104,7 @@ class _AppRootState extends State<_AppRoot> {
   @override
   Widget build(BuildContext context) {
     if (!_unlocked) {
-      return UnlockScreen(
-        onUnlocked: () => setState(() => _unlocked = true),
+      return HomeScreen() => setState(() => _unlocked = true),
       );
     }
 
@@ -737,16 +735,8 @@ class _ColdBoreRow {
 /// Screens
 ///
 
-class UnlockScreen extends StatefulWidget {
-  final VoidCallback onUnlocked;
-  const UnlockScreen({super.key, required this.onUnlocked});
-
-  @override
-  State<UnlockScreen> createState() => _UnlockScreenState();
-}
 
 class _UnlockScreenState extends State<UnlockScreen> {
-  final LocalAuthentication _auth = LocalAuthentication();
   bool _busy = false;
   String? _error;
 
