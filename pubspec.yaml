@@ -37,7 +37,6 @@ dependencies:
   cupertino_icons: ^1.0.8
 
   # App security (we will wire this up next)
-  local_auth: ^2.2.0
 
   # Photos (camera/gallery)
   image_picker: ^1.0.7
