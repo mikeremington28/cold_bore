@@ -764,13 +764,9 @@ class _UnlockScreenState extends State<UnlockScreen> {
 
       if (isSupported && canCheck) {
         final didAuth = await _auth.authenticate(
-      localizedReason: 'Authenticate to continue',
-    );
+          localizedReason: 'Authenticate to continue',
+        );
         ok = didAuth;
-      } else {
-        // Device doesn't support biometrics — in MVP we allow unlock.
-        ok = true;
-      }
       } else {
         // Device doesn't support biometrics — in MVP we allow unlock.
         ok = true;
