@@ -1,5 +1,3 @@
-<<<<<<< HEAD
-=======
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
@@ -80,7 +78,7 @@ class RifleDopeEntry {
     String? windage,
     String? notes,
   }) {
-    return RifleRifleDopeEntry(
+    return RifleDopeEntry(
       id: id ?? this.id,
       distance: distance ?? this.distance,
       elevation: elevation ?? this.elevation,
@@ -1278,7 +1276,7 @@ class _DopeResult {
 }
 
 class _DopeEntryDialog extends StatefulWidget {
-  final DateTime defaultTime;
+  final DateTime defaultTime = DateTime.now();
   const _RifleDopeEntryDialog({required this.defaultTime});
 
   @override
@@ -2538,7 +2536,7 @@ class _ColdBoreResult {
 }
 
 class _ColdBoreDialog extends StatefulWidget {
-  final DateTime defaultTime;
+  final DateTime defaultTime = DateTime.now();
   const _ColdBoreDialog({required this.defaultTime});
 
   @override
@@ -2965,9 +2963,9 @@ class DopeManagerScreen extends StatelessWidget {
             builder: (_) => const _RifleDopeEntryDialog(),
           );
           if (res != null) {
-            state.addRifleRifleDopeEntry(
+            state.addRifleDopeEntry(
               rifle.id,
-              RifleRifleDopeEntry(
+              RifleDopeEntry(
                 id: state.newIdForChild(),
                 distance: res.distance,
                 elevation: res.elevation,
@@ -3018,7 +3016,7 @@ class DopeManagerScreen extends StatelessWidget {
                       builder: (_) => _RifleDopeEntryDialog(existing: e),
                     );
                     if (edited != null) {
-                      state.updateRifleRifleDopeEntry(
+                      state.updateRifleDopeEntry(
                         rifle.id,
                         e.copyWith(
                           distance: edited.distance,
@@ -3050,7 +3048,7 @@ class DopeManagerScreen extends StatelessWidget {
                         ),
                       );
                       if (ok == true) {
-                        state.deleteRifleRifleDopeEntry(rifle.id, e.id);
+                        state.deleteRifleDopeEntry(rifle.id, e.id);
                       }
                     },
                   ),
@@ -3133,7 +3131,7 @@ class _RifleDopeEntryDialogState extends State<_RifleDopeEntryDialog> {
           onPressed: () {
             Navigator.pop(
               context,
-              RifleRifleRifleDopeEntry(
+              RifleDopeEntry(
                 id: 'tmp',
                 distance: _distance.text.trim(),
                 elevation: _elev.text.trim(),
@@ -3153,4 +3151,3 @@ Future<void> main() async {
 }
   }
 }
->>>>>>> 39bab83 (Add main() + fix constructors + bump build to 16)
