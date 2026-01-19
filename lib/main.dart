@@ -237,6 +237,9 @@ class AppState extends ChangeNotifier {
     required String caliber,
     String notes = '',
     String dope = '',
+    String? serialNumber,
+    String? barrelLength,
+    String? twistRate,
   }) {
     _rifles.add(
       Rifle(
@@ -245,6 +248,9 @@ class AppState extends ChangeNotifier {
         caliber: caliber.trim(),
         notes: notes.trim(),
         dope: dope.trim(),
+        serialNumber: serialNumber?.trim().isEmpty == true ? null : serialNumber?.trim(),
+        barrelLength: barrelLength?.trim().isEmpty == true ? null : barrelLength?.trim(),
+        twistRate: twistRate?.trim().isEmpty == true ? null : twistRate?.trim(),
       ),
     );
     notifyListeners();
@@ -426,7 +432,7 @@ class AppState extends ChangeNotifier {
     if (idx < 0) return;
     final s = _sessions[idx];
 
-    final updatedEntry = RifleDopeEntry(
+    final updatedEntry = DopeEntry(
       id: _newId(),
       time: entry.time,
       distance: entry.distance,
@@ -598,6 +604,9 @@ class AppState extends ChangeNotifier {
   }
 
   static String _newId() => DateTime.now().microsecondsSinceEpoch.toString();
+
+  // Public helper used by widgets that need a fresh id without accessing a static private method.
+  String newIdForChild() => _newId();
 }
 
 class UserProfile {
@@ -702,7 +711,7 @@ class TrainingSession {
 
   final List<ShotEntry> shots;
   final List<PhotoNote> photos;
-  final List<RifleDopeEntry> trainingDope;
+  final List<DopeEntry> trainingDope;
 
   TrainingSession({
     required this.id,
@@ -735,7 +744,7 @@ class TrainingSession {
     String? ammoLotId,
     List<ShotEntry>? shots,
     List<PhotoNote>? photos,
-    List<RifleDopeEntry>? trainingDope,
+    List<DopeEntry>? trainingDope,
   }) {
     return TrainingSession(
       id: id,
@@ -1036,7 +1045,7 @@ class _DataScreenState extends State<DataScreen> {
                       const SizedBox(height: 8),
                       if (withDope.isEmpty)
                         Text(
-                          'No DOPE saved yet. Add it under Equipment → Rifles.',
+                          'No DOPE saved yet. Add it under Equipment â†’ Rifles.',
                           style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7)),
                         )
                       else
@@ -1047,7 +1056,7 @@ class _DataScreenState extends State<DataScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  '${r.name} • ${r.caliber}',
+                                  '${r.name} â€¢ ${r.caliber}',
                                   style: const TextStyle(fontWeight: FontWeight.w600),
                                 ),
                                 const SizedBox(height: 4),
@@ -1220,7 +1229,7 @@ class SessionsScreen extends StatelessWidget {
           return _EmptyState(
             icon: Icons.event_note_outlined,
             title: 'No sessions yet',
-            message: 'Tap “New Session” to add your first training day.',
+            message: 'Tap â€œNew Sessionâ€ to add your first training day.',
             actionLabel: 'New Session',
             onAction: () => _newSession(context),
           );
@@ -1247,7 +1256,7 @@ class SessionsScreen extends StatelessWidget {
 
               return ListTile(
                 title: Text(s.locationName),
-                subtitle: Text(subtitleBits.join(' • ')),
+                subtitle: Text(subtitleBits.join(' â€¢ ')),
                 trailing: s.shots.any((x) => x.isColdBore)
                     ? const Icon(Icons.ac_unit_outlined)
                     : null,
@@ -1276,8 +1285,9 @@ class _DopeResult {
 }
 
 class _DopeEntryDialog extends StatefulWidget {
-  final DateTime defaultTime = DateTime.now();
-  const _RifleDopeEntryDialog({required this.defaultTime});
+  const _DopeEntryDialog({super.key, this.defaultTime});
+
+  final DateTime? defaultTime;
 
   @override
   State<_DopeEntryDialog> createState() => _DopeEntryDialogState();
@@ -1426,9 +1436,9 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
             final dist = double.tryParse(_distanceCtrl.text.trim());
             if (dist == null) return;
 
-            final entry = RifleDopeEntry(
+            final entry = DopeEntry(
               id: '', // will be set in state
-              time: DateTime.now(),
+              time: widget.defaultTime ?? DateTime.now(),
               distance: dist,
               distanceUnit: _distanceUnit,
               elevation: _elevation,
@@ -1611,7 +1621,7 @@ class SessionDetailScreen extends StatelessWidget {
                       value: s.rifleId,
                       decoration: const InputDecoration(labelText: 'Rifle'),
                       items: [
-                        const DropdownMenuItem<String?>(value: null, child: Text('— None —')),
+                        const DropdownMenuItem<String?>(value: null, child: Text('â€” None â€”')),
                         ...state.rifles.map(
                           (r) => DropdownMenuItem<String?>(value: r.id, child: Text('${r.name} (${r.caliber})')),
                         ),
@@ -1625,7 +1635,7 @@ class SessionDetailScreen extends StatelessWidget {
                       value: s.ammoLotId,
                       decoration: const InputDecoration(labelText: 'Ammo'),
                       items: [
-                        const DropdownMenuItem<String?>(value: null, child: Text('— None —')),
+                        const DropdownMenuItem<String?>(value: null, child: Text('â€” None â€”')),
                         ...state.ammoLots.map(
                           (a) => DropdownMenuItem<String?>(value: a.id, child: Text('${a.name} (${a.caliber})')),
                         ),
@@ -1642,7 +1652,7 @@ class SessionDetailScreen extends StatelessWidget {
                 _HintCard(
                   icon: Icons.ac_unit_outlined,
                   title: 'No cold bore entries yet',
-                  message: 'Tap “Add Cold Bore” to log the first shot for this session.',
+                  message: 'Tap â€œAdd Cold Boreâ€ to log the first shot for this session.',
                 )
               else
                 ...s.shots.where((x) => x.isColdBore).map(
@@ -1651,10 +1661,10 @@ class SessionDetailScreen extends StatelessWidget {
                           leading: Icon(
                             shot.isBaseline ? Icons.star : Icons.ac_unit_outlined,
                           ),
-                          title: Text('${shot.distance} • ${shot.result}'),
+                          title: Text('${shot.distance} â€¢ ${shot.result}'),
                           subtitle: Text(
                             '${_fmtDateTime(shot.time)}'
-                            '${shot.photos.isEmpty ? '' : ' • ${shot.photos.length} photo(s)'}',
+                            '${shot.photos.isEmpty ? '' : ' â€¢ ${shot.photos.length} photo(s)'}',
                           ),
                           trailing: const Icon(Icons.chevron_right),
                           onTap: () {
@@ -1686,7 +1696,16 @@ class SessionDetailScreen extends StatelessWidget {
                 ...s.trainingDope.map(
                       (e) => Card(
                         child: ListTile(
-                          title: Text('\ � \'),\r\n                          subtitle: Text('\\'),
+                          title: Text(
+                            '${e.distance.toStringAsFixed(0)} ${e.distanceUnit == DistanceUnit.yards ? 'yd' : 'm'} • '
+                            'Elev ${e.elevation.toStringAsFixed(2)} ${e.elevationUnit == ElevationUnit.mil ? 'mil' : 'MOA'}',
+                          ),
+                          subtitle: Text(
+                            '${_fmtDateTime(e.time)}'
+                            '${e.windValue.trim().isEmpty ? '' : ' • Wind ${e.windValue}'}'
+                            '${e.elevationNotes.trim().isEmpty ? '' : '\nElev: ${e.elevationNotes}'}'
+                            '${e.windNotes.trim().isEmpty ? '' : '\nWind: ${e.windNotes}'}',
+                          ),
                         ),
                       ),
                     ),
@@ -1716,7 +1735,7 @@ class SessionDetailScreen extends StatelessWidget {
               const Divider(),
               const SizedBox(height: 8),
               Text(
-                'Loadout: ${rifle?.name ?? '—'} / ${ammo?.name ?? '—'}',
+                'Loadout: ${rifle?.name ?? 'â€”'} / ${ammo?.name ?? 'â€”'}',
                 style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7)),
               ),
             ],
@@ -1750,7 +1769,7 @@ class ColdBoreScreen extends StatelessWidget {
           return const _EmptyState(
             icon: Icons.ac_unit_outlined,
             title: 'No cold bore entries yet',
-            message: 'Open a session and tap “Add Cold Bore”.',
+            message: 'Open a session and tap â€œAdd Cold Boreâ€.',
           );
         }
 
@@ -1763,14 +1782,14 @@ class ColdBoreScreen extends StatelessWidget {
             final ammo = r.ammo;
             return ListTile(
               leading: Icon(r.shot.isBaseline ? Icons.star : Icons.ac_unit_outlined),
-              title: Text('${r.shot.distance} • ${r.shot.result}' + (r.shot.photos.isEmpty ? '' : ' • ${r.shot.photos.length} photo(s)')),
+              title: Text('${r.shot.distance} â€¢ ${r.shot.result}' + (r.shot.photos.isEmpty ? '' : ' â€¢ ${r.shot.photos.length} photo(s)')),
               subtitle: Text(
                 [
                   _fmtDateTime(r.shot.time),
                   r.session.locationName,
                   if (rifle != null) rifle.name,
                   if (ammo != null) ammo.name,
-                ].join(' • '),
+                ].join(' â€¢ '),
               ),
               onTap: () {
                 Navigator.of(context).push(
@@ -1843,7 +1862,7 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
     final baseline = widget.state.baselineColdBoreShot();
     if (baseline == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No baseline set yet. Tap “Mark as Baseline” first.')),
+        const SnackBar(content: Text('No baseline set yet. Tap â€œMark as Baselineâ€ first.')),
       );
       return;
     }
@@ -1870,7 +1889,7 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text('Baseline: ${baseline.distance} • ${baseline.result}'),
+                  Text('Baseline: ${baseline.distance} â€¢ ${baseline.result}'),
                   const SizedBox(height: 8),
                   if (baseImg != null)
                     ClipRRect(
@@ -1880,7 +1899,7 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
                   else
                     const Text('No baseline photo yet.'),
                   const SizedBox(height: 16),
-                  Text('Selected: ${current.distance} • ${current.result}'),
+                  Text('Selected: ${current.distance} â€¢ ${current.result}'),
                   const SizedBox(height: 8),
                   if (curImg != null)
                     ClipRRect(
@@ -1928,14 +1947,14 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
             children: [
               Row(
                 children: [
-                  Expanded(child: Text('${shot.distance} • ${shot.result}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700))),
+                  Expanded(child: Text('${shot.distance} â€¢ ${shot.result}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700))),
                   const SizedBox(width: 8),
                   if (shot.isBaseline)
                     const Chip(label: Text('Baseline'), avatar: Icon(Icons.star, size: 18)),
                 ],
               ),
               const SizedBox(height: 6),
-              Text(_fmtDateTime(shot.time) + ' • ' + s.locationName),
+              Text(_fmtDateTime(shot.time) + ' â€¢ ' + s.locationName),
               if (shot.notes.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 Text(shot.notes),
@@ -2077,7 +2096,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                   child: _seg == 0
                       ? _EquipmentList(
                           emptyTitle: 'No rifles yet',
-                          emptyMessage: 'Tap “Add Rifle” to create your first rifle.',
+                          emptyMessage: 'Tap â€œAdd Rifleâ€ to create your first rifle.',
                           items: rifles
                               .map(
                                 (r) => ListTile(
@@ -2085,8 +2104,8 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                                   title: Text(r.name),
                                   subtitle: Text(
                                     r.caliber +
-                                        (r.notes.isEmpty ? '' : ' • ${r.notes}') +
-                                        (r.dope.trim().isEmpty ? '' : ' • DOPE saved'),
+                                        (r.notes.isEmpty ? '' : ' â€¢ ${r.notes}') +
+                                        (r.dope.trim().isEmpty ? '' : ' â€¢ DOPE saved'),
                                   ),
                                   trailing: IconButton(
                                     tooltip: 'Edit DOPE',
@@ -2106,7 +2125,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                         )
                       : _EquipmentList(
                           emptyTitle: 'No ammo lots yet',
-                          emptyMessage: 'Tap “Add Ammo” to create your first ammo lot.',
+                          emptyMessage: 'Tap â€œAdd Ammoâ€ to create your first ammo lot.',
                           items: ammo
                               .map(
                                 (a) => ListTile(
@@ -2114,8 +2133,8 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                                   title: Text(a.name),
                                   subtitle: Text(
                                     a.caliber +
-                                        (a.bullet.isEmpty ? '' : ' • ${a.bullet}') +
-                                        (a.notes.isEmpty ? '' : ' • ${a.notes}'),
+                                        (a.bullet.isEmpty ? '' : ' â€¢ ${a.bullet}') +
+                                        (a.notes.isEmpty ? '' : ' â€¢ ${a.notes}'),
                                   ),
                                 ),
                               )
@@ -2169,7 +2188,7 @@ class ExportPlaceholderScreen extends StatelessWidget {
     return const _EmptyState(
       icon: Icons.ios_share_outlined,
       title: 'Export',
-      message: 'Next we’ll add PDF/CSV export options and redaction.',
+      message: 'Next weâ€™ll add PDF/CSV export options and redaction.',
     );
   }
 }
@@ -2652,7 +2671,7 @@ class _EditNotesDialogState extends State<_EditNotesDialog> {
         controller: _c,
         maxLines: 6,
         decoration: const InputDecoration(
-          hintText: 'Add training notes for this session…',
+          hintText: 'Add training notes for this sessionâ€¦',
         ),
       ),
       actions: [
@@ -2953,7 +2972,7 @@ class DopeManagerScreen extends StatelessWidget {
     final entries = rifle.dopeEntries;
     return Scaffold(
       appBar: AppBar(
-        title: Text('DOPE • ${rifle.name}'),
+        title: Text('DOPE â€¢ ${rifle.name}'),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
@@ -3007,7 +3026,7 @@ class DopeManagerScreen extends StatelessWidget {
               itemBuilder: (context, i) {
                 final e = entries[i];
                 return ListTile(
-                  title: Text('${e.distance} • Elev ${e.elevation} • Wind ${e.windage}'),
+                  title: Text('${e.distance} â€¢ Elev ${e.elevation} â€¢ Wind ${e.windage}'),
                   subtitle: e.notes.trim().isEmpty ? null : Text(e.notes),
                   onTap: () async {
                     final edited = await showDialog<RifleDopeEntry>(
