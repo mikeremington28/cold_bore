@@ -266,9 +266,14 @@ class AppState extends ChangeNotifier {
     required String caliber,
     String notes = '',
     String dope = '',
+    String? manufacturer,
+    String? model,
     String? serialNumber,
     String? barrelLength,
     String? twistRate,
+    DateTime? purchaseDate,
+    String? purchasePrice,
+    String? purchaseLocation,
   }) {
     _rifles.add(
       Rifle(
@@ -277,9 +282,14 @@ class AppState extends ChangeNotifier {
         caliber: caliber.trim(),
         notes: notes.trim(),
         dope: dope.trim(),
+        manufacturer: manufacturer?.trim().isEmpty == true ? null : manufacturer?.trim(),
+        model: model?.trim().isEmpty == true ? null : model?.trim(),
         serialNumber: serialNumber?.trim().isEmpty == true ? null : serialNumber?.trim(),
         barrelLength: barrelLength?.trim().isEmpty == true ? null : barrelLength?.trim(),
         twistRate: twistRate?.trim().isEmpty == true ? null : twistRate?.trim(),
+        purchaseDate: purchaseDate,
+        purchasePrice: purchasePrice?.trim().isEmpty == true ? null : purchasePrice?.trim(),
+        purchaseLocation: purchaseLocation?.trim().isEmpty == true ? null : purchaseLocation?.trim(),
       ),
     );
     notifyListeners();
@@ -329,6 +339,11 @@ class AppState extends ChangeNotifier {
     required String caliber,
     String bullet = '',
     String notes = '',
+    String? manufacturer,
+    String? lotNumber,
+    DateTime? purchaseDate,
+    String? purchasePrice,
+    double? ballisticCoefficient,
   }) {
     _ammoLots.add(
       AmmoLot(
@@ -337,6 +352,11 @@ class AppState extends ChangeNotifier {
         caliber: caliber.trim(),
         bullet: bullet.trim(),
         notes: notes.trim(),
+        manufacturer: manufacturer?.trim().isEmpty == true ? null : manufacturer?.trim(),
+        lotNumber: lotNumber?.trim().isEmpty == true ? null : lotNumber?.trim(),
+        purchaseDate: purchaseDate,
+        purchasePrice: purchasePrice?.trim().isEmpty == true ? null : purchasePrice?.trim(),
+        ballisticCoefficient: ballisticCoefficient,
       ),
     );
     notifyListeners();
@@ -346,6 +366,11 @@ class AppState extends ChangeNotifier {
     required String locationName,
     required DateTime dateTime,
     String notes = '',
+    double? latitude,
+    double? longitude,
+    double? temperatureF,
+    double? windSpeedMph,
+    int? windDirectionDeg,
   }) {
     final user = _activeUser;
     if (user == null) return null;
@@ -659,9 +684,14 @@ class Rifle {
   final List<RifleDopeEntry> dopeEntries;
 
   // Optional details
+  final String? manufacturer;
+  final String? model;
   final String? serialNumber;
   final String? barrelLength;
   final String? twistRate;
+  final DateTime? purchaseDate;
+  final String? purchasePrice;
+  final String? purchaseLocation;
 
   Rifle({
     required this.id,
@@ -670,9 +700,14 @@ class Rifle {
     required this.notes,
     required this.dope,
     this.dopeEntries = const [],
+    this.manufacturer,
+    this.model,
     this.serialNumber,
     this.barrelLength,
     this.twistRate,
+    this.purchaseDate,
+    this.purchasePrice,
+    this.purchaseLocation,
   });
 
   Rifle copyWith({
@@ -681,9 +716,14 @@ class Rifle {
     String? notes,
     String? dope,
     List<RifleDopeEntry>? dopeEntries,
+    String? manufacturer,
+    String? model,
     String? serialNumber,
     String? barrelLength,
     String? twistRate,
+    DateTime? purchaseDate,
+    String? purchasePrice,
+    String? purchaseLocation,
   }) {
     return Rifle(
       id: id,
@@ -692,12 +732,18 @@ class Rifle {
       notes: notes ?? this.notes,
       dope: dope ?? this.dope,
       dopeEntries: dopeEntries ?? this.dopeEntries,
-
+      manufacturer: manufacturer ?? this.manufacturer,
+      model: model ?? this.model,
+      serialNumber: serialNumber ?? this.serialNumber,
       barrelLength: barrelLength ?? this.barrelLength,
       twistRate: twistRate ?? this.twistRate,
+      purchaseDate: purchaseDate ?? this.purchaseDate,
+      purchasePrice: purchasePrice ?? this.purchasePrice,
+      purchaseLocation: purchaseLocation ?? this.purchaseLocation,
     );
   }
 }
+
 
 class AmmoLot {
   final String id;
@@ -705,6 +751,12 @@ class AmmoLot {
   final String caliber;
   final String bullet;
   final String notes;
+
+  // Optional details
+  final String? manufacturer;
+  final String? lotNumber;
+  final DateTime? purchaseDate;
+  final String? purchasePrice;
 
   // Optional ballistics
   final double? ballisticCoefficient;
@@ -715,9 +767,14 @@ class AmmoLot {
     required this.caliber,
     required this.bullet,
     required this.notes,
+    this.manufacturer,
+    this.lotNumber,
+    this.purchaseDate,
+    this.purchasePrice,
     this.ballisticCoefficient,
   });
 }
+
 
 class TrainingSession {
   final String id;
@@ -2072,9 +2129,14 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
       caliber: res.caliber,
       notes: res.notes,
       dope: res.dope,
-
+      manufacturer: res.manufacturer,
+      model: res.model,
+      serialNumber: res.serialNumber,
       barrelLength: res.barrelLength,
       twistRate: res.twistRate,
+      purchaseDate: res.purchaseDate,
+      purchasePrice: res.purchasePrice,
+      purchaseLocation: res.purchaseLocation,
     );
   }
 
@@ -2089,7 +2151,11 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
       caliber: res.caliber,
       bullet: res.bullet,
       notes: res.notes,
-
+      manufacturer: res.manufacturer,
+      lotNumber: res.lotNumber,
+      purchaseDate: res.purchaseDate,
+      purchasePrice: res.purchasePrice,
+      ballisticCoefficient: res.ballisticCoefficient,
     );
   }
 
@@ -2133,8 +2199,12 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                                   title: Text(r.name),
                                   subtitle: Text(
                                     r.caliber +
-                                        (r.notes.isEmpty ? '' : ' â€¢ ${r.notes}') +
-                                        (r.dope.trim().isEmpty ? '' : ' â€¢ DOPE saved'),
+                                        ((r.manufacturer == null || r.manufacturer!.isEmpty) ? '' : ' • ${r.manufacturer!}') +
+                                        ((r.model == null || r.model!.isEmpty) ? '' : ' • ${r.model!}') +
+                                        ((r.serialNumber == null || r.serialNumber!.isEmpty) ? '' : ' • SN ${r.serialNumber!}') +
+                                        (r.purchaseDate == null ? '' : ' • ${_fmtDate(r.purchaseDate!)}') +
+                                        (r.notes.isEmpty ? '' : ' • ${r.notes}') +
+                                        (r.dope.trim().isEmpty ? '' : ' • DOPE saved'),
                                   ),
                                   trailing: IconButton(
                                     tooltip: 'Edit DOPE',
@@ -2161,10 +2231,14 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                                   leading: const Icon(Icons.inventory_2_outlined),
                                   title: Text(a.name),
                                   subtitle: Text(
-                                    a.caliber +
-                                        (a.bullet.isEmpty ? '' : ' â€¢ ${a.bullet}') +
-                                        (a.notes.isEmpty ? '' : ' â€¢ ${a.notes}'),
-                                  ),
+                                     a.caliber +
+                                         ((a.manufacturer == null || a.manufacturer!.isEmpty) ? '' : ' • ${a.manufacturer!}') +
+                                         ((a.lotNumber == null || a.lotNumber!.isEmpty) ? '' : ' • Lot ${a.lotNumber!}') +
+                                         (a.purchaseDate == null ? '' : ' • ${_fmtDate(a.purchaseDate!)}') +
+                                         (a.bullet.isEmpty ? '' : ' • ${a.bullet}') +
+                                         (a.ballisticCoefficient == null ? '' : ' • BC ${a.ballisticCoefficient}') +
+                                         (a.notes.isEmpty ? '' : ' • ${a.notes}'),
+                                   ),
                                 ),
                               )
                               .toList(),
@@ -2805,18 +2879,30 @@ class _NewRifleResult {
   final String notes;
   final String dope;
   final List<RifleDopeEntry> dopeEntries;
+
+  final String? manufacturer;
+  final String? model;
   final String? serialNumber;
   final String? barrelLength;
   final String? twistRate;
+  final DateTime? purchaseDate;
+  final String? purchasePrice;
+  final String? purchaseLocation;
+
   _NewRifleResult({
     required this.name,
     required this.caliber,
     required this.notes,
     required this.dope,
     this.dopeEntries = const [],
+    this.manufacturer,
+    this.model,
     this.serialNumber,
     this.barrelLength,
     this.twistRate,
+    this.purchaseDate,
+    this.purchasePrice,
+    this.purchaseLocation,
   });
 }
 
@@ -2830,6 +2916,14 @@ class _NewRifleDialog extends StatefulWidget {
 class _NewRifleDialogState extends State<_NewRifleDialog> {
   final _name = TextEditingController();
   final _caliber = TextEditingController();
+  final _manufacturer = TextEditingController();
+  final _model = TextEditingController();
+  final _serialNumber = TextEditingController();
+  final _barrelLength = TextEditingController();
+  final _twistRate = TextEditingController();
+  DateTime? _purchaseDate;
+  final _purchasePrice = TextEditingController();
+  final _purchaseLocation = TextEditingController();
   final _notes = TextEditingController();
   final _dope = TextEditingController();
 
@@ -2837,6 +2931,13 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
   void dispose() {
     _name.dispose();
     _caliber.dispose();
+    _manufacturer.dispose();
+    _model.dispose();
+    _serialNumber.dispose();
+    _barrelLength.dispose();
+    _twistRate.dispose();
+    _purchasePrice.dispose();
+    _purchaseLocation.dispose();
     _notes.dispose();
     _dope.dispose();
     super.dispose();
@@ -2846,38 +2947,105 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('Add rifle'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: _name,
-            decoration: const InputDecoration(labelText: 'Name'),
-            textInputAction: TextInputAction.next,
-          ),
-          TextField(
-            controller: _caliber,
-            decoration: const InputDecoration(labelText: 'Caliber'),
-            textInputAction: TextInputAction.next,
-          ),
-          TextField(
-            controller: _notes,
-            decoration: const InputDecoration(labelText: 'Notes (optional)'),
-            maxLines: 2,
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _dope,
-            decoration: const InputDecoration(
-              labelText: 'DOPE (quick reference)',
-              hintText: 'Example: 100y 0.0 | 200y 0.6 | 300y 1.4 ...',
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _name,
+              decoration: const InputDecoration(labelText: 'Name'),
+              textInputAction: TextInputAction.next,
             ),
-            maxLines: 4,
-          ),
-        ],
+            TextField(
+              controller: _caliber,
+              decoration: const InputDecoration(labelText: 'Caliber'),
+              textInputAction: TextInputAction.next,
+            ),
+            TextField(
+              controller: _manufacturer,
+              decoration: const InputDecoration(labelText: 'Manufacturer (optional)'),
+              textInputAction: TextInputAction.next,
+            ),
+            TextField(
+              controller: _model,
+              decoration: const InputDecoration(labelText: 'Model (optional)'),
+              textInputAction: TextInputAction.next,
+            ),
+            TextField(
+              controller: _serialNumber,
+              decoration: const InputDecoration(labelText: 'Serial number (optional)'),
+              textInputAction: TextInputAction.next,
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _purchaseDate == null ? 'Purchase date (optional)' : 'Purchase date: ${_fmtDate(_purchaseDate!)}',
+                  ),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    final now = DateTime.now();
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: _purchaseDate ?? DateTime(now.year, now.month, now.day),
+                      firstDate: DateTime(1990),
+                      lastDate: DateTime(now.year + 2),
+                    );
+                    if (picked == null) return;
+                    setState(() => _purchaseDate = picked);
+                  },
+                  child: const Text('Pick'),
+                ),
+                if (_purchaseDate != null)
+                  IconButton(
+                    tooltip: 'Clear',
+                    onPressed: () => setState(() => _purchaseDate = null),
+                    icon: const Icon(Icons.clear),
+                  ),
+              ],
+            ),
+            TextField(
+              controller: _purchasePrice,
+              decoration: const InputDecoration(labelText: 'Purchase price (optional)'),
+              keyboardType: TextInputType.number,
+              textInputAction: TextInputAction.next,
+            ),
+            TextField(
+              controller: _purchaseLocation,
+              decoration: const InputDecoration(labelText: 'Purchase location (optional)'),
+              textInputAction: TextInputAction.next,
+            ),
+            TextField(
+              controller: _barrelLength,
+              decoration: const InputDecoration(labelText: 'Barrel length (optional)'),
+              textInputAction: TextInputAction.next,
+            ),
+            TextField(
+              controller: _twistRate,
+              decoration: const InputDecoration(labelText: 'Twist rate (optional)'),
+              textInputAction: TextInputAction.next,
+            ),
+            TextField(
+              controller: _notes,
+              decoration: const InputDecoration(labelText: 'Notes (optional)'),
+              textInputAction: TextInputAction.next,
+            ),
+            TextField(
+              controller: _dope,
+              decoration: const InputDecoration(labelText: 'DOPE (optional)'),
+              minLines: 3,
+              maxLines: 8,
+            ),
+          ],
+        ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-        ElevatedButton(
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
           onPressed: () {
             final name = _name.text.trim();
             final caliber = _caliber.text.trim();
@@ -2886,6 +3054,14 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
               _NewRifleResult(
                 name: name,
                 caliber: caliber,
+                manufacturer: _manufacturer.text,
+                model: _model.text,
+                serialNumber: _serialNumber.text,
+                barrelLength: _barrelLength.text,
+                twistRate: _twistRate.text,
+                purchaseDate: _purchaseDate,
+                purchasePrice: _purchasePrice.text,
+                purchaseLocation: _purchaseLocation.text,
                 notes: _notes.text,
                 dope: _dope.text,
               ),
@@ -2903,12 +3079,23 @@ class _NewAmmoResult {
   final String caliber;
   final String bullet;
   final String notes;
+
+  final String? manufacturer;
+  final String? lotNumber;
+  final DateTime? purchaseDate;
+  final String? purchasePrice;
+
   final double? ballisticCoefficient;
+
   _NewAmmoResult({
     required this.name,
     required this.caliber,
     required this.bullet,
     required this.notes,
+    this.manufacturer,
+    this.lotNumber,
+    this.purchaseDate,
+    this.purchasePrice,
     this.ballisticCoefficient,
   });
 }
@@ -2923,14 +3110,23 @@ class _NewAmmoDialog extends StatefulWidget {
 class _NewAmmoDialogState extends State<_NewAmmoDialog> {
   final _name = TextEditingController();
   final _caliber = TextEditingController();
+  final _manufacturer = TextEditingController();
+  final _lotNumber = TextEditingController();
+  DateTime? _purchaseDate;
+  final _purchasePrice = TextEditingController();
   final _bullet = TextEditingController();
+  final _bc = TextEditingController();
   final _notes = TextEditingController();
 
   @override
   void dispose() {
     _name.dispose();
     _caliber.dispose();
+    _manufacturer.dispose();
+    _lotNumber.dispose();
+    _purchasePrice.dispose();
     _bullet.dispose();
+    _bc.dispose();
     _notes.dispose();
     super.dispose();
   }
@@ -2939,40 +3135,111 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('Add ammo lot'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: _name,
-            decoration: const InputDecoration(labelText: 'Name'),
-            textInputAction: TextInputAction.next,
-          ),
-          TextField(
-            controller: _caliber,
-            decoration: const InputDecoration(labelText: 'Caliber'),
-            textInputAction: TextInputAction.next,
-          ),
-          TextField(
-            controller: _bullet,
-            decoration: const InputDecoration(labelText: 'Bullet (optional)'),
-            textInputAction: TextInputAction.next,
-          ),
-          TextField(
-            controller: _notes,
-            decoration: const InputDecoration(labelText: 'Notes (optional)'),
-            maxLines: 2,
-          ),
-        ],
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _name,
+              decoration: const InputDecoration(labelText: 'Name'),
+              textInputAction: TextInputAction.next,
+            ),
+            TextField(
+              controller: _caliber,
+              decoration: const InputDecoration(labelText: 'Caliber'),
+              textInputAction: TextInputAction.next,
+            ),
+            TextField(
+              controller: _manufacturer,
+              decoration: const InputDecoration(labelText: 'Manufacturer (optional)'),
+              textInputAction: TextInputAction.next,
+            ),
+            TextField(
+              controller: _lotNumber,
+              decoration: const InputDecoration(labelText: 'Lot number (optional)'),
+              textInputAction: TextInputAction.next,
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _purchaseDate == null ? 'Purchase date (optional)' : 'Purchase date: ${_fmtDate(_purchaseDate!)}',
+                  ),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    final now = DateTime.now();
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: _purchaseDate ?? DateTime(now.year, now.month, now.day),
+                      firstDate: DateTime(1990),
+                      lastDate: DateTime(now.year + 2),
+                    );
+                    if (picked == null) return;
+                    setState(() => _purchaseDate = picked);
+                  },
+                  child: const Text('Pick'),
+                ),
+                if (_purchaseDate != null)
+                  IconButton(
+                    tooltip: 'Clear',
+                    onPressed: () => setState(() => _purchaseDate = null),
+                    icon: const Icon(Icons.clear),
+                  ),
+              ],
+            ),
+            TextField(
+              controller: _purchasePrice,
+              decoration: const InputDecoration(labelText: 'Purchase price (optional)'),
+              keyboardType: TextInputType.number,
+              textInputAction: TextInputAction.next,
+            ),
+            TextField(
+              controller: _bullet,
+              decoration: const InputDecoration(labelText: 'Bullet (optional)'),
+              textInputAction: TextInputAction.next,
+            ),
+            TextField(
+              controller: _bc,
+              decoration: const InputDecoration(labelText: 'Ballistic Coefficient (optional)'),
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              textInputAction: TextInputAction.next,
+            ),
+            TextField(
+              controller: _notes,
+              decoration: const InputDecoration(labelText: 'Notes (optional)'),
+              minLines: 2,
+              maxLines: 6,
+            ),
+          ],
+        ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-        ElevatedButton(
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
           onPressed: () {
             final name = _name.text.trim();
             final caliber = _caliber.text.trim();
             if (name.isEmpty || caliber.isEmpty) return;
+
+            final bcStr = _bc.text.trim();
+            final bcVal = double.tryParse(bcStr);
+
             Navigator.of(context).pop(
-              _NewAmmoResult(name: name, caliber: caliber, bullet: _bullet.text, notes: _notes.text),
+              _NewAmmoResult(
+                name: name,
+                caliber: caliber,
+                manufacturer: _manufacturer.text,
+                lotNumber: _lotNumber.text,
+                purchaseDate: _purchaseDate,
+                purchasePrice: _purchasePrice.text,
+                bullet: _bullet.text,
+                notes: _notes.text,
+                ballisticCoefficient: bcVal,
+              ),
             );
           },
           child: const Text('Save'),
@@ -2980,6 +3247,13 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
       ],
     );
   }
+}
+
+String _fmtDate(DateTime dt) {
+  final y = dt.year.toString().padLeft(4, '0');
+  final m = dt.month.toString().padLeft(2, '0');
+  final d = dt.day.toString().padLeft(2, '0');
+  return '$y-$m-$d';
 }
 
 String _fmtDateTime(DateTime dt) {
