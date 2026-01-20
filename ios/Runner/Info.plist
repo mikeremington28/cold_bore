@@ -46,7 +46,14 @@
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
 
-	<!-- Camera -->
+	
+<key>UISupportedInterfaceOrientations~ipad</key>
+<array>
+<string>UIInterfaceOrientationPortrait</string>
+<string>UIInterfaceOrientationPortraitUpsideDown</string>
+<string>UIInterfaceOrientationLandscapeLeft</string>
+<string>UIInterfaceOrientationLandscapeRight</string>
+</array><!-- Camera -->
 	<key>NSCameraUsageDescription</key>
 	<string>Allow camera access to capture cold bore and session photos.</string>
 
