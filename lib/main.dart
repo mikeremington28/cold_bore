@@ -5,9 +5,19 @@ import 'dart:typed_data';
 import 'dart:convert';
 import 'package:image_picker/image_picker.dart';
 
+String _cleanText(String s) {
+  return s
+      .replaceAll('â€¢', '•')
+      .replaceAll('â€”', '—')
+      .replaceAll('â€œ', '“')
+      .replaceAll('â€', '”')
+      .replaceAll('â€™', '’');
+}
+
+
 enum DistanceUnit { yards, meters }
 
-enum ElevationUnit { mil, moa }
+enum ElevationUnit { mil, moa, inches }
 
 enum WindType { fullValue, clock }
 
@@ -28,6 +38,8 @@ class DistanceKey {
 class DopeEntry {
   final String id;
   final DateTime time;
+  final String? rifleId;
+  final String? ammoLotId;
   final double distance;
   final DistanceUnit distanceUnit;
   final double elevation;
@@ -41,6 +53,8 @@ class DopeEntry {
   DopeEntry({
     required this.id,
     required this.time,
+    this.rifleId,
+    this.ammoLotId,
     required this.distance,
     required this.distanceUnit,
     required this.elevation,
@@ -202,7 +216,7 @@ class AppState extends ChangeNotifier {
     if (_users.isNotEmpty) return;
 
     final u = UserProfile(
-      id: _newId(),
+      id: AppState._newId(),
       name: 'Demo User',
       identifier: 'DEMO',
     );
@@ -210,7 +224,7 @@ class AppState extends ChangeNotifier {
     _activeUser = u;
 
     final demoRifle = Rifle(
-      id: _newId(),
+      id: AppState._newId(),
       name: 'Demo Rifle',
       caliber: '.308',
       notes: 'Placeholder rifle',
@@ -219,17 +233,18 @@ class AppState extends ChangeNotifier {
     _rifles.add(demoRifle);
 
     final demoAmmo = AmmoLot(
-      id: _newId(),
+      id: AppState._newId(),
       name: 'Demo Ammo',
       caliber: '.308',
       bullet: '175gr',
+      grain: 175,
       notes: 'Placeholder ammo lot',
     );
     _ammoLots.add(demoAmmo);
 
     _sessions.add(
       TrainingSession(
-        id: _newId(),
+        id: AppState._newId(),
         userId: u.id,
         dateTime: DateTime.now(),
         locationName: 'Demo Range',
@@ -247,7 +262,7 @@ class AppState extends ChangeNotifier {
 
   void addUser({required String name, required String identifier}) {
     final u = UserProfile(
-      id: _newId(),
+      id: AppState._newId(),
       name: name.trim(),
       identifier: identifier.trim(),
     );
@@ -277,7 +292,7 @@ class AppState extends ChangeNotifier {
   }) {
     _rifles.add(
       Rifle(
-        id: _newId(),
+        id: AppState._newId(),
         name: name.trim(),
         caliber: caliber.trim(),
         notes: notes.trim(),
@@ -295,7 +310,78 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void addRifleDopeEntry(String rifleId, RifleDopeEntry entry) {
+
+  void updateRifle({
+    required String id,
+    String? name,
+    String? caliber,
+    String? notes,
+    String? dope,
+    ElevationUnit? preferredUnit,
+    String? manufacturer,
+    String? model,
+    String? serialNumber,
+    String? barrelLength,
+    String? twistRate,
+    DateTime? purchaseDate,
+    String? purchasePrice,
+    String? purchaseLocation,
+  }) {
+    final idx = _rifles.indexWhere((r) => r.id == id);
+    if (idx == -1) return;
+    final r = _rifles[idx];
+    _rifles[idx] = r.copyWith(
+      name: name?.trim(),
+      caliber: caliber?.trim(),
+      notes: notes?.trim(),
+      dope: dope?.trim(),
+      preferredUnit: preferredUnit,
+      manufacturer: manufacturer?.trim().isEmpty == true ? null : manufacturer?.trim(),
+      model: model?.trim().isEmpty == true ? null : model?.trim(),
+      serialNumber: serialNumber?.trim().isEmpty == true ? null : serialNumber?.trim(),
+      barrelLength: barrelLength?.trim().isEmpty == true ? null : barrelLength?.trim(),
+      twistRate: twistRate?.trim().isEmpty == true ? null : twistRate?.trim(),
+      purchaseDate: purchaseDate,
+      purchasePrice: purchasePrice?.trim().isEmpty == true ? null : purchasePrice?.trim(),
+      purchaseLocation: purchaseLocation?.trim().isEmpty == true ? null : purchaseLocation?.trim(),
+    );
+    notifyListeners();
+  }
+
+  void updateAmmoLot({
+    required String id,
+    String? name,
+    String? caliber,
+    String? bullet,
+    int? grain,
+    String? notes,
+    String? manufacturer,
+    String? lotNumber,
+    DateTime? purchaseDate,
+    String? purchasePrice,
+    double? ballisticCoefficient,
+  }) {
+    final idx = _ammoLots.indexWhere((a) => a.id == id);
+    if (idx == -1) return;
+    final a = _ammoLots[idx];
+    _ammoLots[idx] = AmmoLot(
+      id: a.id,
+      name: name ?? a.name,
+      caliber: caliber ?? a.caliber,
+      bullet: bullet ?? a.bullet,
+      grain: grain ?? a.grain,
+      notes: notes ?? a.notes,
+      manufacturer: manufacturer ?? a.manufacturer,
+      lotNumber: lotNumber ?? a.lotNumber,
+      purchaseDate: purchaseDate ?? a.purchaseDate,
+      purchasePrice: purchasePrice ?? a.purchasePrice,
+      ballisticCoefficient: ballisticCoefficient ?? a.ballisticCoefficient,
+    );
+    notifyListeners();
+  }
+
+
+    void addRifleDopeEntry(String rifleId, RifleDopeEntry entry) {
     final idx = _rifles.indexWhere((r) => r.id == rifleId);
     if (idx == -1) return;
     final r = _rifles[idx];
@@ -337,6 +423,7 @@ class AppState extends ChangeNotifier {
   void addAmmoLot({
     required String name,
     required String caliber,
+    required int grain,
     String bullet = '',
     String notes = '',
     String? manufacturer,
@@ -347,10 +434,11 @@ class AppState extends ChangeNotifier {
   }) {
     _ammoLots.add(
       AmmoLot(
-        id: _newId(),
+        id: AppState._newId(),
         name: name.trim(),
         caliber: caliber.trim(),
         bullet: bullet.trim(),
+        grain: grain,
         notes: notes.trim(),
         manufacturer: manufacturer?.trim().isEmpty == true ? null : manufacturer?.trim(),
         lotNumber: lotNumber?.trim().isEmpty == true ? null : lotNumber?.trim(),
@@ -376,16 +464,16 @@ class AppState extends ChangeNotifier {
     if (user == null) return null;
 
     final created = TrainingSession(
-      id: _newId(),
+      id: AppState._newId(),
       userId: user.id,
       dateTime: dateTime,
       locationName: locationName.trim(),
       notes: notes.trim(),
-      latitude: latitude,
-      longitude: longitude,
-      temperatureF: temperatureF,
-      windSpeedMph: windSpeedMph,
-      windDirectionDeg: windDirectionDeg,
+      latitude: null,
+      longitude: null,
+      temperatureF: null,
+      windSpeedMph: null,
+      windDirectionDeg: null,
       rifleId: null,
       ammoLotId: null,
       shots: const [],
@@ -432,9 +520,26 @@ class AppState extends ChangeNotifier {
     final idx = _sessions.indexWhere((s) => s.id == sessionId);
     if (idx < 0) return;
     final s = _sessions[idx];
+
+    String? nextRifleId = rifleId;
+    String? nextAmmoId = ammoLotId;
+
+    // If rifle changes, clear ammo when incompatible with the new rifle.
+    if (nextRifleId != null) {
+      final newRifle = rifleById(nextRifleId);
+      if (newRifle != null) {
+        if (nextAmmoId != null) {
+          final a = ammoById(nextAmmoId);
+          if (a == null || a.caliber != newRifle.caliber) {
+            nextAmmoId = null;
+          }
+        }
+      }
+    }
+
     _sessions[idx] = s.copyWith(
-      rifleId: rifleId,
-      ammoLotId: ammoLotId,
+      rifleId: nextRifleId,
+      ammoLotId: nextAmmoId,
     );
     notifyListeners();
   }
@@ -450,6 +555,29 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+
+  void updateSessionEnvironment({
+    required String sessionId,
+    double? latitude,
+    double? longitude,
+    double? temperatureF,
+    double? windSpeedMph,
+    int? windDirectionDeg,
+  }) {
+    final idx = _sessions.indexWhere((s) => s.id == sessionId);
+    if (idx == -1) return;
+    final s = _sessions[idx];
+    _sessions[idx] = s.copyWith(
+      latitude: latitude ?? s.latitude,
+      longitude: longitude ?? s.longitude,
+      temperatureF: temperatureF ?? s.temperatureF,
+      windSpeedMph: windSpeedMph ?? s.windSpeedMph,
+      windDirectionDeg: windDirectionDeg ?? s.windDirectionDeg,
+    );
+    notifyListeners();
+  }
+
+
   void addColdBoreEntry({
     required String sessionId,
     required DateTime time,
@@ -462,7 +590,7 @@ class AppState extends ChangeNotifier {
     final s = _sessions[idx];
 
     final entry = ShotEntry(
-      id: _newId(),
+      id: AppState._newId(),
       time: time,
       isColdBore: true,
       isBaseline: false,
@@ -486,9 +614,14 @@ class AppState extends ChangeNotifier {
     if (idx < 0) return;
     final s = _sessions[idx];
 
+    final String? rid = entry.rifleId ?? s.rifleId;
+    final String? aid = entry.ammoLotId ?? s.ammoLotId;
+
     final updatedEntry = DopeEntry(
-      id: _newId(),
+      id: AppState._newId(),
       time: entry.time,
+      rifleId: rid,
+      ammoLotId: aid,
       distance: entry.distance,
       distanceUnit: entry.distanceUnit,
       elevation: entry.elevation,
@@ -501,20 +634,29 @@ class AppState extends ChangeNotifier {
       windageRight: entry.windageRight,
     );
 
-    _sessions[idx] = s.copyWith(trainingDope: [...s.trainingDope, updatedEntry]);
+    // Overwrite existing entry for same rifle+ammo+distance.
+    final dk = DistanceKey(updatedEntry.distance, updatedEntry.distanceUnit);
+    final filtered = s.trainingDope.where((e) {
+      if (e.rifleId != updatedEntry.rifleId) return true;
+      if (e.ammoLotId != updatedEntry.ammoLotId) return true;
+      final edk = DistanceKey(e.distance, e.distanceUnit);
+      return edk != dk;
+    }).toList();
+
+    _sessions[idx] = s.copyWith(trainingDope: [...filtered, updatedEntry]);
 
     if (promote) {
-      final rifleId = s.rifleId;
+      final rifleId = updatedEntry.rifleId;
       if (rifleId == null) return;
 
       String key;
       Map<String, Map<DistanceKey, DopeEntry>> workingMap;
 
-      if (rifleOnly || s.ammoLotId == null) {
+      if (rifleOnly || updatedEntry.ammoLotId == null) {
         key = rifleId;
         workingMap = _workingDopeRifleOnly;
       } else {
-        key = '${rifleId}_${s.ammoLotId}';
+        key = '${rifleId}_${updatedEntry.ammoLotId}';
         workingMap = _workingDopeRifleAmmo;
       }
 
@@ -553,7 +695,7 @@ class AppState extends ChangeNotifier {
     if (!shot.isColdBore) return;
 
     final photo = ColdBorePhoto(
-      id: _newId(),
+      id: AppState._newId(),
       time: DateTime.now(),
       bytes: bytes,
       caption: (caption ?? '').trim(),
@@ -626,7 +768,7 @@ class AppState extends ChangeNotifier {
     final s = _sessions[idx];
 
     final p = PhotoNote(
-      id: _newId(),
+      id: AppState._newId(),
       time: time,
       caption: caption.trim(),
     );
@@ -665,23 +807,25 @@ class AppState extends ChangeNotifier {
 
 class UserProfile {
   final String id;
-  final String name;
+  final String? name;
   final String identifier;
 
   UserProfile({
     required this.id,
-    required this.name,
+    this.name,
     required this.identifier,
   });
 }
 
 class Rifle {
   final String id;
-  final String name;
+  final String? name;
   final String caliber;
   final String notes;
   final String dope;
   final List<RifleDopeEntry> dopeEntries;
+
+  final ElevationUnit preferredUnit;
 
   // Optional details
   final String? manufacturer;
@@ -695,8 +839,9 @@ class Rifle {
 
   Rifle({
     required this.id,
-    required this.name,
+    this.name,
     required this.caliber,
+    this.preferredUnit = ElevationUnit.mil,
     required this.notes,
     required this.dope,
     this.dopeEntries = const [],
@@ -716,6 +861,7 @@ class Rifle {
     String? notes,
     String? dope,
     List<RifleDopeEntry>? dopeEntries,
+    ElevationUnit? preferredUnit,
     String? manufacturer,
     String? model,
     String? serialNumber,
@@ -732,6 +878,7 @@ class Rifle {
       notes: notes ?? this.notes,
       dope: dope ?? this.dope,
       dopeEntries: dopeEntries ?? this.dopeEntries,
+      preferredUnit: preferredUnit ?? this.preferredUnit,
       manufacturer: manufacturer ?? this.manufacturer,
       model: model ?? this.model,
       serialNumber: serialNumber ?? this.serialNumber,
@@ -747,10 +894,11 @@ class Rifle {
 
 class AmmoLot {
   final String id;
-  final String name;
+  final String? name;
   final String caliber;
   final String bullet;
-  final String notes;
+  final int grain;
+    final String notes;
 
   // Optional details
   final String? manufacturer;
@@ -763,9 +911,10 @@ class AmmoLot {
 
   AmmoLot({
     required this.id,
-    required this.name,
+    this.name,
     required this.caliber,
     required this.bullet,
+    required this.grain,
     required this.notes,
     this.manufacturer,
     this.lotNumber,
@@ -1142,7 +1291,7 @@ class _DataScreenState extends State<DataScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  '${r.name} â€¢ ${r.caliber}',
+                                  '${r.name ?? 'Rifle'} • ${r.caliber}',
                                   style: const TextStyle(fontWeight: FontWeight.w600),
                                 ),
                                 const SizedBox(height: 4),
@@ -1232,7 +1381,7 @@ class _UsersScreenState extends State<UsersScreen> {
       builder: (_) => const _NewUserDialog(),
     );
     if (res == null) return;
-    widget.state.addUser(name: res.name, identifier: res.identifier);
+    widget.state.addUser(name: (res.name ?? res.identifier), identifier: res.identifier);
   }
 
   @override
@@ -1254,7 +1403,7 @@ class _UsersScreenState extends State<UsersScreen> {
           final u = users[index];
           final isActive = active?.id == u.id;
           return ListTile(
-            title: Text(u.name),
+            title: Text(u.name ?? u.identifier),
             subtitle: Text(u.identifier),
             trailing: isActive ? const Icon(Icons.check_circle_outline) : null,
             onTap: () {
@@ -1315,7 +1464,7 @@ class SessionsScreen extends StatelessWidget {
           return _EmptyState(
             icon: Icons.event_note_outlined,
             title: 'No sessions yet',
-            message: 'Tap â€œNew Sessionâ€ to add your first training day.',
+            message: 'Tap “New Session” to add your first training day.',
             actionLabel: 'New Session',
             onAction: () => _newSession(context),
           );
@@ -1336,13 +1485,13 @@ class SessionsScreen extends StatelessWidget {
               final ammo = state.ammoById(s.ammoLotId);
               final subtitleBits = <String>[
                 _fmtDateTime(s.dateTime),
-                if (rifle != null) rifle.name,
-                if (ammo != null) ammo.name,
+                if (rifle?.name?.isNotEmpty == true) rifle!.name!,
+                if (ammo?.name?.isNotEmpty == true) ammo!.name!,
               ];
 
               return ListTile(
                 title: Text(s.locationName),
-                subtitle: Text(subtitleBits.join(' â€¢ ')),
+                subtitle: Text(_cleanText(subtitleBits.join(' • '))),
                 trailing: s.shots.any((x) => x.isColdBore)
                     ? const Icon(Icons.ac_unit_outlined)
                     : null,
@@ -1371,9 +1520,20 @@ class _DopeResult {
 }
 
 class _DopeEntryDialog extends StatefulWidget {
-  const _DopeEntryDialog({super.key, this.defaultTime});
+  const _DopeEntryDialog({
+    super.key,
+    this.defaultTime,
+    required this.rifleId,
+    required this.ammoOptions,
+    required this.defaultAmmoId,
+    required this.lockedUnit,
+  });
 
   final DateTime? defaultTime;
+  final String rifleId;
+  final List<AmmoLot> ammoOptions;
+  final String? defaultAmmoId;
+  final ElevationUnit lockedUnit;
 
   @override
   State<_DopeEntryDialog> createState() => _DopeEntryDialogState();
@@ -1382,135 +1542,175 @@ class _DopeEntryDialog extends StatefulWidget {
 class _DopeEntryDialogState extends State<_DopeEntryDialog> {
   final _distanceCtrl = TextEditingController();
   DistanceUnit _distanceUnit = DistanceUnit.yards;
+
   double _elevation = 0.0;
-  ElevationUnit _elevationUnit = ElevationUnit.mil;
+  late ElevationUnit _elevationUnit;
+
+  String? _ammoLotId;
+
   final _elevationNotesCtrl = TextEditingController();
-  WindType _windType = WindType.fullValue;
-  final _windValueCtrl = TextEditingController();
-  final _windNotesCtrl = TextEditingController();
-  double _windageLeft = 0.0;
-  double _windageRight = 0.0;
+
+  // Windage is part of DOPE, but "wind call" (conditions/notes) are NOT collected here.
+  bool _windIsLeft = true;
+  double _windage = 0.0;
+
   bool _promote = false;
   bool _rifleOnly = true;
+
+  double get _step {
+    switch (_elevationUnit) {
+      case ElevationUnit.mil:
+        return 0.1;
+      case ElevationUnit.moa:
+        return 0.25;
+      case ElevationUnit.inches:
+        return 0.5;
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _elevationUnit = widget.lockedUnit;
+    _ammoLotId = widget.defaultAmmoId ?? (widget.ammoOptions.isNotEmpty ? widget.ammoOptions.first.id : null);
+  }
 
   @override
   void dispose() {
     _distanceCtrl.dispose();
     _elevationNotesCtrl.dispose();
-    _windValueCtrl.dispose();
-    _windNotesCtrl.dispose();
     super.dispose();
+  }
+
+  void _bumpElevation(double delta) {
+    setState(() {
+      _elevation = (_elevation + delta);
+      if (_elevation.isNaN || _elevation.isInfinite) _elevation = 0.0;
+    });
+  }
+
+  void _bumpWindage(double delta) {
+    setState(() {
+      _windage = (_windage + delta);
+      if (_windage < 0) _windage = 0.0;
+      if (_windage.isNaN || _windage.isInfinite) _windage = 0.0;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Add Training DOPE'),
+      title: const Text('Add DOPE entry'),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            TextField(
+              controller: _distanceCtrl,
+              decoration: const InputDecoration(labelText: 'Distance *'),
+              keyboardType: TextInputType.number,
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<DistanceUnit>(
+              value: _distanceUnit,
+              items: const [
+                DropdownMenuItem(value: DistanceUnit.yards, child: Text('Yards')),
+                DropdownMenuItem(value: DistanceUnit.meters, child: Text('Meters')),
+              ],
+              onChanged: (v) => setState(() => _distanceUnit = v ?? DistanceUnit.yards),
+              decoration: const InputDecoration(labelText: 'Distance unit'),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              value: _ammoLotId,
+              items: widget.ammoOptions
+                  .map((a) => DropdownMenuItem(
+                        value: a.id,
+                        child: Text('${a.caliber} • ${a.grain}gr • ${a.name ?? ''}'.trim()),
+                      ))
+                  .toList(),
+              onChanged: (v) => setState(() => _ammoLotId = v),
+              decoration: const InputDecoration(labelText: 'Ammo'),
+            ),
+            const SizedBox(height: 12),
+
+            // Elevation numeric + step buttons
             Row(
               children: [
                 Expanded(
-                  child: TextField(
-                    controller: _distanceCtrl,
-                    decoration: const InputDecoration(labelText: 'Distance'),
-                    keyboardType: TextInputType.number,
+                  child: Text(
+                    'Elevation (${_elevationUnit == ElevationUnit.mil ? 'MIL' : _elevationUnit == ElevationUnit.moa ? 'MOA' : 'In'})',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                 ),
-                const SizedBox(width: 8),
-                DropdownButton<DistanceUnit>(
-                  value: _distanceUnit,
-                  items: DistanceUnit.values
-                      .map((u) => DropdownMenuItem(value: u, child: Text(u.name)))
-                      .toList(),
-                  onChanged: (v) => setState(() => _distanceUnit = v!),
+                IconButton(
+                  onPressed: () => _bumpElevation(-_step),
+                  icon: const Icon(Icons.remove_circle_outline),
                 ),
-              ],
-            ),
-            Column(
-              children: [
-                const Text('Elevation'),
-                Slider(
-                  value: _elevation,
-                  min: 0.0,
-                  max: 20.0, // Adjust max as needed
-                  divisions: 200,
-                  label: _elevation.toStringAsFixed(1),
-                  onChanged: (v) => setState(() => _elevation = v),
-                ),
-                DropdownButton<ElevationUnit>(
-                  value: _elevationUnit,
-                  items: ElevationUnit.values
-                      .map((u) => DropdownMenuItem(value: u, child: Text(u.name.toUpperCase())))
-                      .toList(),
-                  onChanged: (v) => setState(() => _elevationUnit = v!),
+                Text(_elevation.toStringAsFixed(2)),
+                IconButton(
+                  onPressed: () => _bumpElevation(_step),
+                  icon: const Icon(Icons.add_circle_outline),
                 ),
               ],
             ),
             TextField(
               controller: _elevationNotesCtrl,
               decoration: const InputDecoration(labelText: 'Elevation notes (optional)'),
+              maxLines: 2,
             ),
-            const SizedBox(height: 8),
-            const Text('Wind format:'),
-            RadioListTile<WindType>(
-              title: const Text('Full value (e.g. 0.8L)'),
-              value: WindType.fullValue,
-              groupValue: _windType,
-              onChanged: (v) => setState(() => _windType = v!),
-            ),
-            RadioListTile<WindType>(
-              title: const Text('Clock system (e.g. 3 o\'clock, 8 mph)'),
-              value: WindType.clock,
-              groupValue: _windType,
-              onChanged: (v) => setState(() => _windType = v!),
-            ),
-            TextField(
-              controller: _windValueCtrl,
-              decoration: const InputDecoration(labelText: 'Wind value'),
-            ),
-            TextField(
-              controller: _windNotesCtrl,
-              decoration: const InputDecoration(labelText: 'Wind notes (optional)'),
-            ),
-            Column(
+
+            const SizedBox(height: 12),
+
+            // Windage: L/R toggle + numeric value + step buttons
+            Row(
               children: [
-                const Text('Windage Left'),
-                Slider(
-                  value: _windageLeft,
-                  min: 0.0,
-                  max: 10.0, // Adjust max as needed
-                  divisions: 100,
-                  label: _windageLeft.toStringAsFixed(1),
-                  onChanged: (v) => setState(() => _windageLeft = v),
+                const Expanded(
+                  child: Text(
+                    'Windage',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                SegmentedButton<bool>(
+                  segments: const [
+                    ButtonSegment(value: true, label: Text('L')),
+                    ButtonSegment(value: false, label: Text('R')),
+                  ],
+                  selected: {_windIsLeft},
+                  onSelectionChanged: (s) => setState(() => _windIsLeft = s.first),
                 ),
               ],
             ),
-            Column(
+            const SizedBox(height: 6),
+            Row(
               children: [
-                const Text('Windage Right'),
-                Slider(
-                  value: _windageRight,
-                  min: 0.0,
-                  max: 10.0, // Adjust max as needed
-                  divisions: 100,
-                  label: _windageRight.toStringAsFixed(1),
-                  onChanged: (v) => setState(() => _windageRight = v),
+                IconButton(
+                  onPressed: () => _bumpWindage(-_step),
+                  icon: const Icon(Icons.remove_circle_outline),
                 ),
+                Text(_windage.toStringAsFixed(2)),
+                IconButton(
+                  onPressed: () => _bumpWindage(_step),
+                  icon: const Icon(Icons.add_circle_outline),
+                ),
+                const SizedBox(width: 8),
+                Text(_elevationUnit == ElevationUnit.mil ? 'MIL' : _elevationUnit == ElevationUnit.moa ? 'MOA' : 'In'),
               ],
             ),
+
+            const SizedBox(height: 12),
             CheckboxListTile(
-              title: const Text('Promote to Working DOPE'),
               value: _promote,
-              onChanged: (v) => setState(() => _promote = v!),
+              onChanged: (v) => setState(() => _promote = v ?? false),
+              title: const Text('Promote to Working DOPE'),
+              contentPadding: EdgeInsets.zero,
             ),
             if (_promote)
               CheckboxListTile(
-                title: const Text('Rifle only (uncheck for Rifle + Ammo)'),
                 value: _rifleOnly,
-                onChanged: (v) => setState(() => _rifleOnly = v!),
+                onChanged: (v) => setState(() => _rifleOnly = v ?? true),
+                title: const Text('Rifle-only (ignore ammo)'),
+                contentPadding: EdgeInsets.zero,
               ),
           ],
         ),
@@ -1520,21 +1720,29 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
         ElevatedButton(
           onPressed: () {
             final dist = double.tryParse(_distanceCtrl.text.trim());
-            if (dist == null) return;
+            if (dist == null || dist <= 0) return;
+
+            final left = _windIsLeft ? _windage : 0.0;
+            final right = _windIsLeft ? 0.0 : _windage;
 
             final entry = DopeEntry(
-              id: '', // will be set in state
+              id: AppState._newId(),
               time: widget.defaultTime ?? DateTime.now(),
+              rifleId: widget.rifleId,
+              ammoLotId: _ammoLotId,
               distance: dist,
               distanceUnit: _distanceUnit,
               elevation: _elevation,
               elevationUnit: _elevationUnit,
               elevationNotes: _elevationNotesCtrl.text.trim(),
-              windType: _windType,
-              windValue: _windValueCtrl.text.trim(),
-              windNotes: _windNotesCtrl.text.trim(),
-              windageLeft: _windageLeft,
-              windageRight: _windageRight,
+
+              // wind call removed from UI: store empty values
+              windType: WindType.fullValue,
+              windValue: '',
+              windNotes: '',
+
+              windageLeft: left,
+              windageRight: right,
             );
 
             Navigator.pop(context, _DopeResult(entry, _promote, _rifleOnly));
@@ -1587,9 +1795,42 @@ class SessionDetailScreen extends StatelessWidget {
   }
 
   Future<void> _addDope(BuildContext context, TrainingSession s) async {
+    if (s.rifleId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select a rifle first.')),
+      );
+      return;
+    }
+    if (s.ammoLotId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select ammo first.')),
+      );
+      return;
+    }
+
+    final rifle = state.rifleById(s.rifleId);
+    final ammoOptions = (rifle == null)
+        ? <AmmoLot>[]
+        : state.ammoLots.where((a) => a.caliber == rifle.caliber).toList();
+    if (ammoOptions.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No compatible ammo lots found for this rifle.')),
+      );
+      return;
+    }
+
     final res = await showDialog<_DopeResult>(
       context: context,
-      builder: (_) => _DopeEntryDialog(defaultTime: DateTime.now()),
+      builder: (_) {
+        final rifle = state.rifles.firstWhere((r) => r.id == s.rifleId);
+        return _DopeEntryDialog(
+          defaultTime: DateTime.now(),
+          rifleId: s.rifleId!,
+          ammoOptions: ammoOptions,
+          defaultAmmoId: s.ammoLotId,
+          lockedUnit: rifle.preferredUnit,
+        );
+      },
     );
     if (res == null) return;
 
@@ -1600,14 +1841,14 @@ class SessionDetailScreen extends StatelessWidget {
         );
         return;
       }
-      if (!res.rifleOnly && s.ammoLotId == null) {
+      if (!res.rifleOnly && res.entry.ammoLotId == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Select ammo to promote to Rifle + Ammo scope.')),
         );
         return;
       }
 
-      final key = res.rifleOnly ? s.rifleId! : '${s.rifleId}_${s.ammoLotId}';
+      final key = res.rifleOnly ? s.rifleId! : '${s.rifleId}_${res.entry.ammoLotId}';
       final wmap = res.rifleOnly ? state.workingDopeRifleOnly[key] ?? {} : state.workingDopeRifleAmmo[key] ?? {};
       final dk = DistanceKey(res.entry.distance, res.entry.distanceUnit);
 
@@ -1649,6 +1890,9 @@ class SessionDetailScreen extends StatelessWidget {
 
         final rifle = state.rifleById(s.rifleId);
         final ammo = state.ammoById(s.ammoLotId);
+        final compatibleAmmo = (rifle == null)
+            ? <AmmoLot>[]
+            : state.ammoLots.where((a) => a.caliber == rifle.caliber).toList();
 
         return Scaffold(
           appBar: AppBar(
@@ -1658,6 +1902,25 @@ class SessionDetailScreen extends StatelessWidget {
                 tooltip: 'Edit training notes',
                 onPressed: () => _editTrainingNotes(context, s),
                 icon: const Icon(Icons.edit_note_outlined),
+              ),
+              IconButton(
+                tooltip: 'GPS / Weather',
+                onPressed: () async {
+                  final res = await showDialog<_EnvResult>(
+                    context: context,
+                    builder: (_) => _SessionEnvironmentDialog(session: s),
+                  );
+                  if (res == null) return;
+                  state.updateSessionEnvironment(
+                    sessionId: s.id,
+                    latitude: res.latitude,
+                    longitude: res.longitude,
+                    temperatureF: res.temperatureF,
+                    windSpeedMph: res.windSpeedMph,
+                    windDirectionDeg: res.windDirectionDeg,
+                  );
+                },
+                icon: const Icon(Icons.cloud_outlined),
               ),
             ],
           ),
@@ -1707,9 +1970,9 @@ class SessionDetailScreen extends StatelessWidget {
                       value: s.rifleId,
                       decoration: const InputDecoration(labelText: 'Rifle'),
                       items: [
-                        const DropdownMenuItem<String?>(value: null, child: Text('â€” None â€”')),
+                        const DropdownMenuItem<String?>(value: null, child: Text('— None —')),
                         ...state.rifles.map(
-                          (r) => DropdownMenuItem<String?>(value: r.id, child: Text('${r.name} (${r.caliber})')),
+                          (r) => DropdownMenuItem<String?>(value: r.id, child: Text('${r.name ?? 'Rifle'} (${r.caliber})')),
                         ),
                       ],
                       onChanged: (v) => state.updateSessionLoadout(sessionId: s.id, rifleId: v, ammoLotId: s.ammoLotId),
@@ -1721,12 +1984,14 @@ class SessionDetailScreen extends StatelessWidget {
                       value: s.ammoLotId,
                       decoration: const InputDecoration(labelText: 'Ammo'),
                       items: [
-                        const DropdownMenuItem<String?>(value: null, child: Text('â€” None â€”')),
-                        ...state.ammoLots.map(
-                          (a) => DropdownMenuItem<String?>(value: a.id, child: Text('${a.name} (${a.caliber})')),
+                        const DropdownMenuItem<String?>(value: null, child: Text('— None —')),
+                        ...compatibleAmmo.map(
+                          (a) => DropdownMenuItem<String?>(value: a.id, child: Text('${a.name ?? 'Ammo'} (${a.caliber})')),
                         ),
                       ],
-                      onChanged: (v) => state.updateSessionLoadout(sessionId: s.id, rifleId: s.rifleId, ammoLotId: v),
+                      onChanged: (rifle == null)
+                          ? null
+                          : (v) => state.updateSessionLoadout(sessionId: s.id, rifleId: s.rifleId, ammoLotId: v),
                     ),
                   ),
                 ],
@@ -1738,7 +2003,7 @@ class SessionDetailScreen extends StatelessWidget {
                 _HintCard(
                   icon: Icons.ac_unit_outlined,
                   title: 'No cold bore entries yet',
-                  message: 'Tap â€œAdd Cold Boreâ€ to log the first shot for this session.',
+                  message: 'Tap “Add Cold Bore” to log the first shot for this session.',
                 )
               else
                 ...s.shots.where((x) => x.isColdBore).map(
@@ -1747,10 +2012,10 @@ class SessionDetailScreen extends StatelessWidget {
                           leading: Icon(
                             shot.isBaseline ? Icons.star : Icons.ac_unit_outlined,
                           ),
-                          title: Text('${shot.distance} â€¢ ${shot.result}'),
+                          title: Text('${shot.distance} • ${shot.result}'),
                           subtitle: Text(
                             '${_fmtDateTime(shot.time)}'
-                            '${shot.photos.isEmpty ? '' : ' â€¢ ${shot.photos.length} photo(s)'}',
+                            '${shot.photos.isEmpty ? '' : ' • ${shot.photos.length} photo(s)'}',
                           ),
                           trailing: const Icon(Icons.chevron_right),
                           onTap: () {
@@ -1770,31 +2035,61 @@ class SessionDetailScreen extends StatelessWidget {
               const SizedBox(height: 16),
               _SectionTitle('Training DOPE'),
               const SizedBox(height: 8),
-              if (s.trainingDope.isEmpty)
+              if (s.ammoLotId == null)
                 _HintCard(
-                  icon: Icons.my_location_outlined,
-                  title: 'No training DOPE yet',
-                  message: 'Tap Add to log DOPE during this session.',
-                  actionLabel: 'Add DOPE',
-                  onAction: () => _addDope(context, s),
+                  icon: Icons.info_outline,
+                  title: 'Select ammo to view data',
+                  message: 'Choose ammo in Loadout to view or add training DOPE for this session.',
                 )
-              else
-                ...s.trainingDope.map(
-                      (e) => Card(
-                        child: ListTile(
-                          title: Text(
-                            '${e.distance.toStringAsFixed(0)} ${e.distanceUnit == DistanceUnit.yards ? 'yd' : 'm'} • '
-                            'Elev ${e.elevation.toStringAsFixed(2)} ${e.elevationUnit == ElevationUnit.mil ? 'mil' : 'MOA'}',
-                          ),
-                          subtitle: Text(
-                            '${_fmtDateTime(e.time)}'
-                            '${e.windValue.trim().isEmpty ? '' : ' • Wind ${e.windValue}'}'
-                            '${e.elevationNotes.trim().isEmpty ? '' : '\nElev: ${e.elevationNotes}'}'
-                            '${e.windNotes.trim().isEmpty ? '' : '\nWind: ${e.windNotes}'}',
+              else ...[
+                Builder(
+                  builder: (context) {
+                    final filtered = s.trainingDope.where((e) {
+                      if (e.rifleId != s.rifleId) return false;
+                      if (e.ammoLotId != s.ammoLotId) return false;
+                      return true;
+                    }).toList();
+
+                    if (filtered.isEmpty) {
+                      return _HintCard(
+                        icon: Icons.my_location_outlined,
+                        title: 'No training DOPE yet',
+                        message: 'Tap Add to log DOPE during this session.',
+                        actionLabel: 'Add DOPE',
+                        onAction: () => _addDope(context, s),
+                      );
+                    }
+
+                    return Column(
+                      children: [
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton.icon(
+                            onPressed: () => _addDope(context, s),
+                            icon: const Icon(Icons.add),
+                            label: const Text('Add DOPE'),
                           ),
                         ),
-                      ),
-                    ),
+                        ...filtered.map(
+                          (e) => Card(
+                            child: ListTile(
+                              title: Text(
+                                '${e.distance.toStringAsFixed(0)} ${e.distanceUnit == DistanceUnit.yards ? 'yd' : 'm'} • '
+                                'Elev ${e.elevation.toStringAsFixed(2)} ${(e.elevationUnit == ElevationUnit.mil ? 'mil' : (e.elevationUnit == ElevationUnit.moa ? 'MOA' : 'in'))}',
+                              ),
+                              subtitle: Text(
+                                '${_fmtDateTime(e.time)}'
+                                '${e.windValue.trim().isEmpty ? '' : ' • Wind ${e.windValue}'}'
+                                '${e.elevationNotes.trim().isEmpty ? '' : '\nElev: ${e.elevationNotes}'}'
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ],
               const SizedBox(height: 16),
               _SectionTitle('Photos'),
               const SizedBox(height: 8),
@@ -1821,7 +2116,7 @@ class SessionDetailScreen extends StatelessWidget {
               const Divider(),
               const SizedBox(height: 8),
               Text(
-                'Loadout: ${rifle?.name ?? 'â€”'} / ${ammo?.name ?? 'â€”'}',
+                'Loadout: ${rifle?.name ?? '—'} / ${ammo?.name ?? '—'}',
                 style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7)),
               ),
             ],
@@ -1855,7 +2150,7 @@ class ColdBoreScreen extends StatelessWidget {
           return const _EmptyState(
             icon: Icons.ac_unit_outlined,
             title: 'No cold bore entries yet',
-            message: 'Open a session and tap â€œAdd Cold Boreâ€.',
+            message: 'Open a session and tap “Add Cold Bore”.',
           );
         }
 
@@ -1868,14 +2163,14 @@ class ColdBoreScreen extends StatelessWidget {
             final ammo = r.ammo;
             return ListTile(
               leading: Icon(r.shot.isBaseline ? Icons.star : Icons.ac_unit_outlined),
-              title: Text('${r.shot.distance} â€¢ ${r.shot.result}' + (r.shot.photos.isEmpty ? '' : ' â€¢ ${r.shot.photos.length} photo(s)')),
+              title: Text('${r.shot.distance} • ${r.shot.result}' + (r.shot.photos.isEmpty ? '' : ' • ${r.shot.photos.length} photo(s)')),
               subtitle: Text(
                 [
                   _fmtDateTime(r.shot.time),
                   r.session.locationName,
                   if (rifle != null) rifle.name,
                   if (ammo != null) ammo.name,
-                ].join(' â€¢ '),
+                ].join(' • '),
               ),
               onTap: () {
                 Navigator.of(context).push(
@@ -1948,7 +2243,7 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
     final baseline = widget.state.baselineColdBoreShot();
     if (baseline == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No baseline set yet. Tap â€œMark as Baselineâ€ first.')),
+        const SnackBar(content: Text('No baseline set yet. Tap “Mark as Baseline” first.')),
       );
       return;
     }
@@ -1975,7 +2270,7 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text('Baseline: ${baseline.distance} â€¢ ${baseline.result}'),
+                  Text('Baseline: ${baseline.distance} • ${baseline.result}'),
                   const SizedBox(height: 8),
                   if (baseImg != null)
                     ClipRRect(
@@ -1985,7 +2280,7 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
                   else
                     const Text('No baseline photo yet.'),
                   const SizedBox(height: 16),
-                  Text('Selected: ${current.distance} â€¢ ${current.result}'),
+                  Text('Selected: ${current.distance} • ${current.result}'),
                   const SizedBox(height: 8),
                   if (curImg != null)
                     ClipRRect(
@@ -2033,14 +2328,14 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
             children: [
               Row(
                 children: [
-                  Expanded(child: Text('${shot.distance} â€¢ ${shot.result}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700))),
+                  Expanded(child: Text('${shot.distance} • ${shot.result}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700))),
                   const SizedBox(width: 8),
                   if (shot.isBaseline)
                     const Chip(label: Text('Baseline'), avatar: Icon(Icons.star, size: 18)),
                 ],
               ),
               const SizedBox(height: 6),
-              Text(_fmtDateTime(shot.time) + ' â€¢ ' + s.locationName),
+              Text(_fmtDateTime(shot.time) + ' • ' + s.locationName),
               if (shot.notes.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 Text(shot.notes),
@@ -2125,7 +2420,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
     );
     if (res == null) return;
     widget.state.addRifle(
-      name: res.name,
+      name: (res.name ?? '').trim().isEmpty ? 'Unnamed' : res.name!,
       caliber: res.caliber,
       notes: res.notes,
       dope: res.dope,
@@ -2147,9 +2442,10 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
     );
     if (res == null) return;
     widget.state.addAmmoLot(
-      name: res.name,
+      name: (res.name ?? '').trim().isEmpty ? 'Unnamed' : (res.name ?? '').trim(),
       caliber: res.caliber,
       bullet: res.bullet,
+      grain: res.grain,
       notes: res.notes,
       manufacturer: res.manufacturer,
       lotNumber: res.lotNumber,
@@ -2191,12 +2487,12 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                   child: _seg == 0
                       ? _EquipmentList(
                           emptyTitle: 'No rifles yet',
-                          emptyMessage: 'Tap â€œAdd Rifleâ€ to create your first rifle.',
+                          emptyMessage: 'Tap “Add Rifle” to create your first rifle.',
                           items: rifles
                               .map(
                                 (r) => ListTile(
                                   leading: const Icon(Icons.sports_martial_arts_outlined),
-                                  title: Text(r.name),
+                                  title: Text(r.name ?? ''),
                                   subtitle: Text(
                                     r.caliber +
                                         ((r.manufacturer == null || r.manufacturer!.isEmpty) ? '' : ' • ${r.manufacturer!}') +
@@ -2206,6 +2502,28 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                                         (r.notes.isEmpty ? '' : ' • ${r.notes}') +
                                         (r.dope.trim().isEmpty ? '' : ' • DOPE saved'),
                                   ),
+                                  onTap: () async {
+                                    final res = await showDialog<_NewRifleResult>(
+                                      context: context,
+                                      builder: (_) => _NewRifleDialog(existing: r),
+                                    );
+                                    if (res == null) return;
+                                    widget.state.updateRifle(
+                                      id: r.id,
+                                      name: (res.name ?? '').trim().isEmpty ? 'Unnamed' : res.name!,
+                                      caliber: res.caliber,
+                                      notes: res.notes,
+                                      dope: res.dope,
+                                      manufacturer: res.manufacturer,
+                                      model: res.model,
+                                      serialNumber: res.serialNumber,
+                                      barrelLength: res.barrelLength,
+                                      twistRate: res.twistRate,
+                                      purchaseDate: res.purchaseDate,
+                                      purchasePrice: res.purchasePrice,
+                                      purchaseLocation: res.purchaseLocation,
+                                    );
+                                  },
                                   trailing: IconButton(
                                     tooltip: 'Edit DOPE',
                                     icon: const Icon(Icons.edit_note_outlined),
@@ -2224,12 +2542,12 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                         )
                       : _EquipmentList(
                           emptyTitle: 'No ammo lots yet',
-                          emptyMessage: 'Tap â€œAdd Ammoâ€ to create your first ammo lot.',
+                          emptyMessage: 'Tap “Add Ammo” to create your first ammo lot.',
                           items: ammo
                               .map(
                                 (a) => ListTile(
                                   leading: const Icon(Icons.inventory_2_outlined),
-                                  title: Text(a.name),
+                                  title: Text(a.name ?? ''),
                                   subtitle: Text(
                                      a.caliber +
                                          ((a.manufacturer == null || a.manufacturer!.isEmpty) ? '' : ' • ${a.manufacturer!}') +
@@ -2239,6 +2557,25 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                                          (a.ballisticCoefficient == null ? '' : ' • BC ${a.ballisticCoefficient}') +
                                          (a.notes.isEmpty ? '' : ' • ${a.notes}'),
                                    ),
+                                  onTap: () async {
+                                    final res = await showDialog<_NewAmmoResult>(
+                                      context: context,
+                                      builder: (_) => _NewAmmoDialog(existing: a),
+                                    );
+                                    if (res == null) return;
+                                    widget.state.updateAmmoLot(
+                                      id: a.id,
+                                      name: (res.name ?? '').trim().isEmpty ? 'Unnamed' : res.name!,
+                                      caliber: res.caliber,
+                                      bullet: res.bullet,
+                                      notes: res.notes,
+                                      manufacturer: res.manufacturer,
+                                      lotNumber: res.lotNumber,
+                                      purchaseDate: res.purchaseDate,
+                                      purchasePrice: res.purchasePrice,
+                                      ballisticCoefficient: res.ballisticCoefficient,
+                                    );
+                                  },
                                 ),
                               )
                               .toList(),
@@ -2291,7 +2628,7 @@ class ExportPlaceholderScreen extends StatelessWidget {
     return const _EmptyState(
       icon: Icons.ios_share_outlined,
       title: 'Export',
-      message: 'Next weâ€™ll add PDF/CSV export options and redaction.',
+      message: 'Next we’ll add PDF/CSV export options and redaction.',
     );
   }
 }
@@ -2407,7 +2744,7 @@ class _HintCard extends StatelessWidget {
 ///
 
 class _NewUserResult {
-  final String name;
+  final String? name;
   final String identifier;
   _NewUserResult(this.name, this.identifier);
 }
@@ -2438,13 +2775,14 @@ class _NewUserDialogState extends State<_NewUserDialog> {
         mainAxisSize: MainAxisSize.min,
         children: [
           TextField(
-            controller: _name,
-            decoration: const InputDecoration(labelText: 'Name'),
+            controller: _id,
+            decoration: const InputDecoration(labelText: 'Identifier *'),
             textInputAction: TextInputAction.next,
           ),
+          const SizedBox(height: 8),
           TextField(
-            controller: _id,
-            decoration: const InputDecoration(labelText: 'Identifier (badge/initials)'),
+            controller: _name,
+            decoration: const InputDecoration(labelText: 'Name (optional)'),
           ),
         ],
       ),
@@ -2454,10 +2792,11 @@ class _NewUserDialogState extends State<_NewUserDialog> {
           onPressed: () {
             final name = _name.text.trim();
             final identifier = _id.text.trim();
-            if (name.isEmpty || identifier.isEmpty) return;
-            Navigator.of(context).pop(_NewUserResult(name, identifier));
+            if (identifier.isEmpty) return;
+            final displayName = name.isEmpty ? identifier : name;
+            Navigator.of(context).pop(_NewUserResult(displayName, identifier));
           },
-          child: const Text('Save'),
+          child: const Text('Add'),
         ),
       ],
     );
@@ -2503,7 +2842,6 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
   double? _lon;
   bool _busy = false;
   String? _gpsError;
-
   @override
   void dispose() {
     _location.dispose();
@@ -2614,21 +2952,60 @@ Future<void> _pickDateTime() async {
         children: [
           TextField(
             controller: _location,
-            decoration: const InputDecoration(labelText: 'Named location'),
+            decoration: const InputDecoration(labelText: 'Location *'),
             textInputAction: TextInputAction.next,
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _notes,
+            decoration: const InputDecoration(labelText: 'Notes (optional)'),
+            maxLines: 2,
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(child: Text('Date/Time: ${_fmtDateTime(_dateTime)}')),
+              TextButton.icon(
+                onPressed: _pickDateTime,
+                icon: const Icon(Icons.event),
+                label: const Text('Change'),
+              ),
+            ],
           ),
           const SizedBox(height: 8),
           Row(
             children: [
-              Expanded(child: Text(_fmtDateTime(_dateTime))),
-              TextButton(onPressed: _pickDateTime, child: const Text('Change')),
+              Expanded(
+                child: Text(
+                  _lat == null || _lon == null
+                      ? (_gpsError ?? 'GPS: not set')
+                      : 'GPS: ${_lat!.toStringAsFixed(5)}, ${_lon!.toStringAsFixed(5)}',
+                ),
+              ),
+              FilledButton.tonal(
+                onPressed: _busy ? null : _useGps,
+                child: Text(_busy ? '...' : 'Use GPS'),
+              ),
             ],
           ),
-          TextField(
-            controller: _notes,
-            decoration: const InputDecoration(labelText: 'Notes (optional)'),
-            maxLines: 3,
+
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  (_tempF.text.trim().isEmpty && _windMph.text.trim().isEmpty && _windDir.text.trim().isEmpty)
+                      ? 'Weather: not set'
+                      : 'Weather: ${_tempF.text.trim()}°F • Wind ${_windMph.text.trim()} mph @ ${_windDir.text.trim()}°',
+                ),
+              ),
+              FilledButton.tonal(
+                onPressed: _busy ? null : _fetchWeather,
+                child: Text(_busy ? '...' : 'Grab Weather'),
+              ),
+            ],
           ),
+
         ],
       ),
       actions: [
@@ -2641,7 +3018,7 @@ Future<void> _pickDateTime() async {
               _NewSessionResult(locationName: loc, dateTime: _dateTime, notes: _notes.text),
             );
           },
-          child: const Text('Save'),
+          child: const Text('Create'),
         ),
       ],
     );
@@ -2656,9 +3033,208 @@ class _ColdBoreResult {
   _ColdBoreResult({required this.time, required this.distance, required this.result, required this.notes});
 }
 
+class _EnvResult {
+  final double? latitude;
+  final double? longitude;
+  final double? temperatureF;
+  final double? windSpeedMph;
+  final int? windDirectionDeg;
+  const _EnvResult({
+    this.latitude,
+    this.longitude,
+    this.temperatureF,
+    this.windSpeedMph,
+    this.windDirectionDeg,
+  });
+}
+
+class _SessionEnvironmentDialog extends StatefulWidget {
+  final TrainingSession session;
+  const _SessionEnvironmentDialog({required this.session});
+
+  @override
+  State<_SessionEnvironmentDialog> createState() => _SessionEnvironmentDialogState();
+}
+
+class _SessionEnvironmentDialogState extends State<_SessionEnvironmentDialog> {
+  bool _busy = false;
+  String? _err;
+
+  double? _lat;
+  double? _lon;
+
+  final _tempF = TextEditingController();
+  final _windMph = TextEditingController();
+  final _windDir = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _lat = widget.session.latitude;
+    _lon = widget.session.longitude;
+    if (widget.session.temperatureF != null) _tempF.text = widget.session.temperatureF!.toStringAsFixed(1);
+    if (widget.session.windSpeedMph != null) _windMph.text = widget.session.windSpeedMph!.toStringAsFixed(1);
+    if (widget.session.windDirectionDeg != null) _windDir.text = widget.session.windDirectionDeg!.toString();
+  }
+
+  @override
+  void dispose() {
+    _tempF.dispose();
+    _windMph.dispose();
+    _windDir.dispose();
+    super.dispose();
+  }
+
+  Future<void> _useGps() async {
+    setState(() {
+      _busy = true;
+      _err = null;
+    });
+    try {
+      final enabled = await Geolocator.isLocationServiceEnabled();
+      if (!enabled) {
+        setState(() => _err = 'Location Services are off.');
+        return;
+      }
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
+        setState(() => _err = 'Location permission denied.');
+        return;
+      }
+      final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      setState(() {
+        _lat = pos.latitude;
+        _lon = pos.longitude;
+      });
+    } catch (e) {
+      setState(() => _err = 'GPS failed: $e');
+    } finally {
+      setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _fetchWeather() async {
+    if (_lat == null || _lon == null) {
+      setState(() => _err = 'Tap "Use GPS" first.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _err = null;
+    });
+    try {
+      final uri = Uri.parse(
+        'https://api.open-meteo.com/v1/forecast'
+        '?latitude=${_lat}&longitude=${_lon}'
+        '&current=temperature_2m,wind_speed_10m,wind_direction_10m'
+        '&temperature_unit=fahrenheit'
+        '&wind_speed_unit=mph'
+        '&forecast_days=1',
+      );
+      final resp = await http.get(uri);
+      if (resp.statusCode != 200) {
+        setState(() => _err = 'Weather request failed (${resp.statusCode}).');
+        return;
+      }
+      final data = jsonDecode(resp.body) as Map<String, dynamic>;
+      final current = data['current'] as Map<String, dynamic>?;
+      if (current == null) {
+        setState(() => _err = 'Weather data missing.');
+        return;
+      }
+      final t = (current['temperature_2m'] as num?)?.toDouble();
+      final w = (current['wind_speed_10m'] as num?)?.toDouble();
+      final d = (current['wind_direction_10m'] as num?)?.toInt();
+
+      if (t != null) _tempF.text = t.toStringAsFixed(1);
+      if (w != null) _windMph.text = w.toStringAsFixed(1);
+      if (d != null) _windDir.text = d.toString();
+    } catch (e) {
+      setState(() => _err = 'Weather failed: $e');
+    } finally {
+      setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Session environment'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _lat == null || _lon == null ? 'GPS: not set' : 'GPS: ${_lat!.toStringAsFixed(5)}, ${_lon!.toStringAsFixed(5)}',
+                  ),
+                ),
+                FilledButton.tonal(
+                  onPressed: _busy ? null : _useGps,
+                  child: Text(_busy ? '...' : 'Use GPS'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    (_tempF.text.trim().isEmpty && _windMph.text.trim().isEmpty && _windDir.text.trim().isEmpty)
+                        ? 'Weather: not set'
+                        : 'Weather: ${_tempF.text.trim()}°F • Wind ${_windMph.text.trim()} mph @ ${_windDir.text.trim()}°',
+                  ),
+                ),
+                FilledButton.tonal(
+                  onPressed: _busy ? null : _fetchWeather,
+                  child: Text(_busy ? '...' : 'Grab Weather'),
+                ),
+              ],
+            ),
+            if (_err != null) ...[
+              const SizedBox(height: 8),
+              Text(_err!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            ],
+            const SizedBox(height: 12),
+            TextField(controller: _tempF, decoration: const InputDecoration(labelText: 'Temp (°F)'), keyboardType: TextInputType.number),
+            const SizedBox(height: 8),
+            TextField(controller: _windMph, decoration: const InputDecoration(labelText: 'Wind speed (mph)'), keyboardType: TextInputType.number),
+            const SizedBox(height: 8),
+            TextField(controller: _windDir, decoration: const InputDecoration(labelText: 'Wind direction (deg)'), keyboardType: TextInputType.number),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        ElevatedButton(
+          onPressed: () {
+            Navigator.pop(
+              context,
+              _EnvResult(
+                latitude: _lat,
+                longitude: _lon,
+                temperatureF: double.tryParse(_tempF.text.trim()),
+                windSpeedMph: double.tryParse(_windMph.text.trim()),
+                windDirectionDeg: int.tryParse(_windDir.text.trim()),
+              ),
+            );
+          },
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
 class _ColdBoreDialog extends StatefulWidget {
-  final DateTime defaultTime;
   _ColdBoreDialog({super.key, DateTime? defaultTime}) : defaultTime = defaultTime ?? DateTime.now();
+
+  final DateTime defaultTime;
 
   @override
   State<_ColdBoreDialog> createState() => _ColdBoreDialogState();
@@ -2774,7 +3350,7 @@ class _EditNotesDialogState extends State<_EditNotesDialog> {
         controller: _c,
         maxLines: 6,
         decoration: const InputDecoration(
-          hintText: 'Add training notes for this sessionâ€¦',
+          hintText: 'Add training notes for this session”¦',
         ),
       ),
       actions: [
@@ -2874,7 +3450,7 @@ class _EditDopeDialogState extends State<_EditDopeDialog> {
 }
 
 class _NewRifleResult {
-  final String name;
+  final String? name;
   final String caliber;
   final String notes;
   final String dope;
@@ -2890,7 +3466,7 @@ class _NewRifleResult {
   final String? purchaseLocation;
 
   _NewRifleResult({
-    required this.name,
+    this.name,
     required this.caliber,
     required this.notes,
     required this.dope,
@@ -2907,7 +3483,8 @@ class _NewRifleResult {
 }
 
 class _NewRifleDialog extends StatefulWidget {
-  const _NewRifleDialog();
+  final Rifle? existing;
+  const _NewRifleDialog({this.existing});
 
   @override
   State<_NewRifleDialog> createState() => _NewRifleDialogState();
@@ -2927,7 +3504,28 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
   final _notes = TextEditingController();
   final _dope = TextEditingController();
 
+  
   @override
+  void initState() {
+    super.initState();
+    final r = widget.existing;
+    if (r != null) {
+      _name.text = r.name ?? '';
+      _caliber.text = r.caliber;
+      _manufacturer.text = r.manufacturer ?? '';
+      _model.text = r.model ?? '';
+      _serialNumber.text = r.serialNumber ?? '';
+      _barrelLength.text = r.barrelLength ?? '';
+      _twistRate.text = r.twistRate ?? '';
+      _purchaseDate = r.purchaseDate;
+      _purchasePrice.text = r.purchasePrice ?? '';
+      _purchaseLocation.text = r.purchaseLocation ?? '';
+      _notes.text = r.notes;
+      _dope.text = r.dope;
+    }
+  }
+
+@override
   void dispose() {
     _name.dispose();
     _caliber.dispose();
@@ -2952,13 +3550,13 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
-              controller: _name,
-              decoration: const InputDecoration(labelText: 'Name'),
+              controller: _caliber,
+              decoration: const InputDecoration(labelText: 'Caliber *'),
               textInputAction: TextInputAction.next,
             ),
-            TextField(
-              controller: _caliber,
-              decoration: const InputDecoration(labelText: 'Caliber'),
+            const SizedBox(height: 8),            TextField(
+              controller: _name,
+              decoration: const InputDecoration(labelText: 'Name (optional)'),
               textInputAction: TextInputAction.next,
             ),
             TextField(
@@ -3047,9 +3645,10 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
         ),
         FilledButton(
           onPressed: () {
-            final name = _name.text.trim();
+            final nameRaw = _name.text.trim();
+            final name = nameRaw.isEmpty ? null : nameRaw;
             final caliber = _caliber.text.trim();
-            if (name.isEmpty || caliber.isEmpty) return;
+            if (caliber.isEmpty) return;
             Navigator.of(context).pop(
               _NewRifleResult(
                 name: name,
@@ -3075,10 +3674,11 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
 }
 
 class _NewAmmoResult {
-  final String name;
+  final String? name;
   final String caliber;
   final String bullet;
-  final String notes;
+  final int grain;
+    final String notes;
 
   final String? manufacturer;
   final String? lotNumber;
@@ -3088,9 +3688,10 @@ class _NewAmmoResult {
   final double? ballisticCoefficient;
 
   _NewAmmoResult({
-    required this.name,
+    this.name,
     required this.caliber,
     required this.bullet,
+    required this.grain,
     required this.notes,
     this.manufacturer,
     this.lotNumber,
@@ -3101,7 +3702,8 @@ class _NewAmmoResult {
 }
 
 class _NewAmmoDialog extends StatefulWidget {
-  const _NewAmmoDialog();
+  final AmmoLot? existing;
+  const _NewAmmoDialog({this.existing});
 
   @override
   State<_NewAmmoDialog> createState() => _NewAmmoDialogState();
@@ -3115,10 +3717,29 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
   DateTime? _purchaseDate;
   final _purchasePrice = TextEditingController();
   final _bullet = TextEditingController();
+  final _grain = TextEditingController();
   final _bc = TextEditingController();
   final _notes = TextEditingController();
 
+  
   @override
+  void initState() {
+    super.initState();
+    final a = widget.existing;
+    if (a != null) {
+      _name.text = a.name ?? '';
+      _caliber.text = a.caliber;
+      _manufacturer.text = a.manufacturer ?? '';
+      _lotNumber.text = a.lotNumber ?? '';
+      _purchaseDate = a.purchaseDate;
+      _purchasePrice.text = a.purchasePrice ?? '';
+      _bullet.text = a.bullet;
+      _bc.text = a.ballisticCoefficient?.toString() ?? '';
+      _notes.text = a.notes;
+    }
+  }
+
+@override
   void dispose() {
     _name.dispose();
     _caliber.dispose();
@@ -3126,6 +3747,7 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
     _lotNumber.dispose();
     _purchasePrice.dispose();
     _bullet.dispose();
+    _grain.dispose();
     _bc.dispose();
     _notes.dispose();
     super.dispose();
@@ -3140,13 +3762,15 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
-              controller: _name,
-              decoration: const InputDecoration(labelText: 'Name'),
+              controller: _caliber,
+              decoration: const InputDecoration(labelText: 'Caliber *'),
               textInputAction: TextInputAction.next,
             ),
+            const SizedBox(height: 8),
+            const SizedBox(height: 8),
             TextField(
-              controller: _caliber,
-              decoration: const InputDecoration(labelText: 'Caliber'),
+              controller: _name,
+              decoration: const InputDecoration(labelText: 'Name (optional)'),
               textInputAction: TextInputAction.next,
             ),
             TextField(
@@ -3223,7 +3847,8 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
           onPressed: () {
             final name = _name.text.trim();
             final caliber = _caliber.text.trim();
-            if (name.isEmpty || caliber.isEmpty) return;
+            final grainVal = int.tryParse(_grain.text.trim());
+            if (name.isEmpty || caliber.isEmpty || grainVal == null || grainVal <= 0) return;
 
             final bcStr = _bc.text.trim();
             final bcVal = double.tryParse(bcStr);
@@ -3238,7 +3863,8 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
                 purchasePrice: _purchasePrice.text,
                 bullet: _bullet.text,
                 notes: _notes.text,
-                ballisticCoefficient: bcVal,
+                                grain: grainVal,
+ballisticCoefficient: bcVal,
               ),
             );
           },
@@ -3275,7 +3901,7 @@ class DopeManagerScreen extends StatelessWidget {
     final entries = rifle.dopeEntries;
     return Scaffold(
       appBar: AppBar(
-        title: Text('DOPE â€¢ ${rifle.name}'),
+        title: Text('DOPE • ${rifle.name}'),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
@@ -3309,7 +3935,7 @@ class DopeManagerScreen extends StatelessWidget {
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 8),
-                  const Text('Tap + to add your first DOPE entry.'),
+const Text('Tap + to add your first DOPE entry.'),
                   if (rifle.dope.trim().isNotEmpty) ...[
                     const SizedBox(height: 16),
                     const Text(
@@ -3329,7 +3955,7 @@ class DopeManagerScreen extends StatelessWidget {
               itemBuilder: (context, i) {
                 final e = entries[i];
                 return ListTile(
-                  title: Text('${e.distance} â€¢ Elev ${e.elevation} â€¢ Wind ${e.windage}'),
+                  title: Text('${e.distance} • Elev ${e.elevation} • Wind ${e.windage}'),
                   subtitle: e.notes.trim().isEmpty ? null : Text(e.notes),
                   onTap: () async {
                     final edited = await showDialog<RifleDopeEntry>(
