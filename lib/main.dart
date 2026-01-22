@@ -2665,8 +2665,7 @@ Card(
                             subtitle: Text(
                               'Wind: $wind'
                               '${e.windNotes.trim().isEmpty ? '' : ' • ${e.windNotes.trim()}'}'
-                              '${e.elevationNotes.trim().isEmpty ? '' : '
-Elev: ${e.elevationNotes.trim()}'}',
+                              '${e.elevationNotes.trim().isEmpty ? '' : ' • Elev: ${e.elevationNotes.trim()}'}',
                             ),
                           ),
                         );
