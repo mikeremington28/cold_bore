@@ -131,7 +131,11 @@ String _buildCasePacket(AppState state, {
   }
 
   String ammoLabel() {
-    if (ammo != null) return '${ammo.brand} ${ammo.bullet} ${ammo.grain}gr';
+    if (ammo != null) {
+      final m = (ammo.manufacturer ?? ammo.name ?? '').trim();
+      final prefix = m.isEmpty ? '' : '$m ';
+      return '${prefix}${ammo.bullet} ${ammo.grain}gr';
+    }
     if (s.ammoLotId == null) return '—';
     return 'Deleted ammo (${s.ammoLotId})';
   }
