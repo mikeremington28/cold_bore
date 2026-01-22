@@ -620,36 +620,19 @@ class AppState extends ChangeNotifier {
     _users.add(u);
     _activeUser = u;
 
-    final demoRifle = Rifle(
-      id: _newId(),
-      name: 'Demo Rifle',
-      caliber: '.308',
-      notes: 'Placeholder rifle',
-      dope: '',
-    );
-    _rifles.add(demoRifle);
-
-    final demoAmmo = AmmoLot(
-      id: _newId(),
-      name: 'Demo Ammo',
-      caliber: '.308',
-      grain: 175,
-      bullet: 'SMK',
-      notes: 'Placeholder ammo lot',
-    );
-    _ammoLots.add(demoAmmo);
-
+    // Start with a clean slate (no placeholder rifle/ammo).
     _sessions.add(
       TrainingSession(
         id: _newId(),
         userId: u.id,
         dateTime: DateTime.now(),
-        locationName: 'Demo Range',
-        notes: 'Tap a session to add rifle/ammo and a cold bore entry.',
-        rifleId: demoRifle.id,
-        ammoLotId: demoAmmo.id,
+        locationName: '',
+        notes: '',
+        rifleId: null,
+        ammoLotId: null,
         shots: const [],
         photos: const [],
+        sessionPhotos: const [],
         trainingDope: const [],
       ),
     );
@@ -890,7 +873,8 @@ class AppState extends ChangeNotifier {
       ammoLotId: null,
       shots: const [],
       photos: const [],
-      trainingDope: const [],
+        sessionPhotos: const [],
+        trainingDope: const [],
     );
 
     _sessions.add(created);
@@ -1166,6 +1150,28 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+
+  /// Adds a session-level photo captured from the Session screen.
+  void addSessionPhoto({
+    required String sessionId,
+    required Uint8List bytes,
+    String? caption,
+  }) {
+    final idx = _sessions.indexWhere((s) => s.id == sessionId);
+    if (idx < 0) return;
+    final s = _sessions[idx];
+
+    final photo = SessionPhoto(
+      id: _newId(),
+      time: DateTime.now(),
+      bytes: bytes,
+      caption: (caption ?? '').trim(),
+    );
+
+    _sessions[idx] = s.copyWith(sessionPhotos: [...s.sessionPhotos, photo]);
+    notifyListeners();
+  }
+
   List<_ColdBoreRow> coldBoreRowsForActiveUser() {
     final user = _activeUser;
     if (user == null) return const [];
@@ -1335,6 +1341,7 @@ class TrainingSession {
 
   final List<ShotEntry> shots;
   final List<PhotoNote> photos;
+  final List<SessionPhoto> sessionPhotos;
   final List<DopeEntry> trainingDope;
 
   TrainingSession({
@@ -1352,6 +1359,7 @@ class TrainingSession {
     required this.ammoLotId,
     required this.shots,
     required this.photos,
+    required this.sessionPhotos,
     required this.trainingDope,
   });
 
@@ -1368,6 +1376,7 @@ class TrainingSession {
     String? ammoLotId,
     List<ShotEntry>? shots,
     List<PhotoNote>? photos,
+    List<SessionPhoto>? sessionPhotos,
     List<DopeEntry>? trainingDope,
   }) {
     return TrainingSession(
@@ -1385,6 +1394,7 @@ class TrainingSession {
       ammoLotId: ammoLotId ?? this.ammoLotId,
       shots: shots ?? this.shots,
       photos: photos ?? this.photos,
+      sessionPhotos: sessionPhotos ?? this.sessionPhotos,
       trainingDope: trainingDope ?? this.trainingDope,
     );
   }
@@ -1453,7 +1463,22 @@ class ColdBorePhoto {
   });
 }
 
-/// MVP placeholder for *session-level* photos (until we wire storage).
+/// Session-level photo captured from the Session screen.
+class SessionPhoto {
+  final String id;
+  final DateTime time;
+  final Uint8List bytes;
+  final String caption;
+
+  SessionPhoto({
+    required this.id,
+    required this.time,
+    required this.bytes,
+    required this.caption,
+  });
+}
+
+/// Text-only session note (kept for quick caption-only notes).
 class PhotoNote {
   final String id;
   final DateTime time;
@@ -2569,83 +2594,185 @@ Card(
                       ),
                     ),
               const SizedBox(height: 16),
-              _SectionTitle('Training DOPE'),
-              const SizedBox(height: 8),
-              if (s.ammoLotId == null)
-                _HintCard(
-                  icon: Icons.info_outline,
-                  title: 'Select ammo to view data',
-                  message: 'Choose ammo in Loadout to view or add training DOPE for this session.',
-                )
-              else ...[
-                Builder(
-                  builder: (context) {
-                    final filtered = s.trainingDope.where((e) {
-                      if (e.rifleId != s.rifleId) return false;
-                      if (e.ammoLotId != s.ammoLotId) return false;
-                      return true;
-                    }).toList();
-
-                    if (filtered.isEmpty) {
-                      return _HintCard(
-                        icon: Icons.my_location_outlined,
-                        title: 'No training DOPE yet',
-                        message: 'Tap Add to log DOPE during this session.',
-                        actionLabel: 'Add DOPE',
-                        onAction: () => _addDope(context, s),
+              Row(
+                children: [
+                  Expanded(child: _SectionTitle('Working DOPE (quick reference)')),
+                  TextButton.icon(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => DataScreen(state: state)),
                       );
-                    }
+                    },
+                    icon: const Icon(Icons.open_in_new),
+                    label: const Text('Open Data'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Builder(
+                builder: (context) {
+                  if (s.rifleId == null) {
+                    return _HintCard(
+                      icon: Icons.info_outline,
+                      title: 'Select a rifle',
+                      message: 'Choose a rifle in Loadout to view working DOPE.',
+                    );
+                  }
 
-                    return Column(
-                      children: [
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: TextButton.icon(
-                            onPressed: () => _addDope(context, s),
-                            icon: const Icon(Icons.add),
-                            label: const Text('Add DOPE'),
-                          ),
+                  final rifleKey = s.rifleId!;
+                  final ammoKey = (s.ammoLotId == null) ? null : '${s.rifleId}_${s.ammoLotId}';
+                  final rifleAmmoMap = (ammoKey == null) ? null : state.workingDopeRifleAmmo[ammoKey];
+                  final rifleOnlyMap = state.workingDopeRifleOnly[rifleKey];
+
+                  final useAmmoScoped = (rifleAmmoMap != null && rifleAmmoMap.isNotEmpty);
+                  final useMap = useAmmoScoped
+                      ? rifleAmmoMap!
+                      : (rifleOnlyMap ?? <DistanceKey, DopeEntry>{});
+
+                  final scopeLabel = useAmmoScoped ? 'Rifle + Ammo' : 'Rifle only';
+
+                  if (useMap.isEmpty) {
+                    return _HintCard(
+                      icon: Icons.my_location_outlined,
+                      title: 'No working DOPE yet',
+                      message: 'Promote DOPE from Training DOPE (when adding an entry) or add it in Data.',
+                    );
+                  }
+
+                  final dks = useMap.keys.toList()..sort((a, b) => a.value.compareTo(b.value));
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Text(
+                          scopeLabel,
+                          style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7)),
                         ),
-                        ...filtered.map(
-                          (e) => Card(
-                            child: ListTile(
-                              title: Text(
-                                '${e.distance.toStringAsFixed(0)} ${e.distanceUnit == DistanceUnit.yards ? 'yd' : 'm'} • '
-                                'Elev ${e.elevation.toStringAsFixed(2)} ${(e.elevationUnit == ElevationUnit.mil ? 'mil' : (e.elevationUnit == ElevationUnit.moa ? 'MOA' : 'in'))}',
-                              ),
-                              subtitle: Text(
-                                '${_fmtDateTime(e.time)}'
-                                '${e.windValue.trim().isEmpty ? '' : ' • Wind ${e.windValue}'}'
-                                '${e.elevationNotes.trim().isEmpty ? '' : '\nElev: ${e.elevationNotes}'}'),
+                      ),
+                      ...dks.map((dk) {
+                        final e = useMap[dk]!;
+                        final wind = (e.windageLeft > 0)
+                            ? 'L ${e.windageLeft.toStringAsFixed(2)}'
+                            : (e.windageRight > 0 ? 'R ${e.windageRight.toStringAsFixed(2)}' : '—');
+                        return Card(
+                          child: ListTile(
+                            title: Text(
+                              '${dk.value.toStringAsFixed(0)} ${dk.unit == DistanceUnit.yards ? 'yd' : 'm'}'
+                              '  •  ${e.elevation.toStringAsFixed(2)} ${e.elevationUnit == ElevationUnit.mil ? 'mil' : (e.elevationUnit == ElevationUnit.moa ? 'MOA' : 'in')}',
+                            ),
+                            subtitle: Text(
+                              'Wind: $wind'
+                              '${e.windNotes.trim().isEmpty ? '' : ' • ${e.windNotes.trim()}'}'
+                              '${e.elevationNotes.trim().isEmpty ? '' : '
+Elev: ${e.elevationNotes.trim()}'}',
                             ),
                           ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              ],
+                        );
+                      }),
+                    ],
+                  );
+                },
+              ),
               const SizedBox(height: 16),
               _SectionTitle('Photos'),
               const SizedBox(height: 8),
-              _HintCard(
-                icon: Icons.photo_camera_outlined,
-                title: 'Photo capture is next',
-                message: 'For now, add a photo caption as a placeholder. Next step: wire real photo picking.',
-                actionLabel: 'Add photo note',
-                onAction: () => _addPhotoNote(context, s),
+              Row(
+                children: [
+                  FilledButton.icon(
+                    onPressed: () async {
+                      final picker = ImagePicker();
+                      try {
+                        final x = await picker.pickImage(source: ImageSource.camera, imageQuality: 85);
+                        if (x == null) return;
+                        final bytes = await x.readAsBytes();
+
+                        String caption = '';
+                        final cap = await showDialog<String>(
+                          context: context,
+                          builder: (_) => const _PhotoNoteDialog(),
+                        );
+                        if (cap != null) caption = cap;
+
+                        state.addSessionPhoto(sessionId: s.id, bytes: bytes, caption: caption);
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Camera error: $e')),
+                          );
+                        }
+                      }
+                    },
+                    icon: const Icon(Icons.photo_camera_outlined),
+                    label: const Text('Capture'),
+                  ),
+                  const SizedBox(width: 12),
+                  OutlinedButton.icon(
+                    onPressed: () => _addPhotoNote(context, s),
+                    icon: const Icon(Icons.note_add_outlined),
+                    label: const Text('Add note'),
+                  ),
+                ],
               ),
+              const SizedBox(height: 8),
+              if (s.sessionPhotos.isEmpty && s.photos.isEmpty)
+                _HintCard(
+                  icon: Icons.photo_outlined,
+                  title: 'No photos yet',
+                  message: 'Capture a photo for this session or add a note.',
+                ),
+              if (s.sessionPhotos.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                ...s.sessionPhotos.map(
+                  (p) => Card(
+                    child: ListTile(
+                      leading: ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: Image.memory(p.bytes, width: 52, height: 52, fit: BoxFit.cover),
+                      ),
+                      title: Text(p.caption.trim().isEmpty ? 'Photo' : p.caption.trim()),
+                      subtitle: Text('${_fmtDateTime(p.time)} • ${p.bytes.lengthInBytes} bytes'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () {
+                        showDialog<void>(
+                          context: context,
+                          builder: (_) => Dialog(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Text(p.caption.trim().isEmpty ? 'Photo' : p.caption.trim()),
+                                ),
+                                InteractiveViewer(
+                                  child: Image.memory(p.bytes),
+                                ),
+                                const SizedBox(height: 12),
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  child: const Text('Close'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ],
               if (s.photos.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 ...s.photos.map(
-                      (p) => Card(
-                        child: ListTile(
-                          leading: const Icon(Icons.photo_outlined),
-                          title: Text(p.caption),
-                          subtitle: Text(_fmtDateTime(p.time)),
-                        ),
-                      ),
+                  (p) => Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.sticky_note_2_outlined),
+                      title: Text(p.caption),
+                      subtitle: Text(_fmtDateTime(p.time)),
                     ),
+                  ),
+                ),
               ],
               const SizedBox(height: 8),
               const Divider(),
