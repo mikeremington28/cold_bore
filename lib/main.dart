@@ -2362,13 +2362,14 @@ Future<void> _addDope(BuildContext context, TrainingSession s) async {
               ),
               PopupMenuButton<String>(
                 tooltip: 'More',
-                onSelected: (v) async {
-                  if (v == 'case_packet') {
-                    await _exportCasePacket(context, s);
-                },
                 itemBuilder: (context) => const [
                   PopupMenuItem(value: 'case_packet', child: Text('Export case packet')),
                 ],
+                onSelected: (v) async {
+                  if (v == 'case_packet') {
+                    await _exportCasePacket(context, s);
+                  }
+                },
               ),
             ],
           ),
