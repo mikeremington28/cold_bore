@@ -579,6 +579,24 @@ class AppState extends ChangeNotifier {
   List<TrainingSession> get sessions => List.unmodifiable(
         _sessions.where((s) => s.userId == _activeUser?.id),
       );
+  /// Convenience lookups used by exports/case packets.
+  Rifle? findRifleById(String id) {
+    try {
+      return _rifles.firstWhere((r) => r.id == id);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  AmmoLot? findAmmoLotById(String id) {
+    try {
+      return _ammoLots.firstWhere((a) => a.id == id);
+    } catch (_) {
+      return null;
+    }
+  }
+
+
 
   UserProfile? get activeUser => _activeUser;
 
@@ -795,7 +813,8 @@ class AppState extends ChangeNotifier {
         id: _newId(),
         name: (name == null || name.trim().isEmpty) ? null : name.trim(),
         caliber: caliber.trim(),
-bullet: bullet.trim(),
+        grain: grain,
+        bullet: bullet.trim(),
         notes: notes.trim(),
         manufacturer: manufacturer?.trim().isEmpty == true ? null : manufacturer?.trim(),
         lotNumber: lotNumber?.trim().isEmpty == true ? null : lotNumber?.trim(),
@@ -827,7 +846,8 @@ bullet: bullet.trim(),
       id: _ammoLots[idx].id,
       name: (name?.trim().isEmpty == true ? null : name?.trim()),
       caliber: caliber.trim(),
-bullet: bullet.trim(),
+        grain: grain,
+        bullet: bullet.trim(),
       notes: notes.trim(),
       manufacturer: manufacturer?.trim().isEmpty == true ? null : manufacturer?.trim(),
       lotNumber: lotNumber?.trim().isEmpty == true ? null : lotNumber?.trim(),
@@ -1795,7 +1815,7 @@ class SessionsScreen extends StatelessWidget {
     final created = state.addSession(
       locationName: res.locationName,
       dateTime: res.dateTime,
-      notes: res.notes,
+      notes: res.notes ?? '',
     );
 
     if (created == null) return;
@@ -2135,7 +2155,7 @@ class SessionDetailScreen extends StatelessWidget {
       time: res.time,
       distance: res.distance,
       result: res.result,
-      notes: res.notes,
+      notes: res.notes ?? '',
     );
   }
 
@@ -2888,7 +2908,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
     widget.state.addRifle(
       name: (res.name ?? ''),
       caliber: res.caliber,
-      notes: res.notes,
+      notes: res.notes ?? '',
       dope: res.dope,
       manufacturer: res.manufacturer,
       model: res.model,
@@ -2912,7 +2932,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
       caliber: res.caliber,
       grain: res.grain,
       bullet: res.bullet,
-      notes: res.notes,
+      notes: res.notes ?? '',
       manufacturer: res.manufacturer,
       lotNumber: res.lotNumber,
       purchaseDate: res.purchaseDate,
@@ -2932,7 +2952,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
       rifleId: r.id,
       name: res.name,
       caliber: res.caliber,
-      notes: res.notes,
+      notes: res.notes ?? '',
       dope: res.dope,
       manufacturer: res.manufacturer,
       model: res.model,
@@ -2957,7 +2977,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
       caliber: res.caliber,
       grain: res.grain,
       bullet: res.bullet,
-      notes: res.notes,
+      notes: res.notes ?? '',
       manufacturer: res.manufacturer,
       lotNumber: res.lotNumber,
       purchaseDate: res.purchaseDate,
@@ -4368,7 +4388,7 @@ class DopeManagerScreen extends StatelessWidget {
                 distance: res.distance,
                 elevation: res.elevation,
                 windage: res.windage,
-                notes: res.notes,
+                notes: res.notes ?? '',
               ),
             );
           }
