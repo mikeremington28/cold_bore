@@ -2,7 +2,7 @@ name: cold_bore
 description: "A new Flutter project."
 publish_to: "none"
 
-version: 1.0.0+26
+version: 1.0.0+27
 
 environment:
   sdk: ^3.10.4

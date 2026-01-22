@@ -8,11 +8,11 @@ import 'package:image_picker/image_picker.dart';
 
 String _cleanText(String s) {
   return s
-      .replaceAll('â€¢', '•')
-      .replaceAll('â€”', '—')
-      .replaceAll('â€œ', '“')
-      .replaceAll('â€', '”')
-      .replaceAll('â€™', '’');
+      .replaceAll('"¢', '•')
+      .replaceAll('"”', '—')
+      .replaceAll('"', '“')
+      .replaceAll('"', '”')
+      .replaceAll(''', '’');
 }
 
 
@@ -619,25 +619,7 @@ class AppState extends ChangeNotifier {
     );
     _users.add(u);
     _activeUser = u;
-
-    final demoRifle = Rifle(
-      id: _newId(),
-      name: 'Demo Rifle',
-      caliber: '.308',
-      notes: 'Placeholder rifle',
-      dope: '',
-    );
-    _rifles.add(demoRifle);
-
-    final demoAmmo = AmmoLot(
-      id: _newId(),
-      name: 'Demo Ammo',
-      caliber: '.308',
-      grain: 175,
-      bullet: 'SMK',
-      notes: 'Placeholder ammo lot',
-    );
-    _ammoLots.add(demoAmmo);
+    // No default equipment; start empty.
 
     _sessions.add(
       TrainingSession(
@@ -1401,6 +1383,8 @@ class ShotEntry {
 
   final String distance;
   final String result;
+  // Distance from point-of-aim (POA) to point-of-impact (inches). Optional.
+  final double? poaOffsetInches;
   final String notes;
 
   /// Cold-bore-only photos (stored in-memory as bytes for MVP).
@@ -1413,6 +1397,7 @@ class ShotEntry {
     required this.isBaseline,
     required this.distance,
     required this.result,
+    this.poaOffsetInches,
     required this.notes,
     required this.photos,
   });
@@ -1423,6 +1408,7 @@ class ShotEntry {
     bool? isBaseline,
     String? distance,
     String? result,
+    double? poaOffsetInches,
     String? notes,
     List<ColdBorePhoto>? photos,
   }) {
@@ -1433,6 +1419,7 @@ class ShotEntry {
       isBaseline: isBaseline ?? this.isBaseline,
       distance: distance ?? this.distance,
       result: result ?? this.result,
+      poaOffsetInches: poaOffsetInches ?? this.poaOffsetInches,
       notes: notes ?? this.notes,
       photos: photos ?? this.photos,
     );
@@ -1458,11 +1445,13 @@ class PhotoNote {
   final String id;
   final DateTime time;
   final String caption;
+  final Uint8List? bytes;
 
   PhotoNote({
     required this.id,
     required this.time,
     required this.caption,
+    this.bytes,
   });
 }
 
@@ -1669,7 +1658,7 @@ class _DataScreenState extends State<DataScreen> {
                       const SizedBox(height: 8),
                       if (withDope.isEmpty)
                         Text(
-                          'No DOPE saved yet. Add it under Equipment â†’ Rifles.',
+                          'No DOPE saved yet. Add it under Equipment -> Rifles.',
                           style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7)),
                         )
                       else
@@ -2173,6 +2162,51 @@ class SessionDetailScreen extends StatelessWidget {
     state.addPhotoNote(sessionId: s.id, time: DateTime.now(), caption: res);
   }
 
+  Future<void> _captureSessionPhoto(BuildContext context, TrainingSession s) async {
+    // Uses the camera. (Requires NSCameraUsageDescription in iOS Info.plist for real devices.)
+    final picker = ImagePicker();
+    try {
+      final x = await picker.pickImage(source: ImageSource.camera, imageQuality: 92);
+      if (x == null) return;
+
+      final bytes = await x.readAsBytes();
+      final caption = await showDialog<String>(
+        context: context,
+        builder: (ctx) {
+          final c = TextEditingController();
+          return AlertDialog(
+            title: const Text('Photo caption (optional)'),
+            content: TextField(
+              controller: c,
+              decoration: const InputDecoration(hintText: 'E.g., Target @ 100 yd, cold bore'),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.of(ctx).pop(null), child: const Text('Skip')),
+              ElevatedButton(onPressed: () => Navigator.of(ctx).pop(c.text.trim()), child: const Text('Save')),
+            ],
+          );
+        },
+      );
+
+      final photo = PhotoNote(
+        id: state.newIdForUi(),
+        time: DateTime.now(),
+        caption: (caption ?? '').trim(),
+        bytes: Uint8List.fromList(bytes),
+      );
+
+      state.addSessionPhoto(sessionId: s.id, photo: photo);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Photo added')));
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Photo failed: $e')));
+      }
+    }
+  }
+
+
   Future<void> _editTrainingNotes(BuildContext context, TrainingSession s) async {
     final res = await showDialog<String>(
       context: context,
@@ -2397,409 +2431,18 @@ Card(
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Evidence / Integrity', style: TextStyle(fontWeight: FontWeight.w700)),
-        const SizedBox(height: 6),
-        SelectableText('Session ID: ${s.id}'),
-        const SizedBox(height: 4),
-        SelectableText('Evidence ID: ${_sessionEvidenceId(s)}'),
-        const SizedBox(height: 8),
-        Text('Rifle: ${rifle == null ? (s.rifleId == null ? '—' : 'Deleted (${s.rifleId})') : '${(rifle.name ?? 'Rifle').trim()} (${rifle.caliber})'}'),
-        Text('Ammo: ${ammo == null ? (s.ammoLotId == null ? '—' : 'Deleted (${s.ammoLotId})') : '${(ammo.name ?? 'Ammo').trim()} (${ammo.caliber})'}'),
-      ],
-    ),
-  ),
-),
-
-              const SizedBox(height: 16),
-              _SectionTitle('Notes'),
-              const SizedBox(height: 8),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        s.notes.isEmpty ? 'No notes yet. Tap Edit to add training notes.' : s.notes,
-                      ),
-                      const SizedBox(height: 8),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton.icon(
-                          onPressed: () => _editTrainingNotes(context, s),
-                          icon: const Icon(Icons.edit_note_outlined),
-                          label: const Text('Edit'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              _SectionTitle('Loadout'),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: DropdownButtonFormField<String?>(
-                      value: s.rifleId,
-                      decoration: const InputDecoration(labelText: 'Rifle'),
-                      items: [
-                        const DropdownMenuItem<String?>(value: null, child: Text('— None —')),
-                        if (s.rifleId != null && rifle == null)
-                          DropdownMenuItem<String?>(
-                            value: s.rifleId,
-                            child: Text('Deleted rifle (${s.rifleId})'),
-                          ),
-                        ...state.rifles.map(
-                          (r) => DropdownMenuItem<String?>(
-                            value: r.id,
-                            child: Text('${r.name ?? 'Rifle'} (${r.caliber})'),
-                          ),
-                        ),
-                      ],
-                      onChanged: (v) => state.updateSessionLoadout(sessionId: s.id, rifleId: v, ammoLotId: s.ammoLotId),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: DropdownButtonFormField<String?>(
-                      value: s.ammoLotId,
-                      decoration: const InputDecoration(labelText: 'Ammo'),
-                      items: [
-                        const DropdownMenuItem<String?>(value: null, child: Text('— None —')),
-                        if (s.ammoLotId != null && ammo == null)
-                          DropdownMenuItem<String?>(
-                            value: s.ammoLotId,
-                            child: Text('Deleted ammo (${s.ammoLotId})'),
-                          ),
-                        ...compatibleAmmo.map(
-                          (a) => DropdownMenuItem<String?>(
-                            value: a.id,
-                            child: Text('${a.name ?? 'Ammo'} (${a.caliber})'),
-                          ),
-                        ),
-                      ],
-                      onChanged: (rifle == null)
-                          ? null
-                          : (v) => state.updateSessionLoadout(sessionId: s.id, rifleId: s.rifleId, ammoLotId: v),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              _SectionTitle('Cold Bore Entries'),
-              const SizedBox(height: 8),
-              if (s.shots.where((x) => x.isColdBore).isEmpty)
-                _HintCard(
-                  icon: Icons.ac_unit_outlined,
-                  title: 'No cold bore entries yet',
-                  message: 'Tap “Add Cold Bore” to log the first shot for this session.',
-                )
-              else
-                ...s.shots.where((x) => x.isColdBore).map(
-                      (shot) => Card(
-                        child: ListTile(
-                          leading: Icon(
-                            shot.isBaseline ? Icons.star : Icons.ac_unit_outlined,
-                          ),
-                          title: Text('${shot.distance} • ${shot.result}'),
-                          subtitle: Text(
-                            '${_fmtDateTime(shot.time)}'
-                            '${shot.photos.isEmpty ? '' : ' • ${shot.photos.length} photo(s)'}',
-                          ),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => ColdBoreEntryScreen(
-                                  state: state,
-                                  sessionId: s.id,
-                                  shotId: shot.id,
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-              const SizedBox(height: 16),
-              _SectionTitle('Training DOPE'),
-              const SizedBox(height: 8),
-              if (s.ammoLotId == null)
-                _HintCard(
-                  icon: Icons.info_outline,
-                  title: 'Select ammo to view data',
-                  message: 'Choose ammo in Loadout to view or add training DOPE for this session.',
-                )
-              else ...[
-                Builder(
-                  builder: (context) {
-                    final filtered = s.trainingDope.where((e) {
-                      if (e.rifleId != s.rifleId) return false;
-                      if (e.ammoLotId != s.ammoLotId) return false;
-                      return true;
-                    }).toList();
-
-                    if (filtered.isEmpty) {
-                      return _HintCard(
-                        icon: Icons.my_location_outlined,
-                        title: 'No training DOPE yet',
-                        message: 'Tap Add to log DOPE during this session.',
-                        actionLabel: 'Add DOPE',
-                        onAction: () => _addDope(context, s),
-                      );
-                    }
-
-                    return Column(
-                      children: [
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: TextButton.icon(
-                            onPressed: () => _addDope(context, s),
-                            icon: const Icon(Icons.add),
-                            label: const Text('Add DOPE'),
-                          ),
-                        ),
-                        ...filtered.map(
-                          (e) => Card(
-                            child: ListTile(
-                              title: Text(
-                                '${e.distance.toStringAsFixed(0)} ${e.distanceUnit == DistanceUnit.yards ? 'yd' : 'm'} • '
-                                'Elev ${e.elevation.toStringAsFixed(2)} ${(e.elevationUnit == ElevationUnit.mil ? 'mil' : (e.elevationUnit == ElevationUnit.moa ? 'MOA' : 'in'))}',
-                              ),
-                              subtitle: Text(
-                                '${_fmtDateTime(e.time)}'
-                                '${e.windValue.trim().isEmpty ? '' : ' • Wind ${e.windValue}'}'
-                                '${e.elevationNotes.trim().isEmpty ? '' : '\nElev: ${e.elevationNotes}'}'),
-                            ),
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              ],
-              const SizedBox(height: 16),
-              _SectionTitle('Photos'),
-              const SizedBox(height: 8),
-              _HintCard(
-                icon: Icons.photo_camera_outlined,
-                title: 'Photo capture is next',
-                message: 'For now, add a photo caption as a placeholder. Next step: wire real photo picking.',
-                actionLabel: 'Add photo note',
-                onAction: () => _addPhotoNote(context, s),
-              ),
-              if (s.photos.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                ...s.photos.map(
-                      (p) => Card(
-                        child: ListTile(
-                          leading: const Icon(Icons.photo_outlined),
-                          title: Text(p.caption),
-                          subtitle: Text(_fmtDateTime(p.time)),
-                        ),
-                      ),
-                    ),
-              ],
-              const SizedBox(height: 8),
-              const Divider(),
-              const SizedBox(height: 8),
-              Text(
-                'Loadout: ${rifle?.name ?? '—'} / ${ammo?.name ?? '—'}',
-                style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7)),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-class ColdBoreScreen extends StatelessWidget {
-  final AppState state;
-  const ColdBoreScreen({super.key, required this.state});
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: state,
-      builder: (context, _) {
-        final user = state.activeUser;
-        if (user == null) {
-          return const _EmptyState(
-            icon: Icons.person_outline,
-            title: 'No active user',
-            message: 'Create or select a user to view cold bore history.',
-          );
-        }
-
-        final rows = state.coldBoreRowsForActiveUser();
-        if (rows.isEmpty) {
-          return const _EmptyState(
-            icon: Icons.ac_unit_outlined,
-            title: 'No cold bore entries yet',
-            message: 'Open a session and tap “Add Cold Bore”.',
-          );
-        }
-
-        return ListView.separated(
-          itemCount: rows.length,
-          separatorBuilder: (_, __) => const Divider(height: 1),
-          itemBuilder: (context, i) {
-            final r = rows[i];
-            final rifle = r.rifle;
-            final ammo = r.ammo;
-            return ListTile(
-              leading: Icon(r.shot.isBaseline ? Icons.star : Icons.ac_unit_outlined),
-              title: Text('${r.shot.distance} • ${r.shot.result}' + (r.shot.photos.isEmpty ? '' : ' • ${r.shot.photos.length} photo(s)')),
-              subtitle: Text(
-                [
-                  _fmtDateTime(r.shot.time),
-                  r.session.locationName,
-                  if (rifle != null) rifle.name ?? '',
-                  if (ammo != null) ammo.name ?? '',
-                ].join(' • '),
-              ),
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => ColdBoreEntryScreen(
-                      state: state,
-                      sessionId: r.session.id,
-                      shotId: r.shot.id,
-                    ),
-                  ),
-                );
-              },
-            );
-          },
-        );
-      },
-    );
-  }
-}
-
-class ColdBoreEntryScreen extends StatefulWidget {
-  final AppState state;
-  final String sessionId;
-  final String shotId;
-  const ColdBoreEntryScreen({
-    super.key,
-    required this.state,
-    required this.sessionId,
-    required this.shotId,
-  });
-
-  @override
-  State<ColdBoreEntryScreen> createState() => _ColdBoreEntryScreenState();
-}
-
-class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
-  final ImagePicker _picker = ImagePicker();
-
-  Future<void> _pick({required ImageSource source}) async {
-    try {
-      final x = await _picker.pickImage(
-        source: source,
-        imageQuality: 92,
-        maxWidth: 2200,
-      );
-      if (x == null) return;
-
-      final bytes = await x.readAsBytes();
-      widget.state.addColdBorePhoto(
-        sessionId: widget.sessionId,
-        shotId: widget.shotId,
-        bytes: bytes,
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Photo failed: $e')),
-      );
-    }
-  }
-
-  void _setBaseline() {
-    widget.state.setBaselineColdBore(sessionId: widget.sessionId, shotId: widget.shotId);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Marked as baseline (first shot).')),
-    );
-  }
-
-  void _compare() {
-    final baseline = widget.state.baselineColdBoreShot();
-    if (baseline == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No baseline set yet. Tap “Mark as Baseline” first.')),
-      );
-      return;
-    }
-    final current = widget.state.shotById(sessionId: widget.sessionId, shotId: widget.shotId);
-    if (current == null) return;
-
-    if (baseline.id == current.id) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('This entry is already the baseline.')),
-      );
-      return;
-    }
-
-    showDialog<void>(
-      context: context,
-      builder: (_) {
-        final baseImg = baseline.photos.isNotEmpty ? baseline.photos.last.bytes : null;
-        final curImg = current.photos.isNotEmpty ? current.photos.last.bytes : null;
-        return AlertDialog(
-          title: const Text('Compare to Baseline'),
-          content: SizedBox(
-            width: 520,
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text('Baseline: ${baseline.distance} • ${baseline.result}'),
-                  const SizedBox(height: 8),
-                  if (baseImg != null)
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: Image.memory(baseImg, fit: BoxFit.cover),
-                    )
-                  else
-                    const Text('No baseline photo yet.'),
-                  const SizedBox(height: 16),
-                  Text('Selected: ${current.distance} • ${current.result}'),
-                  const SizedBox(height: 8),
-                  if (curImg != null)
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: Image.memory(curImg, fit: BoxFit.cover),
-                    )
-                  else
-                    const Text('No photo on this entry yet.'),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+        ExpansionTile(
+          tilePadding: EdgeInsets.zero,
+          title: const Text('Session information', style: TextStyle(fontWeight: FontWeight.w700)),
+          childrenPadding: const EdgeInsets.only(top: 6),
+          children: [
+            SelectableText('Session ID: ${s.id}'),
+            const SizedBox(height: 4),
+            SelectableText('Date/Time: ${_fmtDateTime(s.dateTime)}'),
+            const SizedBox(height: 4),
+            SelectableText('Location: ${s.locationName.isEmpty ? '—' : s.locationName}'),
           ],
         );
-      },
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: widget.state,
-      builder: (context, _) {
-        final s = widget.state.getSessionById(widget.sessionId);
-        final shot = widget.state.shotById(sessionId: widget.sessionId, shotId: widget.shotId);
-        if (s == null || shot == null) {
-          return const Scaffold(body: Center(child: Text('Entry not found')));
         }
 
         return Scaffold(
@@ -3598,6 +3241,35 @@ Future<void> _pickDateTime() async {
             textInputAction: TextInputAction.next,
           ),
           const SizedBox(height: 8),
+          const SizedBox(height: 12),
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: Text('Distance from POA (inches)', style: TextStyle(fontWeight: FontWeight.w600)),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              IconButton(
+                onPressed: () => setState(() {
+                  _poaOffsetInches = (_poaOffsetInches - 0.1);
+                  if (_poaOffsetInches < 0) _poaOffsetInches = 0;
+                }),
+                icon: const Icon(Icons.remove_circle_outline),
+              ),
+              Expanded(
+                child: Center(
+                  child: Text(
+                    _poaOffsetInches.toStringAsFixed(1),
+                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ),
+              IconButton(
+                onPressed: () => setState(() => _poaOffsetInches = (_poaOffsetInches + 0.1)),
+                icon: const Icon(Icons.add_circle_outline),
+              ),
+            ],
+          ),
           TextField(
             controller: _notes,
             decoration: const InputDecoration(labelText: 'Notes (optional)'),
@@ -3615,22 +3287,27 @@ Future<void> _pickDateTime() async {
             ],
           ),
           const SizedBox(height: 8),
+          // Keep the GPS status readable (avoid character-by-character wrap on narrow dialogs).
+          Text(
+            _lat == null || _lon == null
+                ? (_gpsError ?? 'GPS: not set')
+                : 'GPS: ${_lat!.toStringAsFixed(5)}, ${_lon!.toStringAsFixed(5)}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
-                child: Text(
-                  _lat == null || _lon == null
-                      ? (_gpsError ?? 'GPS: not set')
-                      : 'GPS: ${_lat!.toStringAsFixed(5)}, ${_lon!.toStringAsFixed(5)}',
+                child: FilledButton.tonal(
+                  onPressed: _busy ? null : _fillGps,
+                  child: Text(_busy ? '...' : 'Use GPS'),
                 ),
               ),
-              FilledButton.tonal(
-                onPressed: _busy ? null : _fillGps,
-                child: Text(_busy ? '...' : 'Use GPS'),
-              ),
-            const SizedBox(width: 8),
-              FilledButton.tonal(
-                onPressed: _busy ? null : _grabWeather,
+              const SizedBox(width: 8),
+              Expanded(
+                child: FilledButton.tonal(
+                  onPressed: _busy ? null : _grabWeather,
                 child: Text(_busy ? '...' : 'Grab Weather'),
               ),
 ],
@@ -3686,6 +3363,8 @@ class _ColdBoreResult {
   final DateTime time;
   final String distance;
   final String result;
+  // Distance from point-of-aim (POA) to point-of-impact (inches). Optional.
+  final double? poaOffsetInches;
   final String notes;
   _ColdBoreResult({required this.time, required this.distance, required this.result, required this.notes});
 }
@@ -3704,6 +3383,7 @@ class _ColdBoreDialogState extends State<_ColdBoreDialog> {
   final _result = TextEditingController(text: 'Impact OK');
   final _notes = TextEditingController();
   late DateTime _time;
+  double _poaOffsetInches = 0.0;
 
   @override
   void initState() {
@@ -3753,6 +3433,35 @@ class _ColdBoreDialogState extends State<_ColdBoreDialog> {
             decoration: const InputDecoration(labelText: 'Result'),
             textInputAction: TextInputAction.next,
           ),
+          const SizedBox(height: 12),
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: Text('Distance from POA (inches)', style: TextStyle(fontWeight: FontWeight.w600)),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              IconButton(
+                onPressed: () => setState(() {
+                  _poaOffsetInches = (_poaOffsetInches - 0.1);
+                  if (_poaOffsetInches < 0) _poaOffsetInches = 0;
+                }),
+                icon: const Icon(Icons.remove_circle_outline),
+              ),
+              Expanded(
+                child: Center(
+                  child: Text(
+                    _poaOffsetInches.toStringAsFixed(1),
+                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ),
+              IconButton(
+                onPressed: () => setState(() => _poaOffsetInches = (_poaOffsetInches + 0.1)),
+                icon: const Icon(Icons.add_circle_outline),
+              ),
+            ],
+          ),
           TextField(
             controller: _notes,
             decoration: const InputDecoration(labelText: 'Notes (optional)'),
@@ -3768,7 +3477,7 @@ class _ColdBoreDialogState extends State<_ColdBoreDialog> {
             final result = _result.text.trim();
             if (distance.isEmpty || result.isEmpty) return;
             Navigator.of(context).pop(
-              _ColdBoreResult(time: _time, distance: distance, result: result, notes: _notes.text),
+              _ColdBoreResult(time: _time, distance: distance, result: result, poaOffsetInches: _poaOffsetInches, notes: _notes.text),
             );
           },
           child: const Text('Save'),
