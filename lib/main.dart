@@ -2813,7 +2813,7 @@ Card(
                       subtitle: Text(_fmtDateTime(p.time)),
                     ),
                   ),
-                )),
+                ),
               ],
               const SizedBox(height: 8),
               const Divider(),
