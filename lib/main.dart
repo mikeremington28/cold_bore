@@ -2756,44 +2756,7 @@ Card(
                   ),
                 ],
               ),
-              if (s.sessionPhotos.isEmpty)
-                _HintCard(
-                  icon: Icons.photo_outlined,
-                  title: 'No photos yet',
-                  message: 'Capture a photo for this session or add a note.',
-                ),
-              if (s.sessionPhotos.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                for (final p in s.sessionPhotos) Card(
-                  child: ListTile(
-                    leading: ClipRRect(
-                      borderRadius: BorderRadius.circular(6),
-                      child: Image.memory(p.bytes, width: 52, height: 52, fit: BoxFit.cover),
-                    ),
-                    title: Text(p.caption.trim().isEmpty ? 'Photo' : p.caption.trim()),
-                    subtitle: Text('${_fmtDateTime(p.time)} • ${p.bytes.lengthInBytes} bytes'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () {
-                      showDialog<void>(
-                        context: context,
-                        builder: (_) => Dialog(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: Text(p.caption.trim().isEmpty ? 'Photo' : p.caption.trim()),
-                              ),
-                              InteractiveViewer(
-                                child: Image.memory(p.bytes),
-                              ),
-                              const SizedBox(height: 12),
-                              TextButton(
-                                onPressed: () => Navigator.pop(context),
-                                child: const Text('Close'),
-                              ),
-                            ],
-                          ),
+                                                      ),
                         ),
                       );
                     },
