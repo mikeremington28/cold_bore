@@ -4429,6 +4429,9 @@ void initState() {
             TextField(
               controller: _purchaseLocation,
               decoration: const InputDecoration(labelText: 'Purchase location (optional)'),
+              textInputAction: TextInputAction.next,
+            ),
+            const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(
