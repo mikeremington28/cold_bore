@@ -1680,7 +1680,12 @@ class _DataScreenState extends State<DataScreen> {
               const SizedBox(height: 12),
               Card(
                 child: Padding(
-                  padding: const EdgeInsets.all(16),
+                  padding: EdgeInsets.fromLTRB(
+              MediaQuery.of(context).size.width < 420 ? 12 : 16,
+              16,
+              MediaQuery.of(context).size.width < 420 ? 12 : 16,
+              120,
+            ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -2403,10 +2408,21 @@ Future<void> _addDope(BuildContext context, TrainingSession s) async {
             icon: const Icon(Icons.ac_unit_outlined),
             label: const Text('Add Cold Bore'),
           ),
-          body: ListView(
-            padding: const EdgeInsets.all(16),
+          body: SafeArea(
+            child: ListView(
+              padding: EdgeInsets.fromLTRB(
+                MediaQuery.of(context).size.width < 420 ? 12 : 16,
+                16,
+                MediaQuery.of(context).size.width < 420 ? 12 : 16,
+                120,
+              ),
             children: [
-              Text(s.locationName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+              Text(
+                s.locationName,
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
               const SizedBox(height: 6),
               Text(_fmtDateTime(s.dateTime)),
 
@@ -2429,6 +2445,7 @@ Card(
           alignment: Alignment.centerLeft,
           child: Text(
             'Rifle: ${rifle == null ? (s.rifleId == null ? '—' : 'Deleted (${s.rifleId})') : '${(rifle.name ?? 'Rifle').trim()} (${rifle.caliber})'}',
+            ),
           ),
         ),
         Align(
@@ -2468,59 +2485,84 @@ Card(
                 ),
               ),
               const SizedBox(height: 16),
-              _SectionTitle('Loadout'),
+                            _SectionTitle('Loadout'),
               const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: DropdownButtonFormField<String?>(
-                      value: s.rifleId,
-                      decoration: const InputDecoration(labelText: 'Rifle'),
-                      items: [
-                        const DropdownMenuItem<String?>(value: null, child: Text('— None —')),
-                        if (s.rifleId != null && rifle == null)
-                          DropdownMenuItem<String?>(
-                            value: s.rifleId,
-                            child: Text('Deleted rifle (${s.rifleId})'),
-                          ),
-                        ...state.rifles.map(
-                          (r) => DropdownMenuItem<String?>(
-                            value: r.id,
-                            child: Text('${r.name ?? 'Rifle'} (${r.caliber})'),
-                          ),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final narrow = constraints.maxWidth < 520;
+                  final rifleField = DropdownButtonFormField<String?>(
+                    value: s.rifleId,
+                    decoration: const InputDecoration(labelText: 'Rifle'),
+                    items: [
+                      const DropdownMenuItem<String?>(value: null, child: Text('— None —')),
+                      if (s.rifleId != null && rifle == null)
+                        DropdownMenuItem<String?>(
+                          value: s.rifleId,
+                          child: Text('Deleted rifle (${s.rifleId})'),
                         ),
-                      ],
-                      onChanged: (v) => state.updateSessionLoadout(sessionId: s.id, rifleId: v, ammoLotId: s.ammoLotId),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: DropdownButtonFormField<String?>(
-                      value: s.ammoLotId,
-                      decoration: const InputDecoration(labelText: 'Ammo'),
-                      items: [
-                        const DropdownMenuItem<String?>(value: null, child: Text('— None —')),
-                        if (s.ammoLotId != null && ammo == null)
-                          DropdownMenuItem<String?>(
-                            value: s.ammoLotId,
-                            child: Text('Deleted ammo (${s.ammoLotId})'),
-                          ),
-                        ...compatibleAmmo.map(
-                          (a) => DropdownMenuItem<String?>(
-                            value: a.id,
-                            child: Text('${a.name ?? 'Ammo'} (${a.caliber})'),
-                          ),
+                      ...state.rifles.map(
+                        (r) => DropdownMenuItem<String?>(
+                          value: r.id,
+                          child: Text('${r.name ?? 'Rifle'} (${r.caliber})'),
                         ),
-                      ],
-                      onChanged: (rifle == null)
-                          ? null
-                          : (v) => state.updateSessionLoadout(sessionId: s.id, rifleId: s.rifleId, ammoLotId: v),
+                      ),
+                    ],
+                    onChanged: (v) => state.updateSessionLoadout(
+                      sessionId: s.id,
+                      rifleId: v,
+                      ammoLotId: s.ammoLotId,
                     ),
-                  ),
-                ],
+                  );
+
+                  final ammoField = DropdownButtonFormField<String?>(
+                    value: s.ammoLotId,
+                    decoration: const InputDecoration(labelText: 'Ammo'),
+                    items: [
+                      const DropdownMenuItem<String?>(value: null, child: Text('— None —')),
+                      if (s.ammoLotId != null && ammo == null)
+                        DropdownMenuItem<String?>(
+                          value: s.ammoLotId,
+                          child: Text('Deleted ammo (${s.ammoLotId})'),
+                        ),
+                      if (rifle != null && ammo != null && ammo.caliber != rifle.caliber)
+                        DropdownMenuItem<String?>(
+                          value: ammo.id,
+                          child: Text('${ammo.name ?? 'Ammo'} (${ammo.caliber}) • Incompatible'),
+                        ),
+                      ...(rifle == null ? state.ammoLots : compatibleAmmo).map(
+                        (a) => DropdownMenuItem<String?>(
+                          value: a.id,
+                          child: Text('${a.name ?? 'Ammo'} (${a.caliber})'),
+                        ),
+                      ),
+                    ],
+                    onChanged: (v) => state.updateSessionLoadout(
+                      sessionId: s.id,
+                      rifleId: s.rifleId,
+                      ammoLotId: v,
+                    ),
+                  );
+
+                  if (narrow) {
+                    return Column(
+                      children: [
+                        rifleField,
+                        const SizedBox(height: 12),
+                        ammoField,
+                      ],
+                    );
+                  }
+                  return Row(
+                    children: [
+                      Expanded(child: rifleField),
+                      const SizedBox(width: 12),
+                      Expanded(child: ammoField),
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 16),
-              const SizedBox(height: 16),
+
               Row(
                 children: [
                   Expanded(child: _SectionTitle('Training DOPE')) ,
