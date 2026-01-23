@@ -2470,85 +2470,54 @@ Card(
               const SizedBox(height: 16),
               _SectionTitle('Loadout'),
               const SizedBox(height: 8),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final isNarrow = constraints.maxWidth < 520;
-                  final ammoOptions = <AmmoLot>[
-                    if (rifle == null) ...state.ammoLots else ...compatibleAmmo,
-                    if (rifle != null && ammo != null && !compatibleAmmo.any((a) => a.id == ammo.id)) ammo,
-                  ];
-
-                  final rifleField = DropdownButtonFormField<String?>(
-                    value: s.rifleId,
-                    decoration: const InputDecoration(labelText: 'Rifle'),
-                    isExpanded: true,
-                    items: [
-                      const DropdownMenuItem<String?>(value: null, child: Text('— None —')),
-                      if (s.rifleId != null && rifle == null)
-                        DropdownMenuItem<String?>(
-                          value: s.rifleId,
-                          child: Text('Deleted rifle (${s.rifleId})'),
+              Row(
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<String?>(
+                      value: s.rifleId,
+                      decoration: const InputDecoration(labelText: 'Rifle'),
+                      items: [
+                        const DropdownMenuItem<String?>(value: null, child: Text('— None —')),
+                        if (s.rifleId != null && rifle == null)
+                          DropdownMenuItem<String?>(
+                            value: s.rifleId,
+                            child: Text('Deleted rifle (${s.rifleId})'),
+                          ),
+                        ...state.rifles.map(
+                          (r) => DropdownMenuItem<String?>(
+                            value: r.id,
+                            child: Text('${r.name ?? 'Rifle'} (${r.caliber})'),
+                          ),
                         ),
-                      ...state.rifles.map(
-                        (r) => DropdownMenuItem<String?>(
-                          value: r.id,
-                          child: Text('${r.name ?? 'Rifle'} (${r.caliber})'),
-                        ),
-                      ),
-                    ],
-                    onChanged: (v) {
-                      final newRifle = v == null ? null : state.rifleById(v);
-                      String? nextAmmo = s.ammoLotId;
-                      if (newRifle != null && nextAmmo != null) {
-                        final a = state.ammoById(nextAmmo);
-                        if (a == null || a.caliber != newRifle.caliber) nextAmmo = null;
-                      }
-                      state.updateSessionLoadout(sessionId: s.id, rifleId: v, ammoLotId: nextAmmo);
-                    },
-                  );
-
-                  final ammoField = DropdownButtonFormField<String?>(
-                    value: s.ammoLotId,
-                    decoration: const InputDecoration(labelText: 'Ammo'),
-                    isExpanded: true,
-                    items: [
-                      const DropdownMenuItem<String?>(value: null, child: Text('— None —')),
-                      if (s.ammoLotId != null && ammo == null)
-                        DropdownMenuItem<String?>(
-                          value: s.ammoLotId,
-                          child: Text('Deleted ammo (${s.ammoLotId})'),
-                        ),
-                      ...ammoOptions.map(
-                        (a) {
-                          final incompatible = (rifle != null && a.caliber != rifle.caliber);
-                          final label = '${a.name ?? 'Ammo'} (${a.caliber})${incompatible ? ' • Incompatible' : ''}';
-                          return DropdownMenuItem<String?>(
-                            value: a.id,
-                            child: Text(label, overflow: TextOverflow.ellipsis),
-                          );
-                        },
-                      ),
-                    ],
-                    onChanged: (v) => state.updateSessionLoadout(sessionId: s.id, rifleId: s.rifleId, ammoLotId: v),
-                  );
-
-                  if (isNarrow) {
-                    return Column(
-                      children: [
-                        rifleField,
-                        const SizedBox(height: 12),
-                        ammoField,
                       ],
-                    );
-                  }
-                  return Row(
-                    children: [
-                      Expanded(child: rifleField),
-                      const SizedBox(width: 12),
-                      Expanded(child: ammoField),
-                    ],
-                  );
-                },
+                      onChanged: (v) => state.updateSessionLoadout(sessionId: s.id, rifleId: v, ammoLotId: s.ammoLotId),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: DropdownButtonFormField<String?>(
+                      value: s.ammoLotId,
+                      decoration: const InputDecoration(labelText: 'Ammo'),
+                      items: [
+                        const DropdownMenuItem<String?>(value: null, child: Text('— None —')),
+                        if (s.ammoLotId != null && ammo == null)
+                          DropdownMenuItem<String?>(
+                            value: s.ammoLotId,
+                            child: Text('Deleted ammo (${s.ammoLotId})'),
+                          ),
+                        ...compatibleAmmo.map(
+                          (a) => DropdownMenuItem<String?>(
+                            value: a.id,
+                            child: Text('${a.name ?? 'Ammo'} (${a.caliber})'),
+                          ),
+                        ),
+                      ],
+                      onChanged: (rifle == null)
+                          ? null
+                          : (v) => state.updateSessionLoadout(sessionId: s.id, rifleId: s.rifleId, ammoLotId: v),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 16),
               const SizedBox(height: 16),
@@ -3617,14 +3586,825 @@ class _NewUserDialogState extends State<_NewUserDialog> {
           ),
           const SizedBox(height: 8),
           TextField(
+            controller: _name,
+            decoration: const InputDecoration(labelText: 'Name (optional)'),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        ElevatedButton(
+          onPressed: () {
+            final nameRaw = _name.text.trim();
+            final name = nameRaw.isEmpty ? null : nameRaw;
+            final identifier = _id.text.trim();
+            if (identifier.isEmpty) return;
+            Navigator.of(context).pop(_NewUserResult(((name ?? '').trim().isEmpty) ? identifier : (name ?? '').trim(), identifier));
+          },
+          child: const Text('Add'),
+        ),
+      ],
+    );
+  }
+}
+
+class _NewSessionResult {
+  final String locationName;
+  final DateTime dateTime;
+  final String notes;
+  final double? latitude;
+  final double? longitude;
+  final double? temperatureF;
+  final double? windSpeedMph;
+  final int? windDirectionDeg;
+  _NewSessionResult({
+    required this.locationName,
+    required this.dateTime,
+    required this.notes,
+    this.latitude,
+    this.longitude,
+    this.temperatureF,
+    this.windSpeedMph,
+    this.windDirectionDeg,
+  });
+}
+
+class _NewSessionDialog extends StatefulWidget {
+  const _NewSessionDialog();
+
+  @override
+  State<_NewSessionDialog> createState() => _NewSessionDialogState();
+}
+
+class _NewSessionDialogState extends State<_NewSessionDialog> {
+  final _location = TextEditingController();
+  final _notes = TextEditingController();
+  final _tempF = TextEditingController();
+  final _windMph = TextEditingController();
+  final _windDir = TextEditingController();
+  DateTime _dateTime = DateTime.now();
+  double? _lat;
+  double? _lon;
+  bool _busy = false;
+  String? _gpsError;
+
+  Future<void> _fillGps() async {
+    await _useGps();
+  }
+
+  Future<void> _grabWeather() async {
+    await _fetchWeather();
+  }
+@override
+  void dispose() {
+    _location.dispose();
+    _notes.dispose();
+    _tempF.dispose();
+    _windMph.dispose();
+    _windDir.dispose();
+    super.dispose();
+  }
+
+  
+  Future<void> _useGps() async {
+    setState(() {
+      _busy = true;
+      _gpsError = null;
+    });
+    try {
+      final enabled = await Geolocator.isLocationServiceEnabled();
+      if (!enabled) {
+        setState(() => _gpsError = 'Location Services are off.');
+        return;
+      }
+
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
+        setState(() => _gpsError = 'Location permission denied.');
+        return;
+      }
+
+      final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      _lat = pos.latitude;
+      _lon = pos.longitude;
+      _location.text = '${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)}';
+    } catch (e) {
+      setState(() => _gpsError = 'GPS failed: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _fetchWeather() async {
+    if (_lat == null || _lon == null) {
+      setState(() => _gpsError = 'Tap "Use GPS" first (or enter coordinates).');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _gpsError = null;
+    });
+    try {
+      final uri = Uri.parse(
+        'https://api.open-meteo.com/v1/forecast'
+        '?latitude=${_lat}&longitude=${_lon}'
+        '&current=temperature_2m,wind_speed_10m,wind_direction_10m'
+        '&temperature_unit=fahrenheit&wind_speed_unit=mph',
+      );
+      final resp = await http.get(uri);
+      if (resp.statusCode != 200) {
+        throw 'HTTP ${resp.statusCode}';
+      }
+      final data = jsonDecode(resp.body) as Map<String, dynamic>;
+      final current = data['current'] as Map<String, dynamic>?;
+      if (current == null) throw 'No current weather data.';
+      final t = (current['temperature_2m'] as num?)?.toDouble();
+      final w = (current['wind_speed_10m'] as num?)?.toDouble();
+      final d = (current['wind_direction_10m'] as num?)?.toInt();
+      if (t != null) _tempF.text = t.toStringAsFixed(1);
+      if (w != null) _windMph.text = w.toStringAsFixed(1);
+      if (d != null) _windDir.text = d.toString();
+    } catch (e) {
+      setState(() => _gpsError = 'Weather fetch failed: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+Future<void> _pickDateTime() async {
+    final now = DateTime.now();
+    final d = await showDatePicker(
+      context: context,
+      firstDate: DateTime(now.year - 5),
+      lastDate: DateTime(now.year + 1),
+      initialDate: _dateTime,
+    );
+    if (d == null) return;
+    if (!mounted) return;
+
+    final t = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_dateTime),
+    );
+    if (t == null) return;
+
+    setState(() {
+      _dateTime = DateTime(d.year, d.month, d.day, t.hour, t.minute);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('New session'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _location,
+            decoration: const InputDecoration(labelText: 'Location *'),
+            textInputAction: TextInputAction.next,
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _notes,
+            decoration: const InputDecoration(labelText: 'Notes (optional)'),
+            maxLines: 2,
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(child: Text('Date/Time: ${_fmtDateTime(_dateTime)}')),
+              TextButton.icon(
+                onPressed: _pickDateTime,
+                icon: const Icon(Icons.event),
+                label: const Text('Change'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _lat == null || _lon == null
+                      ? (_gpsError ?? 'GPS: not set')
+                      : 'GPS: ${_lat!.toStringAsFixed(5)}, ${_lon!.toStringAsFixed(5)}',
+                ),
+              ),
+              FilledButton.tonal(
+                onPressed: _busy ? null : _fillGps,
+                child: Text(_busy ? '...' : 'Use GPS'),
+              ),
+            const SizedBox(width: 8),
+              FilledButton.tonal(
+                onPressed: _busy ? null : _grabWeather,
+                child: Text(_busy ? '...' : 'Grab Weather'),
+              ),
+],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _tempF,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'Temp (°F)'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: _windMph,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'Wind (mph)'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: _windDir,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Wind dir (°)'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        ElevatedButton(
+          onPressed: () {
+            final loc = _location.text.trim();
+            if (loc.isEmpty) return;
+            Navigator.of(context).pop(
+              _NewSessionResult(locationName: loc, dateTime: _dateTime, notes: _notes.text, latitude: _lat, longitude: _lon, temperatureF: double.tryParse(_tempF.text.trim()), windSpeedMph: double.tryParse(_windMph.text.trim()), windDirectionDeg: int.tryParse(_windDir.text.trim())),
+            );
+          },
+          child: const Text('Create'),
+        ),
+      ],
+    );
+  }
+}
+
+class _ColdBoreResult {
+  final DateTime time;
+  final String distance;
+  final String result;
+  final String notes;
+  _ColdBoreResult({required this.time, required this.distance, required this.result, required this.notes});
+}
+
+class _ColdBoreDialog extends StatefulWidget {
+  _ColdBoreDialog({super.key, DateTime? defaultTime}) : defaultTime = defaultTime ?? DateTime.now();
+
+  final DateTime defaultTime;
+
+  @override
+  State<_ColdBoreDialog> createState() => _ColdBoreDialogState();
+}
+
+class _ColdBoreDialogState extends State<_ColdBoreDialog> {
+  final _distance = TextEditingController(text: '100 yd');
+  final _result = TextEditingController(text: 'Impact OK');
+  final _notes = TextEditingController();
+  late DateTime _time;
+
+  @override
+  void initState() {
+    super.initState();
+    _time = widget.defaultTime;
+  }
+
+  @override
+  void dispose() {
+    _distance.dispose();
+    _result.dispose();
+    _notes.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickTime() async {
+    final t = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_time),
+    );
+    if (t == null) return;
+    setState(() {
+      _time = DateTime(_time.year, _time.month, _time.day, t.hour, t.minute);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Cold bore entry'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Expanded(child: Text('Time: ${_fmtDateTime(_time)}')),
+              TextButton(onPressed: _pickTime, child: const Text('Edit')),
+            ],
+          ),
+          TextField(
+            controller: _distance,
+            decoration: const InputDecoration(labelText: 'Distance'),
+            textInputAction: TextInputAction.next,
+          ),
+          TextField(
+            controller: _result,
+            decoration: const InputDecoration(labelText: 'Result'),
+            textInputAction: TextInputAction.next,
+          ),
+          TextField(
+            controller: _notes,
+            decoration: const InputDecoration(labelText: 'Notes (optional)'),
+            maxLines: 2,
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        ElevatedButton(
+          onPressed: () {
+            final distance = _distance.text.trim();
+            final result = _result.text.trim();
+            if (distance.isEmpty || result.isEmpty) return;
+            Navigator.of(context).pop(
+              _ColdBoreResult(time: _time, distance: distance, result: result, notes: _notes.text),
+            );
+          },
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
+class _EditNotesDialog extends StatefulWidget {
+  final String initialNotes;
+  const _EditNotesDialog({required this.initialNotes});
+
+  @override
+  State<_EditNotesDialog> createState() => _EditNotesDialogState();
+}
+
+class _EditNotesDialogState extends State<_EditNotesDialog> {
+  late final TextEditingController _c;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = TextEditingController(text: widget.initialNotes);
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Notes'),
+      content: TextField(
+        controller: _c,
+        maxLines: 6,
+        decoration: const InputDecoration(
+          hintText: 'Add training notes for this session”¦',
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(null),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_c.text),
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
+class _PhotoNoteDialog extends StatefulWidget {
+  const _PhotoNoteDialog();
+
+  @override
+  State<_PhotoNoteDialog> createState() => _PhotoNoteDialogState();
+}
+
+class _PhotoNoteDialogState extends State<_PhotoNoteDialog> {
+  final _caption = TextEditingController();
+
+  @override
+  void dispose() {
+    _caption.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Photo note'),
+      content: TextField(
+        controller: _caption,
+        decoration: const InputDecoration(labelText: 'Caption'),
+        maxLines: 2,
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        ElevatedButton(
+          onPressed: () => Navigator.of(context).pop(_caption.text),
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
+class _EditDopeDialog extends StatefulWidget {
+  final String initialValue;
+  const _EditDopeDialog({required this.initialValue});
+
+  @override
+  State<_EditDopeDialog> createState() => _EditDopeDialogState();
+}
+
+class _EditDopeDialogState extends State<_EditDopeDialog> {
+  late final TextEditingController _c;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = TextEditingController(text: widget.initialValue);
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Edit DOPE'),
+      content: TextField(
+        controller: _c,
+        decoration: const InputDecoration(
+          labelText: 'DOPE / Come-ups',
+          hintText: 'Example: 100y 0.0 | 200y 0.6 | 300y 1.4 ...',
+        ),
+        maxLines: 6,
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        ElevatedButton(
+          onPressed: () => Navigator.of(context).pop(_c.text),
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
+class _NewRifleResult {
+  final String? name;
+  final String caliber;
+  final String notes;
+  final String dope;
+  final List<RifleDopeEntry> dopeEntries;
+
+  final String? manufacturer;
+  final String? model;
+  final String? serialNumber;
+  final String? barrelLength;
+  final String? twistRate;
+  final DateTime? purchaseDate;
+  final String? purchasePrice;
+  final String? purchaseLocation;
+
+  _NewRifleResult({
+    this.name,
+    required this.caliber,
+    required this.notes,
+    required this.dope,
+    this.dopeEntries = const [],
+    this.manufacturer,
+    this.model,
+    this.serialNumber,
+    this.barrelLength,
+    this.twistRate,
+    this.purchaseDate,
+    this.purchasePrice,
+    this.purchaseLocation,
+  });
+}
+
+
+
+class _NewAmmoResult {
+  _NewAmmoResult({
+    this.name,
+    required this.caliber,
+    required this.grain,
+    required this.bullet,
+    this.ballisticCoefficient,
+    this.manufacturer,
+    this.lotNumber,
+    this.purchaseDate,
+    this.purchasePrice,
+    this.notes,
+  });
+
+  final String? name;
+  final String caliber;
+  final int grain;
+  final String bullet;
+  final double? ballisticCoefficient;
+  final String? manufacturer;
+  final String? lotNumber;
+  final DateTime? purchaseDate;
+  final String? purchasePrice;
+  final String? notes;
+}
+
+class _NewAmmoDialog extends StatefulWidget {
+  const _NewAmmoDialog({this.existing});
+  final AmmoLot? existing;
+
+  @override
+  State<_NewAmmoDialog> createState() => _NewAmmoDialogState();
+}
+
+class _NewAmmoDialogState extends State<_NewAmmoDialog> {
+  final _name = TextEditingController();
+  final _caliber = TextEditingController();
+  final _manufacturer = TextEditingController();
+  final _bullet = TextEditingController();
+  final _grain = TextEditingController();
+  final _bc = TextEditingController();
+  final _lot = TextEditingController();
+  final _notes = TextEditingController();
+  DateTime? _purchaseDate;
+  final _purchasePrice = TextEditingController();
+
+
+  @override
+  void initState() {
+    super.initState();
+    final a = widget.existing;
+    if (a != null) {
+      _name.text = a.name ?? '';
+      _caliber.text = a.caliber;
+      _manufacturer.text = a.manufacturer ?? '';
+      _bullet.text = a.bullet;
+      _grain.text = a.grain.toString();
+      _bc.text = (a.ballisticCoefficient?.toString() ?? '');
+      _lot.text = a.lotNumber ?? '';
+      _purchaseDate = a.purchaseDate;
+      _purchasePrice.text = a.purchasePrice ?? '';
+      _notes.text = a.notes;
+    }
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _caliber.dispose();
+    _manufacturer.dispose();
+    _bullet.dispose();
+    _grain.dispose();
+    _bc.dispose();
+    _lot.dispose();
+    _notes.dispose();
+    _purchasePrice.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.existing == null ? 'Add ammo' : 'Edit ammo'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
               controller: _caliber,
-              decoration: const InputDecoration(labelText: 'Caliber *'),
+              decoration: const InputDecoration(labelText: 'Caliber (ex: .308) *'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _bullet,
+              decoration: const InputDecoration(labelText: 'Bullet (ex: SMK) *'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _grain,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Bullet grain (ex: 175) *'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _bc,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(labelText: 'Ballistic coefficient (optional)'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _name,
+              decoration: const InputDecoration(labelText: 'Name (optional)'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _manufacturer,
+              decoration: const InputDecoration(labelText: 'Manufacturer (optional)'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _lot,
+              decoration: const InputDecoration(labelText: 'Lot number (optional)'),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _purchaseDate == null
+                        ? 'Purchase date (optional)'
+                        : 'Purchase date: ${_fmtDate(_purchaseDate!)}',
+                  ),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    final now = DateTime.now();
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: _purchaseDate ?? DateTime(now.year, now.month, now.day),
+                      firstDate: DateTime(1990),
+                      lastDate: DateTime(now.year + 2),
+                    );
+                    if (picked != null) setState(() => _purchaseDate = picked);
+                  },
+                  child: const Text('Pick'),
+                ),
+                if (_purchaseDate != null)
+                  IconButton(
+                    tooltip: 'Clear',
+                    onPressed: () => setState(() => _purchaseDate = null),
+                    icon: const Icon(Icons.clear),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _purchasePrice,
+              decoration: const InputDecoration(labelText: 'Purchase price (optional)'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _notes,
+              maxLines: 3,
+              decoration: const InputDecoration(labelText: 'Notes (optional)'),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () {
+            final caliber = _caliber.text.trim();
+            final bullet = _bullet.text.trim();
+            final grainVal = int.tryParse(_grain.text.trim());
+            if (caliber.isEmpty || bullet.isEmpty || grainVal == null || grainVal <= 0) return;
+            final bcVal = double.tryParse(_bc.text.trim());
+            Navigator.of(context).pop(
+              _NewAmmoResult(
+                name: _name.text.trim().isEmpty ? null : _name.text.trim(),
+                caliber: caliber,
+                grain: grainVal,
+                bullet: bullet,
+                ballisticCoefficient: bcVal,
+                manufacturer: _manufacturer.text.trim().isEmpty ? null : _manufacturer.text.trim(),
+                lotNumber: _lot.text.trim().isEmpty ? null : _lot.text.trim(),
+                purchaseDate: _purchaseDate,
+                purchasePrice: _purchasePrice.text.trim().isEmpty ? null : _purchasePrice.text.trim(),
+                notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+              ),
+            );
+          },
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
+class _NewRifleDialog extends StatefulWidget {
+  const _NewRifleDialog({this.existing});
+  final Rifle? existing;
+
+  @override
+  State<_NewRifleDialog> createState() => _NewRifleDialogState();
+}
+
+class _NewRifleDialogState extends State<_NewRifleDialog> {
+  final _name = TextEditingController();
+  final _caliber = TextEditingController();
+  final _manufacturer = TextEditingController();
+  final _model = TextEditingController();
+  final _serialNumber = TextEditingController();
+  final _barrelLength = TextEditingController();
+  final _twistRate = TextEditingController();
+
+
+@override
+void initState() {
+  super.initState();
+  final r = widget.existing;
+  if (r != null) {
+    _manufacturer.text = r.manufacturer ?? '';
+    _model.text = r.model ?? '';
+    _name.text = r.name ?? '';
+    _caliber.text = r.caliber;
+    _serialNumber.text = r.serialNumber ?? '';
+    _barrelLength.text = r.barrelLength ?? '';
+    _twistRate.text = r.twistRate ?? '';
+    _purchaseDate = r.purchaseDate;
+    _purchaseLocation.text = r.purchaseLocation ?? '';
+    _purchasePrice.text = r.purchasePrice ?? '';
+    _notes.text = r.notes;
+    _dope.text = r.dope;
+  }
+}
+
+  DateTime? _purchaseDate;
+  final _purchasePrice = TextEditingController();
+  final _purchaseLocation = TextEditingController();
+  final _notes = TextEditingController();
+  final _dope = TextEditingController();
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _caliber.dispose();
+    _manufacturer.dispose();
+    _model.dispose();
+    _serialNumber.dispose();
+    _barrelLength.dispose();
+    _twistRate.dispose();
+    _purchasePrice.dispose();
+    _purchaseLocation.dispose();
+    _notes.dispose();
+    _dope.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.existing == null ? 'Add rifle' : 'Edit rifle'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _manufacturer,
+              decoration: const InputDecoration(labelText: 'Manufacturer (optional)'),
+              textInputAction: TextInputAction.next,
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _model,
+              decoration: const InputDecoration(labelText: 'Model (optional)'),
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 8),
             TextField(
               controller: _name,
               decoration: const InputDecoration(labelText: 'Nickname (optional)'),
+              textInputAction: TextInputAction.next,
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _caliber,
+              decoration: const InputDecoration(labelText: 'Caliber *'),
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 8),
@@ -3649,9 +4429,6 @@ class _NewUserDialogState extends State<_NewUserDialog> {
             TextField(
               controller: _purchaseLocation,
               decoration: const InputDecoration(labelText: 'Purchase location (optional)'),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(
