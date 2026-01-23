@@ -2803,18 +2803,6 @@ Card(
                   ),
                 ),
               ],
-              if (s.photos.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                ...s.photos.map(
-                  (p) => Card(
-                    child: ListTile(
-                      leading: const Icon(Icons.sticky_note_2_outlined),
-                      title: Text(p.caption),
-                      subtitle: Text(_fmtDateTime(p.time)),
-                    ),
-                  ),
-                ),
-              ],
               const SizedBox(height: 8),
               const Divider(),
               const SizedBox(height: 8),
