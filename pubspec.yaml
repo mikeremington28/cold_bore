@@ -2,7 +2,7 @@ name: cold_bore
 description: "A new Flutter project."
 publish_to: "none"
 
-version: 1.0.0+34
+version: 1.0.0+35
 
 environment:
   sdk: ^3.10.4
@@ -15,7 +15,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   image_picker: ^1.0.7
   shared_preferences: ^2.2.3
-  
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
