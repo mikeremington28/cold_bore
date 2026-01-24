@@ -3091,7 +3091,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
     widget.state.addRifle(
       name: (res.name ?? ''),
       caliber: res.caliber,
-      notes: res.notes ?? '',
+      notes: res.notes,
       dope: res.dope,
       manufacturer: res.manufacturer,
       model: res.model,
@@ -3135,7 +3135,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
       rifleId: r.id,
       name: res.name,
       caliber: res.caliber,
-      notes: res.notes ?? '',
+      notes: res.notes,
       dope: res.dope,
       manufacturer: res.manufacturer,
       model: res.model,
@@ -4119,6 +4119,224 @@ class _NewRifleResult {
     this.purchaseLocation,
   });
 }
+class _NewRifleDialog extends StatefulWidget {
+  const _NewRifleDialog({this.existing});
+  final Rifle? existing;
+
+  @override
+  State<_NewRifleDialog> createState() => _NewRifleDialogState();
+}
+
+class _NewRifleDialogState extends State<_NewRifleDialog> {
+  final _name = TextEditingController();
+  final _caliber = TextEditingController();
+  final _manufacturer = TextEditingController();
+  final _model = TextEditingController();
+  final _serialNumber = TextEditingController();
+  final _barrelLength = TextEditingController();
+  final _twistRate = TextEditingController();
+  final _purchasePrice = TextEditingController();
+  final _purchaseLocation = TextEditingController();
+  final _notes = TextEditingController();
+  final _dope = TextEditingController();
+
+  DateTime? _purchaseDate;
+
+  @override
+  void initState() {
+    super.initState();
+    final r = widget.existing;
+    if (r != null) {
+      _name.text = r.name ?? '';
+      _caliber.text = r.caliber;
+      _manufacturer.text = r.manufacturer ?? '';
+      _model.text = r.model ?? '';
+      _serialNumber.text = r.serialNumber ?? '';
+      _barrelLength.text = r.barrelLength ?? '';
+      _twistRate.text = r.twistRate ?? '';
+      _purchaseDate = r.purchaseDate;
+      _purchasePrice.text = r.purchasePrice ?? '';
+      _purchaseLocation.text = r.purchaseLocation ?? '';
+      _notes.text = r.notes;
+      _dope.text = r.dope;
+    }
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _caliber.dispose();
+    _manufacturer.dispose();
+    _model.dispose();
+    _serialNumber.dispose();
+    _barrelLength.dispose();
+    _twistRate.dispose();
+    _purchasePrice.dispose();
+    _purchaseLocation.dispose();
+    _notes.dispose();
+    _dope.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final editing = widget.existing != null;
+
+    return AlertDialog(
+      title: Text(editing ? 'Edit rifle' : 'New rifle'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _name,
+              decoration: const InputDecoration(labelText: 'Name (optional)'),
+              textInputAction: TextInputAction.next,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _caliber,
+              decoration: const InputDecoration(labelText: 'Caliber *'),
+              textInputAction: TextInputAction.next,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _manufacturer,
+              decoration: const InputDecoration(labelText: 'Manufacturer (optional)'),
+              textInputAction: TextInputAction.next,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _model,
+              decoration: const InputDecoration(labelText: 'Model (optional)'),
+              textInputAction: TextInputAction.next,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _serialNumber,
+              decoration: const InputDecoration(labelText: 'Serial number (optional)'),
+              textInputAction: TextInputAction.next,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _barrelLength,
+              decoration: const InputDecoration(labelText: 'Barrel length (optional)'),
+              textInputAction: TextInputAction.next,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _twistRate,
+              decoration: const InputDecoration(labelText: 'Twist rate (optional)'),
+              textInputAction: TextInputAction.next,
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _purchaseDate == null
+                        ? 'Purchase date (optional)'
+                        : 'Purchase date: ${_fmtDate(_purchaseDate!)}',
+                  ),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    final now = DateTime.now();
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: _purchaseDate ?? DateTime(now.year, now.month, now.day),
+                      firstDate: DateTime(1990),
+                      lastDate: DateTime(now.year + 2),
+                    );
+                    if (picked != null) setState(() => _purchaseDate = picked);
+                  },
+                  child: const Text('Pick'),
+                ),
+                if (_purchaseDate != null)
+                  IconButton(
+                    tooltip: 'Clear',
+                    onPressed: () => setState(() => _purchaseDate = null),
+                    icon: const Icon(Icons.clear),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _purchasePrice,
+              decoration: const InputDecoration(labelText: 'Purchase price (optional)'),
+              keyboardType: TextInputType.number,
+              textInputAction: TextInputAction.next,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _purchaseLocation,
+              decoration: const InputDecoration(labelText: 'Purchase location (optional)'),
+              textInputAction: TextInputAction.next,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _dope,
+              decoration: const InputDecoration(
+                labelText: 'DOPE (optional)',
+                hintText: 'Example: 100y 0.0 | 200y 0.6 | 300y 1.4',
+              ),
+              minLines: 2,
+              maxLines: 5,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _notes,
+              decoration: const InputDecoration(labelText: 'Notes (optional)'),
+              minLines: 2,
+              maxLines: 5,
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () {
+            final caliber = _caliber.text.trim();
+            if (caliber.isEmpty) return;
+
+            final nameRaw = _name.text.trim();
+            final name = nameRaw.isEmpty ? null : nameRaw;
+
+            String? opt(TextEditingController c) {
+              final v = c.text.trim();
+              return v.isEmpty ? null : v;
+            }
+
+            Navigator.of(context).pop(
+              _NewRifleResult(
+                name: name,
+                caliber: caliber,
+                notes: _notes.text.trim(),
+                dope: _dope.text.trim(),
+                dopeEntries: const [],
+                manufacturer: opt(_manufacturer),
+                model: opt(_model),
+                serialNumber: opt(_serialNumber),
+                barrelLength: opt(_barrelLength),
+                twistRate: opt(_twistRate),
+                purchaseDate: _purchaseDate,
+                purchasePrice: opt(_purchasePrice),
+                purchaseLocation: opt(_purchaseLocation),
+              ),
+            );
+          },
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
+
 
 
 
