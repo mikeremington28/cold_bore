@@ -4,7 +4,9 @@ import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
 import 'dart:typed_data';
 import 'dart:convert';
+import 'dart:async';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 String _cleanText(String s) {
   // Fix common mojibake / smart punctuation that can show up from copy/paste.
@@ -525,7 +527,7 @@ class _AppRoot extends StatefulWidget {
   State<_AppRoot> createState() => _AppRootState();
 }
 
-class _AppRootState extends State<_AppRoot> {
+class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
   final AppState _state = AppState();
 
   bool _unlocked = false;
@@ -533,12 +535,44 @@ class _AppRootState extends State<_AppRoot> {
   @override
   void initState() {
     super.initState();
-    _state.ensureSeedData();
+    WidgetsBinding.instance.addObserver(this);
+    _boot();
+  }
+
+  bool _ready = false;
+
+  Future<void> _boot() async {
+    await _state.loadFromPrefs();
+    if (_state.users.isEmpty) {
+      _state.ensureSeedData();
+    }
+    if (mounted) {
+      setState(() => _ready = true);
+    }
+  }
+
+  
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached) {
+      _state.flushSave();
+    }
   }
 
   @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+@override
   Widget build(BuildContext context) {
     // Usable-now mode: skip biometrics/unlock screen (local_auth removed for iOS 26 stability).
+    if (!_ready) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
     return HomeShell(state: _state);
   }
 
@@ -554,6 +588,91 @@ class AppState extends ChangeNotifier {
   final Map<String, Map<DistanceKey, DopeEntry>> _workingDopeRifleAmmo = {};
 
   UserProfile? _activeUser;
+
+  // --- Persistence (local device) ------------------------------------------
+  static const String _prefsKey = 'cold_bore_state_v1';
+  bool _suspendSaves = false;
+  Timer? _saveDebounce;
+
+  @override
+  void notifyListeners() {
+    super.notifyListeners();
+    _scheduleSave();
+  }
+
+  void _scheduleSave() {
+    if (_suspendSaves) return;
+    _saveDebounce?.cancel();
+    _saveDebounce = Timer(const Duration(milliseconds: 500), () async {
+      try {
+        await _saveToPrefs();
+      } catch (_) {
+        // Best-effort persistence; ignore failures for now.
+      }
+    });
+  }
+
+  Future<void> loadFromPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_prefsKey);
+    if (raw == null || raw.trim().isEmpty) return;
+
+    _suspendSaves = true;
+    try {
+      final map = jsonDecode(raw) as Map<String, dynamic>;
+      _users
+        ..clear()
+        ..addAll(((map['users'] as List?) ?? const []).map((e) => _userFromMap(e as Map<String, dynamic>)));
+      _rifles
+        ..clear()
+        ..addAll(((map['rifles'] as List?) ?? const []).map((e) => _rifleFromMap(e as Map<String, dynamic>)));
+      _ammoLots
+        ..clear()
+        ..addAll(((map['ammoLots'] as List?) ?? const []).map((e) => _ammoFromMap(e as Map<String, dynamic>)));
+      _sessions
+        ..clear()
+        ..addAll(((map['sessions'] as List?) ?? const []).map((e) => _sessionFromMap(e as Map<String, dynamic>)));
+
+      _workingDopeRifleOnly
+        ..clear()
+        ..addAll(_decodeWorkingDope(map['workingDopeRifleOnly']));
+      _workingDopeRifleAmmo
+        ..clear()
+        ..addAll(_decodeWorkingDope(map['workingDopeRifleAmmo']));
+
+      final activeId = map['activeUserId'] as String?;
+      _activeUser = (activeId == null) ? null : _users.where((u) => u.id == activeId).cast<UserProfile?>().firstWhere((x) => x != null, orElse: () => null);
+    } finally {
+      _suspendSaves = false;
+    }
+    // One notify after load so UI refreshes.
+    super.notifyListeners();
+  }
+
+  Future<void> _saveToPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final map = <String, dynamic>{
+      'users': _users.map(_userToMap).toList(),
+      'rifles': _rifles.map(_rifleToMap).toList(),
+      'ammoLots': _ammoLots.map(_ammoToMap).toList(),
+      'sessions': _sessions.map(_sessionToMap).toList(),
+      'workingDopeRifleOnly': _encodeWorkingDope(_workingDopeRifleOnly),
+      'workingDopeRifleAmmo': _encodeWorkingDope(_workingDopeRifleAmmo),
+      'activeUserId': _activeUser?.id,
+      'schema': kExportSchemaVersion,
+      'savedAt': DateTime.now().toIso8601String(),
+    };
+    await prefs.setString(_prefsKey, jsonEncode(map));
+  }
+
+  Future<void> flushSave() async {
+    try {
+      await _saveToPrefs();
+    } catch (_) {
+      // ignore
+    }
+  }
+
 
 
   // Current environment (optional)
@@ -1208,6 +1327,275 @@ class AppState extends ChangeNotifier {
   String newIdForChild() => _newId();
 }
 
+
+
+  // --- Serialization helpers ------------------------------------------------
+
+  static Map<String, dynamic> _userToMap(UserProfile u) => {
+        'id': u.id,
+        'name': u.name,
+        'identifier': u.identifier,
+      };
+
+  static UserProfile _userFromMap(Map<String, dynamic> m) => UserProfile(
+        id: (m['id'] ?? '') as String,
+        name: m['name'] as String?,
+        identifier: (m['identifier'] ?? '') as String,
+      );
+
+  static Map<String, dynamic> _dopeEntryToMap(RifleDopeEntry e) => {
+        'id': e.id,
+        'distance': e.distance,
+        'elevation': e.elevation,
+        'windage': e.windage,
+        'notes': e.notes,
+      };
+
+  static RifleDopeEntry _dopeEntryFromMap(Map<String, dynamic> m) => RifleDopeEntry(
+        id: (m['id'] ?? '') as String,
+        distance: (m['distance'] ?? '') as String,
+        elevation: (m['elevation'] ?? '') as String,
+        windage: (m['windage'] ?? '') as String,
+        notes: (m['notes'] ?? '') as String,
+      );
+
+  static Map<String, dynamic> _rifleToMap(Rifle r) => {
+        'id': r.id,
+        'name': r.name,
+        'caliber': r.caliber,
+        'notes': r.notes,
+        'dope': r.dope,
+        'dopeEntries': r.dopeEntries.map(_dopeEntryToMap).toList(),
+        'preferredUnit': r.preferredUnit.name,
+        'manufacturer': r.manufacturer,
+        'model': r.model,
+        'serialNumber': r.serialNumber,
+        'barrelLength': r.barrelLength,
+        'twistRate': r.twistRate,
+        'purchaseDate': r.purchaseDate?.toIso8601String(),
+        'purchasePrice': r.purchasePrice,
+        'purchaseLocation': r.purchaseLocation,
+      };
+
+  static Rifle _rifleFromMap(Map<String, dynamic> m) => Rifle(
+        id: (m['id'] ?? '') as String,
+        name: m['name'] as String?,
+        caliber: (m['caliber'] ?? '') as String,
+        notes: (m['notes'] ?? '') as String,
+        dope: (m['dope'] ?? '') as String,
+        dopeEntries: (((m['dopeEntries'] as List?) ?? const [])).map((e) => _dopeEntryFromMap(e as Map<String, dynamic>)).toList(),
+        preferredUnit: ElevationUnit.values.firstWhere(
+          (x) => x.name == (m['preferredUnit'] ?? ElevationUnit.moa.name),
+          orElse: () => ElevationUnit.moa,
+        ),
+        manufacturer: m['manufacturer'] as String?,
+        model: m['model'] as String?,
+        serialNumber: m['serialNumber'] as String?,
+        barrelLength: m['barrelLength'] as String?,
+        twistRate: m['twistRate'] as String?,
+        purchaseDate: (m['purchaseDate'] == null) ? null : DateTime.tryParse(m['purchaseDate'] as String),
+        purchasePrice: m['purchasePrice'] as String?,
+        purchaseLocation: m['purchaseLocation'] as String?,
+      );
+
+  static Map<String, dynamic> _ammoToMap(AmmoLot a) => {
+        'id': a.id,
+        'name': a.name,
+        'caliber': a.caliber,
+        'grain': a.grain,
+        'bullet': a.bullet,
+        'notes': a.notes,
+        'manufacturer': a.manufacturer,
+        'lotNumber': a.lotNumber,
+        'purchaseDate': a.purchaseDate?.toIso8601String(),
+        'purchasePrice': a.purchasePrice,
+        'ballisticCoefficient': a.ballisticCoefficient,
+      };
+
+  static AmmoLot _ammoFromMap(Map<String, dynamic> m) => AmmoLot(
+        id: (m['id'] ?? '') as String,
+        name: m['name'] as String?,
+        caliber: (m['caliber'] ?? '') as String,
+        grain: (m['grain'] ?? 0) as int,
+        bullet: (m['bullet'] ?? '') as String,
+        notes: (m['notes'] ?? '') as String,
+        manufacturer: m['manufacturer'] as String?,
+        lotNumber: m['lotNumber'] as String?,
+        purchaseDate: (m['purchaseDate'] == null) ? null : DateTime.tryParse(m['purchaseDate'] as String),
+        purchasePrice: m['purchasePrice'] as String?,
+        ballisticCoefficient: (m['ballisticCoefficient'] is num) ? (m['ballisticCoefficient'] as num).toDouble() : null,
+      );
+
+  static Map<String, dynamic> _photoNoteToMap(PhotoNote p) => {
+        'id': p.id,
+        'time': p.time.toIso8601String(),
+        'caption': p.caption,
+      };
+
+  static PhotoNote _photoNoteFromMap(Map<String, dynamic> m) => PhotoNote(
+        id: (m['id'] ?? '') as String,
+        time: DateTime.tryParse((m['time'] ?? '') as String) ?? DateTime.now(),
+        caption: (m['caption'] ?? '') as String,
+      );
+
+  static Map<String, dynamic> _sessionPhotoToMap(SessionPhoto p) => {
+        'id': p.id,
+        'time': p.time.toIso8601String(),
+        'bytes': base64Encode(p.bytes),
+        'caption': p.caption,
+      };
+
+  static SessionPhoto _sessionPhotoFromMap(Map<String, dynamic> m) => SessionPhoto(
+        id: (m['id'] ?? '') as String,
+        time: DateTime.tryParse((m['time'] ?? '') as String) ?? DateTime.now(),
+        bytes: base64Decode((m['bytes'] ?? '') as String),
+        caption: (m['caption'] ?? '') as String,
+      );
+
+  static Map<String, dynamic> _shotToMap(ShotEntry s) => {
+        'id': s.id,
+        'time': s.time.toIso8601String(),
+        'distance': s.distance,
+        'distanceUnit': s.distanceUnit.name,
+        'result': s.result,
+        'notes': s.notes,
+        'isColdBore': s.isColdBore,
+        'photoBytes': s.photoBytes == null ? null : base64Encode(s.photoBytes!),
+      };
+
+  static ShotEntry _shotFromMap(Map<String, dynamic> m) => ShotEntry(
+        id: (m['id'] ?? '') as String,
+        time: DateTime.tryParse((m['time'] ?? '') as String) ?? DateTime.now(),
+        distance: (m['distance'] is num) ? (m['distance'] as num).toDouble() : 0.0,
+        distanceUnit: DistanceUnit.values.firstWhere(
+          (x) => x.name == (m['distanceUnit'] ?? DistanceUnit.yards.name),
+          orElse: () => DistanceUnit.yards,
+        ),
+        result: (m['result'] ?? '') as String,
+        notes: (m['notes'] ?? '') as String,
+        isColdBore: (m['isColdBore'] ?? false) as bool,
+        photoBytes: (m['photoBytes'] == null) ? null : base64Decode(m['photoBytes'] as String),
+      );
+
+  static Map<String, dynamic> _dopeToMap(DopeEntry d) => {
+        'id': d.id,
+        'time': d.time.toIso8601String(),
+        'rifleId': d.rifleId,
+        'ammoLotId': d.ammoLotId,
+        'distance': d.distance,
+        'distanceUnit': d.distanceUnit.name,
+        'elevation': d.elevation,
+        'elevationUnit': d.elevationUnit.name,
+        'elevationNotes': d.elevationNotes,
+        'windType': d.windType.name,
+        'windValue': d.windValue,
+        'windNotes': d.windNotes,
+        'windageLeft': d.windageLeft,
+        'windageRight': d.windageRight,
+      };
+
+  static DopeEntry _dopeFromMap(Map<String, dynamic> m) => DopeEntry(
+        id: (m['id'] ?? '') as String,
+        time: DateTime.tryParse((m['time'] ?? '') as String) ?? DateTime.now(),
+        rifleId: m['rifleId'] as String?,
+        ammoLotId: m['ammoLotId'] as String?,
+        distance: (m['distance'] is num) ? (m['distance'] as num).toDouble() : 0.0,
+        distanceUnit: DistanceUnit.values.firstWhere(
+          (x) => x.name == (m['distanceUnit'] ?? DistanceUnit.yards.name),
+          orElse: () => DistanceUnit.yards,
+        ),
+        elevation: (m['elevation'] is num) ? (m['elevation'] as num).toDouble() : 0.0,
+        elevationUnit: ElevationUnit.values.firstWhere(
+          (x) => x.name == (m['elevationUnit'] ?? ElevationUnit.moa.name),
+          orElse: () => ElevationUnit.moa,
+        ),
+        elevationNotes: (m['elevationNotes'] ?? '') as String,
+        windType: WindType.values.firstWhere(
+          (x) => x.name == (m['windType'] ?? WindType.none.name),
+          orElse: () => WindType.none,
+        ),
+        windValue: (m['windValue'] ?? '') as String,
+        windNotes: (m['windNotes'] ?? '') as String,
+        windageLeft: (m['windageLeft'] is num) ? (m['windageLeft'] as num).toDouble() : 0.0,
+        windageRight: (m['windageRight'] is num) ? (m['windageRight'] as num).toDouble() : 0.0,
+      );
+
+  static Map<String, dynamic> _sessionToMap(TrainingSession s) => {
+        'id': s.id,
+        'userId': s.userId,
+        'dateTime': s.dateTime.toIso8601String(),
+        'locationName': s.locationName,
+        'notes': s.notes,
+        'latitude': s.latitude,
+        'longitude': s.longitude,
+        'temperatureF': s.temperatureF,
+        'windSpeedMph': s.windSpeedMph,
+        'windDirectionDeg': s.windDirectionDeg,
+        'rifleId': s.rifleId,
+        'ammoLotId': s.ammoLotId,
+        'shots': s.shots.map(_shotToMap).toList(),
+        'photos': s.photos.map(_photoNoteToMap).toList(),
+        'sessionPhotos': s.sessionPhotos.map(_sessionPhotoToMap).toList(),
+        'trainingDope': s.trainingDope.map(_dopeToMap).toList(),
+      };
+
+  static TrainingSession _sessionFromMap(Map<String, dynamic> m) => TrainingSession(
+        id: (m['id'] ?? '') as String,
+        userId: (m['userId'] ?? '') as String,
+        dateTime: DateTime.tryParse((m['dateTime'] ?? '') as String) ?? DateTime.now(),
+        locationName: (m['locationName'] ?? '') as String,
+        notes: (m['notes'] ?? '') as String,
+        latitude: (m['latitude'] is num) ? (m['latitude'] as num).toDouble() : null,
+        longitude: (m['longitude'] is num) ? (m['longitude'] as num).toDouble() : null,
+        temperatureF: (m['temperatureF'] is num) ? (m['temperatureF'] as num).toDouble() : null,
+        windSpeedMph: (m['windSpeedMph'] is num) ? (m['windSpeedMph'] as num).toDouble() : null,
+        windDirectionDeg: (m['windDirectionDeg'] is num) ? (m['windDirectionDeg'] as num).toInt() : null,
+        rifleId: m['rifleId'] as String?,
+        ammoLotId: m['ammoLotId'] as String?,
+        shots: (((m['shots'] as List?) ?? const [])).map((e) => _shotFromMap(e as Map<String, dynamic>)).toList(),
+        photos: (((m['photos'] as List?) ?? const [])).map((e) => _photoNoteFromMap(e as Map<String, dynamic>)).toList(),
+        sessionPhotos: (((m['sessionPhotos'] as List?) ?? const [])).map((e) => _sessionPhotoFromMap(e as Map<String, dynamic>)).toList(),
+        trainingDope: (((m['trainingDope'] as List?) ?? const [])).map((e) => _dopeFromMap(e as Map<String, dynamic>)).toList(),
+      );
+
+  static Map<String, dynamic> _encodeWorkingDope(Map<String, Map<DistanceKey, DopeEntry>> src) {
+    final out = <String, dynamic>{};
+    src.forEach((key, inner) {
+      out[key] = inner.entries
+          .map((e) => {
+                'distance': e.key.value,
+                'unit': e.key.unit.name,
+                'dope': _dopeToMap(e.value),
+              })
+          .toList();
+    });
+    return out;
+  }
+
+  static Map<String, Map<DistanceKey, DopeEntry>> _decodeWorkingDope(dynamic raw) {
+    final out = <String, Map<DistanceKey, DopeEntry>>{};
+    if (raw is! Map) return out;
+    raw.forEach((k, v) {
+      final key = k.toString();
+      final inner = <DistanceKey, DopeEntry>{};
+      if (v is List) {
+        for (final item in v) {
+          if (item is Map) {
+            final dist = (item['distance'] is num) ? (item['distance'] as num).toDouble() : 0.0;
+            final unitName = (item['unit'] ?? DistanceUnit.yards.name).toString();
+            final unit = DistanceUnit.values.firstWhere((x) => x.name == unitName, orElse: () => DistanceUnit.yards);
+            final dopeMap = (item['dope'] is Map) ? (item['dope'] as Map).cast<String, dynamic>() : <String, dynamic>{};
+            inner[DistanceKey(dist, unit)] = _dopeFromMap(dopeMap);
+          }
+        }
+      }
+      out[key] = inner;
+    });
+    return out;
+  }
+
+}
+
 class UserProfile {
   final String id;
   final String? name;
@@ -1592,7 +1980,8 @@ class _HomeShellState extends State<HomeShell> {
 
 class DataScreen extends StatefulWidget {
   final AppState state;
-  const DataScreen({super.key, required this.state});
+  final bool embedded;
+  const DataScreen({super.key, required this.state, this.embedded = true});
 
   @override
   State<DataScreen> createState() => _DataScreenState();
@@ -1677,7 +2066,7 @@ class _DataScreenState extends State<DataScreen> {
           );
         }
 
-        return Padding(
+        final content = Padding(
           padding: const EdgeInsets.all(16),
           child: ListView(
             children: [
@@ -1783,6 +2172,14 @@ class _DataScreenState extends State<DataScreen> {
             ],
           ),
         );
+        return widget.embedded
+            ? content
+            : Scaffold(
+                appBar: AppBar(
+                  title: const Text('Data'),
+                ),
+                body: SafeArea(child: content),
+              );
       },
     );
   }
@@ -1912,8 +2309,8 @@ class SessionsScreen extends StatelessWidget {
               ];
 
               return ListTile(
-                title: Text(s.locationName),
-                subtitle: Text(_cleanText(subtitleBits.join(' • '))),
+                title: Text(_cleanText(s.locationName), maxLines: 1, overflow: TextOverflow.ellipsis),
+                subtitle: Text(_cleanText(subtitleBits.join(' • ')), maxLines: 2, overflow: TextOverflow.ellipsis),
                 trailing: s.shots.any((x) => x.isColdBore)
                     ? const Icon(Icons.ac_unit_outlined)
                     : null,
@@ -2608,7 +3005,7 @@ Card(
                   TextButton.icon(
                     onPressed: () {
                       Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => DataScreen(state: state)),
+                        MaterialPageRoute(builder: (_) => DataScreen(state: state, embedded: false)),
                       );
                     },
                     icon: const Icon(Icons.open_in_new),
@@ -3091,7 +3488,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
     widget.state.addRifle(
       name: (res.name ?? ''),
       caliber: res.caliber,
-      notes: res.notes,
+      notes: res.notes ?? '',
       dope: res.dope,
       manufacturer: res.manufacturer,
       model: res.model,
@@ -3135,7 +3532,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
       rifleId: r.id,
       name: res.name,
       caliber: res.caliber,
-      notes: res.notes,
+      notes: res.notes ?? '',
       dope: res.dope,
       manufacturer: res.manufacturer,
       model: res.model,
@@ -4119,224 +4516,6 @@ class _NewRifleResult {
     this.purchaseLocation,
   });
 }
-class _NewRifleDialog extends StatefulWidget {
-  const _NewRifleDialog({this.existing});
-  final Rifle? existing;
-
-  @override
-  State<_NewRifleDialog> createState() => _NewRifleDialogState();
-}
-
-class _NewRifleDialogState extends State<_NewRifleDialog> {
-  final _name = TextEditingController();
-  final _caliber = TextEditingController();
-  final _manufacturer = TextEditingController();
-  final _model = TextEditingController();
-  final _serialNumber = TextEditingController();
-  final _barrelLength = TextEditingController();
-  final _twistRate = TextEditingController();
-  final _purchasePrice = TextEditingController();
-  final _purchaseLocation = TextEditingController();
-  final _notes = TextEditingController();
-  final _dope = TextEditingController();
-
-  DateTime? _purchaseDate;
-
-  @override
-  void initState() {
-    super.initState();
-    final r = widget.existing;
-    if (r != null) {
-      _name.text = r.name ?? '';
-      _caliber.text = r.caliber;
-      _manufacturer.text = r.manufacturer ?? '';
-      _model.text = r.model ?? '';
-      _serialNumber.text = r.serialNumber ?? '';
-      _barrelLength.text = r.barrelLength ?? '';
-      _twistRate.text = r.twistRate ?? '';
-      _purchaseDate = r.purchaseDate;
-      _purchasePrice.text = r.purchasePrice ?? '';
-      _purchaseLocation.text = r.purchaseLocation ?? '';
-      _notes.text = r.notes;
-      _dope.text = r.dope;
-    }
-  }
-
-  @override
-  void dispose() {
-    _name.dispose();
-    _caliber.dispose();
-    _manufacturer.dispose();
-    _model.dispose();
-    _serialNumber.dispose();
-    _barrelLength.dispose();
-    _twistRate.dispose();
-    _purchasePrice.dispose();
-    _purchaseLocation.dispose();
-    _notes.dispose();
-    _dope.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final editing = widget.existing != null;
-
-    return AlertDialog(
-      title: Text(editing ? 'Edit rifle' : 'New rifle'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _name,
-              decoration: const InputDecoration(labelText: 'Name (optional)'),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _caliber,
-              decoration: const InputDecoration(labelText: 'Caliber *'),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _manufacturer,
-              decoration: const InputDecoration(labelText: 'Manufacturer (optional)'),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _model,
-              decoration: const InputDecoration(labelText: 'Model (optional)'),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _serialNumber,
-              decoration: const InputDecoration(labelText: 'Serial number (optional)'),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _barrelLength,
-              decoration: const InputDecoration(labelText: 'Barrel length (optional)'),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _twistRate,
-              decoration: const InputDecoration(labelText: 'Twist rate (optional)'),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    _purchaseDate == null
-                        ? 'Purchase date (optional)'
-                        : 'Purchase date: ${_fmtDate(_purchaseDate!)}',
-                  ),
-                ),
-                TextButton(
-                  onPressed: () async {
-                    final now = DateTime.now();
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate: _purchaseDate ?? DateTime(now.year, now.month, now.day),
-                      firstDate: DateTime(1990),
-                      lastDate: DateTime(now.year + 2),
-                    );
-                    if (picked != null) setState(() => _purchaseDate = picked);
-                  },
-                  child: const Text('Pick'),
-                ),
-                if (_purchaseDate != null)
-                  IconButton(
-                    tooltip: 'Clear',
-                    onPressed: () => setState(() => _purchaseDate = null),
-                    icon: const Icon(Icons.clear),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _purchasePrice,
-              decoration: const InputDecoration(labelText: 'Purchase price (optional)'),
-              keyboardType: TextInputType.number,
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _purchaseLocation,
-              decoration: const InputDecoration(labelText: 'Purchase location (optional)'),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _dope,
-              decoration: const InputDecoration(
-                labelText: 'DOPE (optional)',
-                hintText: 'Example: 100y 0.0 | 200y 0.6 | 300y 1.4',
-              ),
-              minLines: 2,
-              maxLines: 5,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _notes,
-              decoration: const InputDecoration(labelText: 'Notes (optional)'),
-              minLines: 2,
-              maxLines: 5,
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () {
-            final caliber = _caliber.text.trim();
-            if (caliber.isEmpty) return;
-
-            final nameRaw = _name.text.trim();
-            final name = nameRaw.isEmpty ? null : nameRaw;
-
-            String? opt(TextEditingController c) {
-              final v = c.text.trim();
-              return v.isEmpty ? null : v;
-            }
-
-            Navigator.of(context).pop(
-              _NewRifleResult(
-                name: name,
-                caliber: caliber,
-                notes: _notes.text.trim(),
-                dope: _dope.text.trim(),
-                dopeEntries: const [],
-                manufacturer: opt(_manufacturer),
-                model: opt(_model),
-                serialNumber: opt(_serialNumber),
-                barrelLength: opt(_barrelLength),
-                twistRate: opt(_twistRate),
-                purchaseDate: _purchaseDate,
-                purchasePrice: opt(_purchasePrice),
-                purchaseLocation: opt(_purchaseLocation),
-              ),
-            );
-          },
-          child: const Text('Save'),
-        ),
-      ],
-    );
-  }
-}
-
-
 
 
 
