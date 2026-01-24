@@ -4212,84 +4212,54 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
             TextField(
               controller: _caliber,
               decoration: const InputDecoration(labelText: 'Caliber (ex: .308) *'),
+              textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _bullet,
               decoration: const InputDecoration(labelText: 'Bullet (ex: SMK) *'),
+              textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _grain,
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(labelText: 'Bullet grain (ex: 175) *'),
+              textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _bc,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               decoration: const InputDecoration(labelText: 'Ballistic coefficient (optional)'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _name,
-              decoration: const InputDecoration(labelText: 'Name (optional)'),
-            ),
-            const SizedBox(height: 12),
-                        TextField(
-              controller: _caliber,
-              decoration: const InputDecoration(labelText: 'Caliber *'),
               textInputAction: TextInputAction.next,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             TextField(
               controller: _manufacturer,
               decoration: const InputDecoration(labelText: 'Manufacturer (optional)'),
               textInputAction: TextInputAction.next,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             TextField(
-              controller: _model,
-              decoration: const InputDecoration(labelText: 'Model (optional)'),
+              controller: _lot,
+              decoration: const InputDecoration(labelText: 'Lot number (optional)'),
               textInputAction: TextInputAction.next,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             TextField(
               controller: _name,
-              decoration: const InputDecoration(labelText: 'Nickname (optional)'),
+              decoration: const InputDecoration(labelText: 'Name (optional)'),
               textInputAction: TextInputAction.next,
             ),
-            const SizedBox(height: 8),
-
-            TextField(
-              controller: _serialNumber,
-              decoration: const InputDecoration(labelText: 'Serial number (optional)'),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _barrelLength,
-              decoration: const InputDecoration(labelText: 'Barrel length (optional)'),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _twistRate,
-              decoration: const InputDecoration(labelText: 'Twist rate (optional)'),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _purchaseLocation,
-              decoration: const InputDecoration(labelText: 'Purchase location (optional)'),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
                   child: Text(
-                    _purchaseDate == null ? 'Purchase date (optional)' : 'Purchase date: ${_fmtDate(_purchaseDate!)}',
+                    _purchaseDate == null
+                        ? 'Purchase date (optional)'
+                        : 'Purchase date: ${_fmtDate(_purchaseDate!)}',
                   ),
                 ),
                 TextButton(
@@ -4313,26 +4283,19 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
                   ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             TextField(
               controller: _purchasePrice,
               decoration: const InputDecoration(labelText: 'Purchase price (optional)'),
               keyboardType: TextInputType.number,
               textInputAction: TextInputAction.next,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             TextField(
               controller: _notes,
               decoration: const InputDecoration(labelText: 'Notes (optional)'),
               minLines: 2,
               maxLines: 5,
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _dope,
-              decoration: const InputDecoration(labelText: 'DOPE (optional)'),
-              minLines: 2,
-              maxLines: 6,
             ),
           ],
         ),
@@ -4345,25 +4308,44 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
         FilledButton(
           onPressed: () {
             final caliber = _caliber.text.trim();
-            if (caliber.isEmpty) return;
+            final bullet = _bullet.text.trim();
+            final grainStr = _grain.text.trim();
 
-            final nicknameRaw = _name.text.trim();
-            final nickname = nicknameRaw.isEmpty ? null : nicknameRaw;
+            if (caliber.isEmpty || bullet.isEmpty || grainStr.isEmpty) return;
+
+            final grain = int.tryParse(grainStr);
+            if (grain == null) return;
+
+            final nameRaw = _name.text.trim();
+            final name = nameRaw.isEmpty ? null : nameRaw;
+
+            final manufacturerRaw = _manufacturer.text.trim();
+            final manufacturer = manufacturerRaw.isEmpty ? null : manufacturerRaw;
+
+            final lotRaw = _lot.text.trim();
+            final lot = lotRaw.isEmpty ? null : lotRaw;
+
+            final bcRaw = _bc.text.trim();
+            final bc = bcRaw.isEmpty ? null : double.tryParse(bcRaw);
+
+            final priceRaw = _purchasePrice.text.trim();
+            final price = priceRaw.isEmpty ? null : priceRaw;
+
+            final notesRaw = _notes.text.trim();
+            final notes = notesRaw.isEmpty ? null : notesRaw;
 
             Navigator.of(context).pop(
-              _NewRifleResult(
-                name: nickname,
+              _NewAmmoResult(
+                name: name,
                 caliber: caliber,
-                notes: _notes.text.trim(),
-                dope: _dope.text.trim(),
-                manufacturer: _manufacturer.text.trim().isEmpty ? null : _manufacturer.text.trim(),
-                model: _model.text.trim().isEmpty ? null : _model.text.trim(),
-                serialNumber: _serialNumber.text.trim().isEmpty ? null : _serialNumber.text.trim(),
-                barrelLength: _barrelLength.text.trim().isEmpty ? null : _barrelLength.text.trim(),
-                twistRate: _twistRate.text.trim().isEmpty ? null : _twistRate.text.trim(),
+                grain: grain,
+                bullet: bullet,
+                ballisticCoefficient: bc,
+                manufacturer: manufacturer,
+                lotNumber: lot,
                 purchaseDate: _purchaseDate,
-                purchasePrice: _purchasePrice.text.trim().isEmpty ? null : _purchasePrice.text.trim(),
-                purchaseLocation: _purchaseLocation.text.trim().isEmpty ? null : _purchaseLocation.text.trim(),
+                purchasePrice: price,
+                notes: notes,
               ),
             );
           },
