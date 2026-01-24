@@ -1452,32 +1452,44 @@ class AppState extends ChangeNotifier {
         caption: (m['caption'] ?? '') as String,
       );
 
-  static Map<String, dynamic> _shotToMap(ShotEntry s) => {
-        'id': s.id,
-        'time': s.time.toIso8601String(),
-        'distance': s.distance,
-        'distanceUnit': s.distanceUnit.name,
-        'result': s.result,
-        'notes': s.notes,
-        'isColdBore': s.isColdBore,
-        'photoBytes': s.photoBytes == null ? null : base64Encode(s.photoBytes!),
-      };
+  
+static Map<String, dynamic> _coldBorePhotoToMap(ColdBorePhoto p) => {
+      'id': p.id,
+      'time': p.time.toIso8601String(),
+      'bytes': base64Encode(p.bytes),
+      'caption': p.caption,
+    };
 
-  static ShotEntry _shotFromMap(Map<String, dynamic> m) => ShotEntry(
-        id: (m['id'] ?? '') as String,
-        time: DateTime.tryParse((m['time'] ?? '') as String) ?? DateTime.now(),
-        distance: (m['distance'] is num) ? (m['distance'] as num).toDouble() : 0.0,
-        distanceUnit: DistanceUnit.values.firstWhere(
-          (x) => x.name == (m['distanceUnit'] ?? DistanceUnit.yards.name),
-          orElse: () => DistanceUnit.yards,
-        ),
-        result: (m['result'] ?? '') as String,
-        notes: (m['notes'] ?? '') as String,
-        isColdBore: (m['isColdBore'] ?? false) as bool,
-        photoBytes: (m['photoBytes'] == null) ? null : base64Decode(m['photoBytes'] as String),
-      );
+static ColdBorePhoto _coldBorePhotoFromMap(Map<String, dynamic> m) => ColdBorePhoto(
+      id: (m['id'] ?? '') as String,
+      time: DateTime.tryParse((m['time'] ?? '') as String) ?? DateTime.now(),
+      bytes: base64Decode((m['bytes'] ?? '') as String),
+      caption: (m['caption'] ?? '') as String,
+    );
 
-  static Map<String, dynamic> _dopeToMap(DopeEntry d) => {
+static Map<String, dynamic> _shotToMap(ShotEntry s) => {
+      'id': s.id,
+      'time': s.time.toIso8601String(),
+      'distance': s.distance,
+      'result': s.result,
+      'notes': s.notes,
+      'isColdBore': s.isColdBore,
+      'isBaseline': s.isBaseline,
+      'photos': s.photos.map(_coldBorePhotoToMap).toList(),
+    };
+
+static ShotEntry _shotFromMap(Map<String, dynamic> m) => ShotEntry(
+      id: (m['id'] ?? '') as String,
+      time: DateTime.tryParse((m['time'] ?? '') as String) ?? DateTime.now(),
+      isColdBore: (m['isColdBore'] ?? false) as bool,
+      isBaseline: (m['isBaseline'] ?? false) as bool,
+      distance: (m['distance'] ?? '') as String,
+      result: (m['result'] ?? '') as String,
+      notes: (m['notes'] ?? '') as String,
+      photos: (((m['photos'] as List?) ?? const [])).map((e) => _coldBorePhotoFromMap(e as Map<String, dynamic>)).toList(),
+    );
+
+static Map<String, dynamic> _dopeToMap(DopeEntry d) => {
         'id': d.id,
         'time': d.time.toIso8601String(),
         'rifleId': d.rifleId,
@@ -1511,8 +1523,8 @@ class AppState extends ChangeNotifier {
         ),
         elevationNotes: (m['elevationNotes'] ?? '') as String,
         windType: WindType.values.firstWhere(
-          (x) => x.name == (m['windType'] ?? WindType.none.name),
-          orElse: () => WindType.none,
+          (x) => x.name == (m['windType'] ?? WindType.fullValue.name),
+          orElse: () => WindType.fullValue,
         ),
         windValue: (m['windValue'] ?? '') as String,
         windNotes: (m['windNotes'] ?? '') as String,
@@ -4478,6 +4490,207 @@ class _EditDopeDialogState extends State<_EditDopeDialog> {
         ElevatedButton(
           onPressed: () => Navigator.of(context).pop(_c.text),
           child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
+class _NewRifleDialog extends StatefulWidget {
+  const _NewRifleDialog({this.existing});
+  final Rifle? existing;
+
+  @override
+  State<_NewRifleDialog> createState() => _NewRifleDialogState();
+}
+
+class _NewRifleDialogState extends State<_NewRifleDialog> {
+  final _name = TextEditingController();
+  final _caliber = TextEditingController();
+  final _notes = TextEditingController();
+  final _dope = TextEditingController();
+
+  final _manufacturer = TextEditingController();
+  final _model = TextEditingController();
+  final _serialNumber = TextEditingController();
+  final _barrelLength = TextEditingController();
+  final _twistRate = TextEditingController();
+  final _purchasePrice = TextEditingController();
+  final _purchaseLocation = TextEditingController();
+
+  DateTime? _purchaseDate;
+
+  @override
+  void initState() {
+    super.initState();
+    final r = widget.existing;
+    if (r != null) {
+      _name.text = r.name ?? '';
+      _caliber.text = r.caliber;
+      _notes.text = r.notes;
+      _dope.text = r.dope;
+
+      _manufacturer.text = r.manufacturer ?? '';
+      _model.text = r.model ?? '';
+      _serialNumber.text = r.serialNumber ?? '';
+      _barrelLength.text = r.barrelLength ?? '';
+      _twistRate.text = r.twistRate ?? '';
+      _purchaseDate = r.purchaseDate;
+      _purchasePrice.text = r.purchasePrice ?? '';
+      _purchaseLocation.text = r.purchaseLocation ?? '';
+    }
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _caliber.dispose();
+    _notes.dispose();
+    _dope.dispose();
+    _manufacturer.dispose();
+    _model.dispose();
+    _serialNumber.dispose();
+    _barrelLength.dispose();
+    _twistRate.dispose();
+    _purchasePrice.dispose();
+    _purchaseLocation.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickPurchaseDate() async {
+    final now = DateTime.now();
+    final initial = _purchaseDate ?? now;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(now.year + 2),
+    );
+    if (picked == null) return;
+    setState(() => _purchaseDate = picked);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isEdit = widget.existing != null;
+
+    return AlertDialog(
+      title: Text(isEdit ? 'Edit Rifle' : 'Add Rifle'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _name,
+              decoration: const InputDecoration(labelText: 'Name (optional)'),
+              textInputAction: TextInputAction.next,
+            ),
+            TextField(
+              controller: _caliber,
+              decoration: const InputDecoration(labelText: 'Caliber'),
+              textInputAction: TextInputAction.next,
+            ),
+            TextField(
+              controller: _manufacturer,
+              decoration: const InputDecoration(labelText: 'Manufacturer (optional)'),
+              textInputAction: TextInputAction.next,
+            ),
+            TextField(
+              controller: _model,
+              decoration: const InputDecoration(labelText: 'Model (optional)'),
+              textInputAction: TextInputAction.next,
+            ),
+            TextField(
+              controller: _serialNumber,
+              decoration: const InputDecoration(labelText: 'Serial Number (optional)'),
+              textInputAction: TextInputAction.next,
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _barrelLength,
+                    decoration: const InputDecoration(labelText: 'Barrel Length (optional)'),
+                    textInputAction: TextInputAction.next,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: _twistRate,
+                    decoration: const InputDecoration(labelText: 'Twist Rate (optional)'),
+                    textInputAction: TextInputAction.next,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(_purchaseDate == null ? 'Purchase Date: —' : 'Purchase Date: ${_fmtDate(_purchaseDate!)}'),
+                ),
+                TextButton(onPressed: _pickPurchaseDate, child: const Text('Pick')),
+              ],
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _purchasePrice,
+                    decoration: const InputDecoration(labelText: 'Purchase Price (optional)'),
+                    textInputAction: TextInputAction.next,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: _purchaseLocation,
+                    decoration: const InputDecoration(labelText: 'Purchase Location (optional)'),
+                    textInputAction: TextInputAction.next,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _dope,
+              decoration: const InputDecoration(labelText: 'DOPE (optional)'),
+              maxLines: 3,
+            ),
+            TextField(
+              controller: _notes,
+              decoration: const InputDecoration(labelText: 'Notes (optional)'),
+              maxLines: 3,
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        FilledButton(
+          onPressed: () {
+            final cal = _caliber.text.trim();
+            if (cal.isEmpty) return;
+
+            Navigator.of(context).pop(
+              _NewRifleResult(
+                name: _name.text.trim().isEmpty ? null : _name.text.trim(),
+                caliber: cal,
+                notes: _notes.text,
+                dope: _dope.text,
+                manufacturer: _manufacturer.text.trim().isEmpty ? null : _manufacturer.text.trim(),
+                model: _model.text.trim().isEmpty ? null : _model.text.trim(),
+                serialNumber: _serialNumber.text.trim().isEmpty ? null : _serialNumber.text.trim(),
+                barrelLength: _barrelLength.text.trim().isEmpty ? null : _barrelLength.text.trim(),
+                twistRate: _twistRate.text.trim().isEmpty ? null : _twistRate.text.trim(),
+                purchaseDate: _purchaseDate,
+                purchasePrice: _purchasePrice.text.trim().isEmpty ? null : _purchasePrice.text.trim(),
+                purchaseLocation: _purchaseLocation.text.trim().isEmpty ? null : _purchaseLocation.text.trim(),
+              ),
+            );
+          },
+          child: Text(isEdit ? 'Save' : 'Add'),
         ),
       ],
     );
