@@ -590,7 +590,7 @@ class AppState extends ChangeNotifier {
   UserProfile? _activeUser;
 
   // --- Persistence (local device) ------------------------------------------
-  static const String _prefsKey = 'cold_bore_state_v1';
+  const String _prefsKey = 'cold_bore_state_v1';
   bool _suspendSaves = false;
   Timer? _saveDebounce;
 
@@ -1321,7 +1321,7 @@ class AppState extends ChangeNotifier {
     return rows;
   }
 
-  static String _newId() => DateTime.now().microsecondsSinceEpoch.toString();
+  String _newId() => DateTime.now().microsecondsSinceEpoch.toString();
 
   // Public helper used by widgets that need a fresh id without accessing a static private method.
   String newIdForChild() => _newId();
@@ -1331,19 +1331,19 @@ class AppState extends ChangeNotifier {
 
   // --- Serialization helpers ------------------------------------------------
 
-  static Map<String, dynamic> _userToMap(UserProfile u) => {
+  Map<String, dynamic> _userToMap(UserProfile u) => {
         'id': u.id,
         'name': u.name,
         'identifier': u.identifier,
       };
 
-  static UserProfile _userFromMap(Map<String, dynamic> m) => UserProfile(
+  UserProfile _userFromMap(Map<String, dynamic> m) => UserProfile(
         id: (m['id'] ?? '') as String,
         name: m['name'] as String?,
         identifier: (m['identifier'] ?? '') as String,
       );
 
-  static Map<String, dynamic> _dopeEntryToMap(RifleDopeEntry e) => {
+  Map<String, dynamic> _dopeEntryToMap(RifleDopeEntry e) => {
         'id': e.id,
         'distance': e.distance,
         'elevation': e.elevation,
@@ -1351,7 +1351,7 @@ class AppState extends ChangeNotifier {
         'notes': e.notes,
       };
 
-  static RifleDopeEntry _dopeEntryFromMap(Map<String, dynamic> m) => RifleDopeEntry(
+  RifleDopeEntry _dopeEntryFromMap(Map<String, dynamic> m) => RifleDopeEntry(
         id: (m['id'] ?? '') as String,
         distance: (m['distance'] ?? '') as String,
         elevation: (m['elevation'] ?? '') as String,
@@ -1359,7 +1359,7 @@ class AppState extends ChangeNotifier {
         notes: (m['notes'] ?? '') as String,
       );
 
-  static Map<String, dynamic> _rifleToMap(Rifle r) => {
+  Map<String, dynamic> _rifleToMap(Rifle r) => {
         'id': r.id,
         'name': r.name,
         'caliber': r.caliber,
@@ -1377,7 +1377,7 @@ class AppState extends ChangeNotifier {
         'purchaseLocation': r.purchaseLocation,
       };
 
-  static Rifle _rifleFromMap(Map<String, dynamic> m) => Rifle(
+  Rifle _rifleFromMap(Map<String, dynamic> m) => Rifle(
         id: (m['id'] ?? '') as String,
         name: m['name'] as String?,
         caliber: (m['caliber'] ?? '') as String,
@@ -1398,7 +1398,7 @@ class AppState extends ChangeNotifier {
         purchaseLocation: m['purchaseLocation'] as String?,
       );
 
-  static Map<String, dynamic> _ammoToMap(AmmoLot a) => {
+  Map<String, dynamic> _ammoToMap(AmmoLot a) => {
         'id': a.id,
         'name': a.name,
         'caliber': a.caliber,
@@ -1412,7 +1412,7 @@ class AppState extends ChangeNotifier {
         'ballisticCoefficient': a.ballisticCoefficient,
       };
 
-  static AmmoLot _ammoFromMap(Map<String, dynamic> m) => AmmoLot(
+  AmmoLot _ammoFromMap(Map<String, dynamic> m) => AmmoLot(
         id: (m['id'] ?? '') as String,
         name: m['name'] as String?,
         caliber: (m['caliber'] ?? '') as String,
@@ -1426,26 +1426,26 @@ class AppState extends ChangeNotifier {
         ballisticCoefficient: (m['ballisticCoefficient'] is num) ? (m['ballisticCoefficient'] as num).toDouble() : null,
       );
 
-  static Map<String, dynamic> _photoNoteToMap(PhotoNote p) => {
+  Map<String, dynamic> _photoNoteToMap(PhotoNote p) => {
         'id': p.id,
         'time': p.time.toIso8601String(),
         'caption': p.caption,
       };
 
-  static PhotoNote _photoNoteFromMap(Map<String, dynamic> m) => PhotoNote(
+  PhotoNote _photoNoteFromMap(Map<String, dynamic> m) => PhotoNote(
         id: (m['id'] ?? '') as String,
         time: DateTime.tryParse((m['time'] ?? '') as String) ?? DateTime.now(),
         caption: (m['caption'] ?? '') as String,
       );
 
-  static Map<String, dynamic> _sessionPhotoToMap(SessionPhoto p) => {
+  Map<String, dynamic> _sessionPhotoToMap(SessionPhoto p) => {
         'id': p.id,
         'time': p.time.toIso8601String(),
         'bytes': base64Encode(p.bytes),
         'caption': p.caption,
       };
 
-  static SessionPhoto _sessionPhotoFromMap(Map<String, dynamic> m) => SessionPhoto(
+  SessionPhoto _sessionPhotoFromMap(Map<String, dynamic> m) => SessionPhoto(
         id: (m['id'] ?? '') as String,
         time: DateTime.tryParse((m['time'] ?? '') as String) ?? DateTime.now(),
         bytes: base64Decode((m['bytes'] ?? '') as String),
@@ -1453,21 +1453,21 @@ class AppState extends ChangeNotifier {
       );
 
   
-static Map<String, dynamic> _coldBorePhotoToMap(ColdBorePhoto p) => {
+Map<String, dynamic> _coldBorePhotoToMap(ColdBorePhoto p) => {
       'id': p.id,
       'time': p.time.toIso8601String(),
       'bytes': base64Encode(p.bytes),
       'caption': p.caption,
     };
 
-static ColdBorePhoto _coldBorePhotoFromMap(Map<String, dynamic> m) => ColdBorePhoto(
+ColdBorePhoto _coldBorePhotoFromMap(Map<String, dynamic> m) => ColdBorePhoto(
       id: (m['id'] ?? '') as String,
       time: DateTime.tryParse((m['time'] ?? '') as String) ?? DateTime.now(),
       bytes: base64Decode((m['bytes'] ?? '') as String),
       caption: (m['caption'] ?? '') as String,
     );
 
-static Map<String, dynamic> _shotToMap(ShotEntry s) => {
+Map<String, dynamic> _shotToMap(ShotEntry s) => {
       'id': s.id,
       'time': s.time.toIso8601String(),
       'distance': s.distance,
@@ -1478,7 +1478,7 @@ static Map<String, dynamic> _shotToMap(ShotEntry s) => {
       'photos': s.photos.map(_coldBorePhotoToMap).toList(),
     };
 
-static ShotEntry _shotFromMap(Map<String, dynamic> m) => ShotEntry(
+ShotEntry _shotFromMap(Map<String, dynamic> m) => ShotEntry(
       id: (m['id'] ?? '') as String,
       time: DateTime.tryParse((m['time'] ?? '') as String) ?? DateTime.now(),
       isColdBore: (m['isColdBore'] ?? false) as bool,
@@ -1489,7 +1489,7 @@ static ShotEntry _shotFromMap(Map<String, dynamic> m) => ShotEntry(
       photos: (((m['photos'] as List?) ?? const [])).map((e) => _coldBorePhotoFromMap(e as Map<String, dynamic>)).toList(),
     );
 
-static Map<String, dynamic> _dopeToMap(DopeEntry d) => {
+Map<String, dynamic> _dopeToMap(DopeEntry d) => {
         'id': d.id,
         'time': d.time.toIso8601String(),
         'rifleId': d.rifleId,
@@ -1506,7 +1506,7 @@ static Map<String, dynamic> _dopeToMap(DopeEntry d) => {
         'windageRight': d.windageRight,
       };
 
-  static DopeEntry _dopeFromMap(Map<String, dynamic> m) => DopeEntry(
+  DopeEntry _dopeFromMap(Map<String, dynamic> m) => DopeEntry(
         id: (m['id'] ?? '') as String,
         time: DateTime.tryParse((m['time'] ?? '') as String) ?? DateTime.now(),
         rifleId: m['rifleId'] as String?,
@@ -1532,7 +1532,7 @@ static Map<String, dynamic> _dopeToMap(DopeEntry d) => {
         windageRight: (m['windageRight'] is num) ? (m['windageRight'] as num).toDouble() : 0.0,
       );
 
-  static Map<String, dynamic> _sessionToMap(TrainingSession s) => {
+  Map<String, dynamic> _sessionToMap(TrainingSession s) => {
         'id': s.id,
         'userId': s.userId,
         'dateTime': s.dateTime.toIso8601String(),
@@ -1551,7 +1551,7 @@ static Map<String, dynamic> _dopeToMap(DopeEntry d) => {
         'trainingDope': s.trainingDope.map(_dopeToMap).toList(),
       };
 
-  static TrainingSession _sessionFromMap(Map<String, dynamic> m) => TrainingSession(
+  TrainingSession _sessionFromMap(Map<String, dynamic> m) => TrainingSession(
         id: (m['id'] ?? '') as String,
         userId: (m['userId'] ?? '') as String,
         dateTime: DateTime.tryParse((m['dateTime'] ?? '') as String) ?? DateTime.now(),
@@ -1570,7 +1570,7 @@ static Map<String, dynamic> _dopeToMap(DopeEntry d) => {
         trainingDope: (((m['trainingDope'] as List?) ?? const [])).map((e) => _dopeFromMap(e as Map<String, dynamic>)).toList(),
       );
 
-  static Map<String, dynamic> _encodeWorkingDope(Map<String, Map<DistanceKey, DopeEntry>> src) {
+  Map<String, dynamic> _encodeWorkingDope(Map<String, Map<DistanceKey, DopeEntry>> src) {
     final out = <String, dynamic>{};
     src.forEach((key, inner) {
       out[key] = inner.entries
@@ -1584,7 +1584,7 @@ static Map<String, dynamic> _dopeToMap(DopeEntry d) => {
     return out;
   }
 
-  static Map<String, Map<DistanceKey, DopeEntry>> _decodeWorkingDope(dynamic raw) {
+  Map<String, Map<DistanceKey, DopeEntry>> _decodeWorkingDope(dynamic raw) {
     final out = <String, Map<DistanceKey, DopeEntry>>{};
     if (raw is! Map) return out;
     raw.forEach((k, v) {
@@ -1606,7 +1606,6 @@ static Map<String, dynamic> _dopeToMap(DopeEntry d) => {
     return out;
   }
 
-}
 
 class UserProfile {
   final String id;
