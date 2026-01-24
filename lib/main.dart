@@ -590,7 +590,7 @@ class AppState extends ChangeNotifier {
   UserProfile? _activeUser;
 
   // --- Persistence (local device) ------------------------------------------
-  const String _prefsKey = 'cold_bore_state_v1';
+  static const String _prefsKey = 'cold_bore_state_v1';
   bool _suspendSaves = false;
   Timer? _saveDebounce;
 
