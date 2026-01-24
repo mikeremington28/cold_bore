@@ -7,12 +7,20 @@ import 'dart:convert';
 import 'package:image_picker/image_picker.dart';
 
 String _cleanText(String s) {
+  // Fix common mojibake / smart punctuation that can show up from copy/paste.
   return s
       .replaceAll('â€¢', '•')
-      .replaceAll('â€”', '—')
-      .replaceAll('â€œ', '“')
-      .replaceAll('â€', '”')
-      .replaceAll('â€™', '’');
+      .replaceAll('â€™', "'")
+      .replaceAll('â€˜', "'")
+      .replaceAll('â€œ', '"')
+      .replaceAll('â€�', '"')
+      .replaceAll('â€”', '-')
+      .replaceAll('â†’', '->')
+      .replaceAll('“', '"')
+      .replaceAll('”', '"')
+      .replaceAll('’', "'")
+      .replaceAll('—', '-')
+      .replaceAll('→', '->');
 }
 
 
@@ -126,7 +134,7 @@ String _buildCasePacket(AppState state, {
 
   String rifleLabel() {
     if (rifle != null) return '${rifle.name} (${rifle.caliber})';
-    if (s.rifleId == null) return '—';
+    if (s.rifleId == null) return '-';
     return 'Deleted rifle (${s.rifleId})';
   }
 
@@ -136,12 +144,12 @@ String _buildCasePacket(AppState state, {
       final prefix = m.isEmpty ? '' : '$m ';
       return '${prefix}${ammo.bullet} ${ammo.grain}gr';
     }
-    if (s.ammoLotId == null) return '—';
+    if (s.ammoLotId == null) return '-';
     return 'Deleted ammo (${s.ammoLotId})';
   }
 
   final b = StringBuffer();
-  b.writeln('COLD BORE — CASE PACKET');
+  b.writeln('COLD BORE - CASE PACKET');
   b.writeln('Schema: $kExportSchemaVersion');
   b.writeln('Generated: ${_fmtDateTimeIso(DateTime.now())}');
   b.writeln('');
@@ -150,9 +158,9 @@ String _buildCasePacket(AppState state, {
   b.writeln('• Evidence ID (CRC32): $evidenceId');
   b.writeln('• User ID: ${s.userId}');
   b.writeln('• Date/Time: ${_fmtDateTimeIso(s.dateTime)}');
-  b.writeln('• Location: ${redactLocation ? '[REDACTED]' : (s.locationName.isEmpty ? '—' : s.locationName)}');
+  b.writeln('• Location: ${redactLocation ? '[REDACTED]' : (s.locationName.isEmpty ? '-' : s.locationName)}');
   if (!redactLocation) {
-    b.writeln('• GPS: ${s.latitude?.toStringAsFixed(6) ?? '—'}, ${s.longitude?.toStringAsFixed(6) ?? '—'}');
+    b.writeln('• GPS: ${s.latitude?.toStringAsFixed(6) ?? '-'}, ${s.longitude?.toStringAsFixed(6) ?? '-'}');
   } else {
     b.writeln('• GPS: [REDACTED]');
   }
@@ -161,23 +169,23 @@ String _buildCasePacket(AppState state, {
 
   if (s.temperatureF != null || s.windSpeedMph != null || s.windDirectionDeg != null) {
     b.writeln('• Weather: '
-        '${s.temperatureF != null ? '${s.temperatureF!.toStringAsFixed(1)}°F' : '—'}; '
-        '${s.windSpeedMph != null ? '${s.windSpeedMph!.toStringAsFixed(1)} mph' : '—'} '
+        '${s.temperatureF != null ? '${s.temperatureF!.toStringAsFixed(1)}°F' : '-'}; '
+        '${s.windSpeedMph != null ? '${s.windSpeedMph!.toStringAsFixed(1)} mph' : '-'} '
         '${s.windDirectionDeg != null ? '@ ${s.windDirectionDeg}°' : ''}');
   }
 
   b.writeln('');
   b.writeln('NOTES');
-  b.writeln(s.notes.trim().isEmpty ? '—' : s.notes.trim());
+  b.writeln(s.notes.trim().isEmpty ? '-' : s.notes.trim());
 
   // Session-level photos (caption-only notes)
   b.writeln('');
   b.writeln('SESSION PHOTOS (NOTES)');
   if (s.photos.isEmpty) {
-    b.writeln('—');
+    b.writeln('-');
   } else {
     for (final p in s.photos) {
-      b.writeln('• ${_fmtDateTimeIso(p.time)} — ${p.caption} (id: ${p.id})');
+      b.writeln('• ${_fmtDateTimeIso(p.time)} - ${p.caption} (id: ${p.id})');
     }
   }
 
@@ -185,13 +193,13 @@ String _buildCasePacket(AppState state, {
   b.writeln('');
   b.writeln('TRAINING DOPE');
   if (s.trainingDope.isEmpty) {
-    b.writeln('—');
+    b.writeln('-');
   } else {
     for (final d in s.trainingDope) {
-      b.writeln('• ${d.distance} — Elev: ${d.elevation} ${d.elevationUnit.name} '
-          '(notes: ${d.elevationNotes.isEmpty ? '—' : d.elevationNotes}); '
+      b.writeln('• ${d.distance} - Elev: ${d.elevation} ${d.elevationUnit.name} '
+          '(notes: ${d.elevationNotes.isEmpty ? '-' : d.elevationNotes}); '
           'Wind: ${d.windType.name}: ${d.windValue} '
-          '(notes: ${d.windNotes.isEmpty ? '—' : d.windNotes})');
+          '(notes: ${d.windNotes.isEmpty ? '-' : d.windNotes})');
     }
   }
 
@@ -199,7 +207,7 @@ String _buildCasePacket(AppState state, {
   b.writeln('');
   b.writeln('SHOTS');
   if (s.shots.isEmpty) {
-    b.writeln('—');
+    b.writeln('-');
   } else {
     for (final sh in s.shots) {
       b.writeln('• ${_fmtDateTimeIso(sh.time)}'
@@ -207,15 +215,15 @@ String _buildCasePacket(AppState state, {
           '${sh.isBaseline ? ' [BASELINE]' : ''}');
       b.writeln('  - Distance: ${sh.distance}');
       b.writeln('  - Result: ${sh.result}');
-      b.writeln('  - Notes: ${sh.notes.trim().isEmpty ? '—' : sh.notes.trim()}');
+      b.writeln('  - Notes: ${sh.notes.trim().isEmpty ? '-' : sh.notes.trim()}');
 
       if (sh.photos.isEmpty) {
-        b.writeln('  - Photos: —');
+        b.writeln('  - Photos: -');
       } else {
         b.writeln('  - Photos (${sh.photos.length}):');
         for (final ph in sh.photos) {
           final crc = _crc32(ph.bytes);
-          b.writeln('    • ${_fmtDateTimeIso(ph.time)} — ${ph.caption} '
+          b.writeln('    • ${_fmtDateTimeIso(ph.time)} - ${ph.caption} '
               '(id: ${ph.id}; bytes: ${ph.bytes.length}; crc32: 0x${crc.toRadixString(16).padLeft(8, '0')})');
           if (includePhotoBase64) {
             final b64 = base64Encode(ph.bytes);
@@ -235,10 +243,10 @@ String _buildCasePacket(AppState state, {
 String _buildCourtReport(AppState state, {required bool redactLocation}) {
   final now = DateTime.now();
   final b = StringBuffer();
-  b.writeln('COLD BORE — DATA EXPORT (TEXT)');
+  b.writeln('COLD BORE - DATA EXPORT (TEXT)');
   b.writeln('Schema: $kExportSchemaVersion');
   b.writeln('Generated: ${_fmtDateTimeIso(now)}');
-  b.writeln('Active user: ${state.activeUser?.name ?? '—'} (${state.activeUser?.identifier ?? '—'})');
+  b.writeln('Active user: ${state.activeUser?.name ?? '-'} (${state.activeUser?.identifier ?? '-'})');
   b.writeln('Users: ${state.users.length} | Rifles: ${state.rifles.length} | Ammo lots: ${state.ammoLots.length} | Sessions: ${state.allSessions.length}');
   b.writeln('');
   for (final sess in state.allSessions) {
@@ -248,10 +256,10 @@ String _buildCourtReport(AppState state, {required bool redactLocation}) {
     final rifle = state.rifleById(sess.rifleId);
     final ammo = state.ammoById(sess.ammoLotId);
     final rifleLabel = rifle == null
-        ? (sess.rifleId == null ? '—' : 'Deleted (${sess.rifleId})')
+        ? (sess.rifleId == null ? '-' : 'Deleted (${sess.rifleId})')
         : '${(rifle.name ?? 'Rifle').trim()} (${rifle.caliber})';
     final ammoLabel = ammo == null
-        ? (sess.ammoLotId == null ? '—' : 'Deleted (${sess.ammoLotId})')
+        ? (sess.ammoLotId == null ? '-' : 'Deleted (${sess.ammoLotId})')
         : '${(ammo.name ?? 'Ammo').trim()} (${ammo.caliber})';
     b.writeln('Rifle: $rifleLabel');
     b.writeln('Ammo: $ammoLabel');
@@ -1694,7 +1702,7 @@ class _DataScreenState extends State<DataScreen> {
                       const SizedBox(height: 8),
                       if (withDope.isEmpty)
                         Text(
-                          'No DOPE saved yet. Add it under Equipment â†’ Rifles.',
+                          'No DOPE saved yet. Add it under Equipment -> Rifles.',
                           style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7)),
                         )
                       else
@@ -1878,7 +1886,7 @@ class SessionsScreen extends StatelessWidget {
           return _EmptyState(
             icon: Icons.event_note_outlined,
             title: 'No sessions yet',
-            message: 'Tap “New Session” to add your first training day.',
+            message: 'Tap "New Session" to add your first training day.',
             actionLabel: 'New Session',
             onAction: () => _newSession(context),
           );
@@ -2423,18 +2431,18 @@ Card(
         const SizedBox(height: 4),
         Align(alignment: Alignment.centerLeft, child: SelectableText('Date/Time: ${_fmtDateTime(s.dateTime)}')),
         const SizedBox(height: 4),
-        Align(alignment: Alignment.centerLeft, child: SelectableText('Location: ${s.locationName.isEmpty ? '—' : s.locationName}')),
+        Align(alignment: Alignment.centerLeft, child: SelectableText('Location: ${s.locationName.isEmpty ? '-' : s.locationName}')),
         const SizedBox(height: 8),
         Align(
           alignment: Alignment.centerLeft,
           child: Text(
-            'Rifle: ${rifle == null ? (s.rifleId == null ? '—' : 'Deleted (${s.rifleId})') : '${(rifle.name ?? 'Rifle').trim()} (${rifle.caliber})'}',
+            'Rifle: ${rifle == null ? (s.rifleId == null ? '-' : 'Deleted (${s.rifleId})') : '${(rifle.name ?? 'Rifle').trim()} (${rifle.caliber})'}',
           ),
         ),
         Align(
           alignment: Alignment.centerLeft,
           child: Text(
-            'Ammo: ${ammo == null ? (s.ammoLotId == null ? '—' : 'Deleted (${s.ammoLotId})') : '${(ammo.name ?? 'Ammo').trim()} (${ammo.caliber})'}',
+            'Ammo: ${ammo == null ? (s.ammoLotId == null ? '-' : 'Deleted (${s.ammoLotId})') : '${(ammo.name ?? 'Ammo').trim()} (${ammo.caliber})'}',
           ),
         ),
       ],
@@ -2477,7 +2485,7 @@ Card(
                       value: s.rifleId,
                       decoration: const InputDecoration(labelText: 'Rifle'),
                       items: [
-                        const DropdownMenuItem<String?>(value: null, child: Text('— None —')),
+                        const DropdownMenuItem<String?>(value: null, child: Text('- None -')),
                         if (s.rifleId != null && rifle == null)
                           DropdownMenuItem<String?>(
                             value: s.rifleId,
@@ -2499,7 +2507,7 @@ Card(
                       value: s.ammoLotId,
                       decoration: const InputDecoration(labelText: 'Ammo'),
                       items: [
-                        const DropdownMenuItem<String?>(value: null, child: Text('— None —')),
+                        const DropdownMenuItem<String?>(value: null, child: Text('- None -')),
                         if (s.ammoLotId != null && ammo == null)
                           DropdownMenuItem<String?>(
                             value: s.ammoLotId,
@@ -2549,7 +2557,7 @@ Card(
                   return list.map((e) {
                     final wind = (e.windageLeft > 0)
                         ? 'L ${e.windageLeft.toStringAsFixed(2)}'
-                        : (e.windageRight > 0 ? 'R ${e.windageRight.toStringAsFixed(2)}' : '—');
+                        : (e.windageRight > 0 ? 'R ${e.windageRight.toStringAsFixed(2)}' : '-');
                     return Card(
                       child: ListTile(
                         title: Text('${e.distance} ${e.distanceUnit.name}  •  ${e.elevation.toStringAsFixed(2)} ${e.elevationUnit.name.toUpperCase()}'),
@@ -2564,7 +2572,7 @@ Card(
                 _HintCard(
                   icon: Icons.ac_unit_outlined,
                   title: 'No cold bore entries yet',
-                  message: 'Tap “Add Cold Bore” to log the first shot for this session.',
+                  message: 'Tap "Add Cold Bore" to log the first shot for this session.',
                 )
               else
                 ...s.shots.where((x) => x.isColdBore).map(
@@ -2655,7 +2663,7 @@ Card(
                         final e = useMap[dk]!;
                         final wind = (e.windageLeft > 0)
                             ? 'L ${e.windageLeft.toStringAsFixed(2)}'
-                            : (e.windageRight > 0 ? 'R ${e.windageRight.toStringAsFixed(2)}' : '—');
+                            : (e.windageRight > 0 ? 'R ${e.windageRight.toStringAsFixed(2)}' : '-');
                         return Card(
                           child: ListTile(
                             title: Text(
@@ -2777,7 +2785,7 @@ Card(
               const Divider(),
               const SizedBox(height: 8),
               Text(
-                'Loadout: ${rifle?.name ?? '—'} / ${ammo?.name ?? '—'}',
+                'Loadout: ${rifle?.name ?? '-'} / ${ammo?.name ?? '-'}',
                 style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7)),
               ),
             ],
@@ -2811,7 +2819,7 @@ class ColdBoreScreen extends StatelessWidget {
           return const _EmptyState(
             icon: Icons.ac_unit_outlined,
             title: 'No cold bore entries yet',
-            message: 'Open a session and tap “Add Cold Bore”.',
+            message: 'Open a session and tap "Add Cold Bore".',
           );
         }
 
@@ -2904,7 +2912,7 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
     final baseline = widget.state.baselineColdBoreShot();
     if (baseline == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No baseline set yet. Tap “Mark as Baseline” first.')),
+        const SnackBar(content: Text('No baseline set yet. Tap "Mark as Baseline" first.')),
       );
       return;
     }
@@ -3236,7 +3244,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                   child: _seg == 0
                       ? _EquipmentList(
                           emptyTitle: 'No rifles yet',
-                          emptyMessage: 'Tap “Add Rifle” to create your first rifle.',
+                          emptyMessage: 'Tap "Add Rifle" to create your first rifle.',
                           items: rifles
                               .map(
                                 (r) => ListTile(
@@ -3283,12 +3291,12 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                         )
                       : _EquipmentList(
                           emptyTitle: 'No ammo lots yet',
-                          emptyMessage: 'Tap “Add Ammo” to create your first ammo lot.',
+                          emptyMessage: 'Tap "Add Ammo" to create your first ammo lot.',
                           items: ammo
                               .map(
                                 (a) => ListTile(
                                   leading: const Icon(Icons.inventory_2_outlined),
-                                  title: Text('${a.caliber} • ${a.grain}gr • ${(a.name ?? a.bullet).trim()}'.trim()),
+                                  title: Text('${a.caliber} • ${a.grain}gr • ${a.bullet}${((a.name ?? '').trim().isEmpty) ? '' : ' (${(a.name ?? '').trim()})'}'.trim()),
                                   subtitle: Text(
                                     ((a.manufacturer == null || a.manufacturer!.isEmpty) ? '' : '${a.manufacturer!} • ') +
                                         ((a.lotNumber == null || a.lotNumber!.isEmpty) ? '' : 'Lot ${a.lotNumber!} • ') +
@@ -3980,7 +3988,7 @@ class _EditNotesDialogState extends State<_EditNotesDialog> {
         controller: _c,
         maxLines: 6,
         decoration: const InputDecoration(
-          hintText: 'Add training notes for this session”¦',
+          hintText: 'Add training notes for this session"¦',
         ),
       ),
       actions: [
@@ -4228,162 +4236,12 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
               decoration: const InputDecoration(labelText: 'Name (optional)'),
             ),
             const SizedBox(height: 12),
-            TextField(
-              controller: _manufacturer,
-              decoration: const InputDecoration(labelText: 'Manufacturer (optional)'),
+                        TextField(
+              controller: _caliber,
+              decoration: const InputDecoration(labelText: 'Caliber *'),
+              textInputAction: TextInputAction.next,
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _lot,
-              decoration: const InputDecoration(labelText: 'Lot number (optional)'),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    _purchaseDate == null
-                        ? 'Purchase date (optional)'
-                        : 'Purchase date: ${_fmtDate(_purchaseDate!)}',
-                  ),
-                ),
-                TextButton(
-                  onPressed: () async {
-                    final now = DateTime.now();
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate: _purchaseDate ?? DateTime(now.year, now.month, now.day),
-                      firstDate: DateTime(1990),
-                      lastDate: DateTime(now.year + 2),
-                    );
-                    if (picked != null) setState(() => _purchaseDate = picked);
-                  },
-                  child: const Text('Pick'),
-                ),
-                if (_purchaseDate != null)
-                  IconButton(
-                    tooltip: 'Clear',
-                    onPressed: () => setState(() => _purchaseDate = null),
-                    icon: const Icon(Icons.clear),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _purchasePrice,
-              decoration: const InputDecoration(labelText: 'Purchase price (optional)'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _notes,
-              maxLines: 3,
-              decoration: const InputDecoration(labelText: 'Notes (optional)'),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () {
-            final caliber = _caliber.text.trim();
-            final bullet = _bullet.text.trim();
-            final grainVal = int.tryParse(_grain.text.trim());
-            if (caliber.isEmpty || bullet.isEmpty || grainVal == null || grainVal <= 0) return;
-            final bcVal = double.tryParse(_bc.text.trim());
-            Navigator.of(context).pop(
-              _NewAmmoResult(
-                name: _name.text.trim().isEmpty ? null : _name.text.trim(),
-                caliber: caliber,
-                grain: grainVal,
-                bullet: bullet,
-                ballisticCoefficient: bcVal,
-                manufacturer: _manufacturer.text.trim().isEmpty ? null : _manufacturer.text.trim(),
-                lotNumber: _lot.text.trim().isEmpty ? null : _lot.text.trim(),
-                purchaseDate: _purchaseDate,
-                purchasePrice: _purchasePrice.text.trim().isEmpty ? null : _purchasePrice.text.trim(),
-                notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
-              ),
-            );
-          },
-          child: const Text('Save'),
-        ),
-      ],
-    );
-  }
-}
-
-class _NewRifleDialog extends StatefulWidget {
-  const _NewRifleDialog({this.existing});
-  final Rifle? existing;
-
-  @override
-  State<_NewRifleDialog> createState() => _NewRifleDialogState();
-}
-
-class _NewRifleDialogState extends State<_NewRifleDialog> {
-  final _name = TextEditingController();
-  final _caliber = TextEditingController();
-  final _manufacturer = TextEditingController();
-  final _model = TextEditingController();
-  final _serialNumber = TextEditingController();
-  final _barrelLength = TextEditingController();
-  final _twistRate = TextEditingController();
-
-
-@override
-void initState() {
-  super.initState();
-  final r = widget.existing;
-  if (r != null) {
-    _manufacturer.text = r.manufacturer ?? '';
-    _model.text = r.model ?? '';
-    _name.text = r.name ?? '';
-    _caliber.text = r.caliber;
-    _serialNumber.text = r.serialNumber ?? '';
-    _barrelLength.text = r.barrelLength ?? '';
-    _twistRate.text = r.twistRate ?? '';
-    _purchaseDate = r.purchaseDate;
-    _purchaseLocation.text = r.purchaseLocation ?? '';
-    _purchasePrice.text = r.purchasePrice ?? '';
-    _notes.text = r.notes;
-    _dope.text = r.dope;
-  }
-}
-
-  DateTime? _purchaseDate;
-  final _purchasePrice = TextEditingController();
-  final _purchaseLocation = TextEditingController();
-  final _notes = TextEditingController();
-  final _dope = TextEditingController();
-
-  @override
-  void dispose() {
-    _name.dispose();
-    _caliber.dispose();
-    _manufacturer.dispose();
-    _model.dispose();
-    _serialNumber.dispose();
-    _barrelLength.dispose();
-    _twistRate.dispose();
-    _purchasePrice.dispose();
-    _purchaseLocation.dispose();
-    _notes.dispose();
-    _dope.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(widget.existing == null ? 'Add rifle' : 'Edit rifle'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+            const SizedBox(height: 8),
             TextField(
               controller: _manufacturer,
               decoration: const InputDecoration(labelText: 'Manufacturer (optional)'),
@@ -4402,12 +4260,7 @@ void initState() {
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 8),
-            TextField(
-              controller: _caliber,
-              decoration: const InputDecoration(labelText: 'Caliber *'),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 8),
+
             TextField(
               controller: _serialNumber,
               decoration: const InputDecoration(labelText: 'Serial number (optional)'),
