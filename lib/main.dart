@@ -4,9 +4,13 @@ import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
 import 'dart:typed_data';
 import 'dart:convert';
-import 'dart:async';
 import 'package:image_picker/image_picker.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+
+import 'dart:async';
+import 'dart:math';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 String _cleanText(String s) {
   // Fix common mojibake / smart punctuation that can show up from copy/paste.
@@ -489,8 +493,9 @@ class RifleDopeEntry {
   }
 }
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
   runApp(const ColdBoreApp());
 }
 
@@ -527,7 +532,7 @@ class _AppRoot extends StatefulWidget {
   State<_AppRoot> createState() => _AppRootState();
 }
 
-class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
+class _AppRootState extends State<_AppRoot> {
   final AppState _state = AppState();
 
   bool _unlocked = false;
@@ -535,44 +540,12 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _boot();
-  }
-
-  bool _ready = false;
-
-  Future<void> _boot() async {
-    await _state.loadFromPrefs();
-    if (_state.users.isEmpty) {
-      _state.ensureSeedData();
-    }
-    if (mounted) {
-      setState(() => _ready = true);
-    }
-  }
-
-  
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.detached) {
-      _state.flushSave();
-    }
+    _state.ensureSeedData();
   }
 
   @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-@override
   Widget build(BuildContext context) {
     // Usable-now mode: skip biometrics/unlock screen (local_auth removed for iOS 26 stability).
-    if (!_ready) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
     return HomeShell(state: _state);
   }
 
@@ -580,6 +553,18 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
 
 /// Simple in-memory state (replace with DB later).
 class AppState extends ChangeNotifier {
+
+  // Firebase (cloud sharing)
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final Map<String, List<StreamSubscription>> _cloudSubs = {};
+
+  User? get firebaseUser => _auth.currentUser;
+  Stream<User?> get authChanges => _auth.authStateChanges();
+
+  static const String _sessionsCollection = 'sessions';
+
+
   final List<UserProfile> _users = [];
   final List<Rifle> _rifles = [];
   final List<AmmoLot> _ammoLots = [];
@@ -588,91 +573,6 @@ class AppState extends ChangeNotifier {
   final Map<String, Map<DistanceKey, DopeEntry>> _workingDopeRifleAmmo = {};
 
   UserProfile? _activeUser;
-
-  // --- Persistence (local device) ------------------------------------------
-  static const String _prefsKey = 'cold_bore_state_v1';
-  bool _suspendSaves = false;
-  Timer? _saveDebounce;
-
-  @override
-  void notifyListeners() {
-    super.notifyListeners();
-    _scheduleSave();
-  }
-
-  void _scheduleSave() {
-    if (_suspendSaves) return;
-    _saveDebounce?.cancel();
-    _saveDebounce = Timer(const Duration(milliseconds: 500), () async {
-      try {
-        await _saveToPrefs();
-      } catch (_) {
-        // Best-effort persistence; ignore failures for now.
-      }
-    });
-  }
-
-  Future<void> loadFromPrefs() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_prefsKey);
-    if (raw == null || raw.trim().isEmpty) return;
-
-    _suspendSaves = true;
-    try {
-      final map = jsonDecode(raw) as Map<String, dynamic>;
-      _users
-        ..clear()
-        ..addAll(((map['users'] as List?) ?? const []).map((e) => _userFromMap(e as Map<String, dynamic>)));
-      _rifles
-        ..clear()
-        ..addAll(((map['rifles'] as List?) ?? const []).map((e) => _rifleFromMap(e as Map<String, dynamic>)));
-      _ammoLots
-        ..clear()
-        ..addAll(((map['ammoLots'] as List?) ?? const []).map((e) => _ammoFromMap(e as Map<String, dynamic>)));
-      _sessions
-        ..clear()
-        ..addAll(((map['sessions'] as List?) ?? const []).map((e) => _sessionFromMap(e as Map<String, dynamic>)));
-
-      _workingDopeRifleOnly
-        ..clear()
-        ..addAll(_decodeWorkingDope(map['workingDopeRifleOnly']));
-      _workingDopeRifleAmmo
-        ..clear()
-        ..addAll(_decodeWorkingDope(map['workingDopeRifleAmmo']));
-
-      final activeId = map['activeUserId'] as String?;
-      _activeUser = (activeId == null) ? null : _users.where((u) => u.id == activeId).cast<UserProfile?>().firstWhere((x) => x != null, orElse: () => null);
-    } finally {
-      _suspendSaves = false;
-    }
-    // One notify after load so UI refreshes.
-    super.notifyListeners();
-  }
-
-  Future<void> _saveToPrefs() async {
-    final prefs = await SharedPreferences.getInstance();
-    final map = <String, dynamic>{
-      'users': _users.map(_userToMap).toList(),
-      'rifles': _rifles.map(_rifleToMap).toList(),
-      'ammoLots': _ammoLots.map(_ammoToMap).toList(),
-      'sessions': _sessions.map(_sessionToMap).toList(),
-      'workingDopeRifleOnly': _encodeWorkingDope(_workingDopeRifleOnly),
-      'workingDopeRifleAmmo': _encodeWorkingDope(_workingDopeRifleAmmo),
-      'activeUserId': _activeUser?.id,
-      'schema': kExportSchemaVersion,
-      'savedAt': DateTime.now().toIso8601String(),
-    };
-    await prefs.setString(_prefsKey, jsonEncode(map));
-  }
-
-  Future<void> flushSave() async {
-    try {
-      await _saveToPrefs();
-    } catch (_) {
-      // ignore
-    }
-  }
-
 
 
   // Current environment (optional)
@@ -1102,6 +1002,23 @@ class AppState extends ChangeNotifier {
 
     _sessions[idx] = s.copyWith(shots: [...s.shots, entry]);
     notifyListeners();
+    // Cloud sync
+    if (s.isCloudBacked) {
+      final uid = _auth.currentUser?.uid;
+      if (uid != null) {
+        _db.collection(_sessionsCollection).doc(sessionId).collection('shots').doc(entry.id).set({
+          'authorUid': uid,
+          'createdAt': Timestamp.fromDate(entry.time),
+          'updatedAt': FieldValue.serverTimestamp(),
+          'isDeleted': false,
+          'isColdBore': entry.isColdBore,
+          'isBaseline': entry.isBaseline,
+          'distance': entry.distance,
+          'result': entry.result,
+          'notes': entry.notes,
+        }, SetOptions(merge: true));
+      }
+    }
   }
 
   void addTrainingDope({
@@ -1166,6 +1083,31 @@ class AppState extends ChangeNotifier {
     }
 
     notifyListeners();
+    // Cloud sync
+    final session = _sessions[idx];
+    if (session.isCloudBacked) {
+      final uid = _auth.currentUser?.uid;
+      if (uid != null) {
+        _db.collection(_sessionsCollection).doc(sessionId).collection('dope').doc(updatedEntry.id).set({
+          'authorUid': uid,
+          'createdAt': Timestamp.fromDate(updatedEntry.time),
+          'updatedAt': FieldValue.serverTimestamp(),
+          'isDeleted': false,
+          'rifleId': updatedEntry.rifleId,
+          'ammoLotId': updatedEntry.ammoLotId,
+          'distance': updatedEntry.distance,
+          'distanceUnit': updatedEntry.distanceUnit.name,
+          'elevation': updatedEntry.elevation,
+          'elevationUnit': updatedEntry.elevationUnit.name,
+          'elevationNotes': updatedEntry.elevationNotes,
+          'windType': updatedEntry.windType.name,
+          'windValue': updatedEntry.windValue,
+          'windNotes': updatedEntry.windNotes,
+          'windageLeft': updatedEntry.windageLeft,
+          'windageRight': updatedEntry.windageRight,
+        }, SetOptions(merge: true));
+      }
+    }
   }
 
   ShotEntry? shotById({required String sessionId, required String shotId}) {
@@ -1321,291 +1263,11 @@ class AppState extends ChangeNotifier {
     return rows;
   }
 
-  String _newId() => DateTime.now().microsecondsSinceEpoch.toString();
+  static String _newId() => DateTime.now().microsecondsSinceEpoch.toString();
 
   // Public helper used by widgets that need a fresh id without accessing a static private method.
   String newIdForChild() => _newId();
 }
-
-
-
-  // --- Serialization helpers ------------------------------------------------
-
-  Map<String, dynamic> _userToMap(UserProfile u) => {
-        'id': u.id,
-        'name': u.name,
-        'identifier': u.identifier,
-      };
-
-  UserProfile _userFromMap(Map<String, dynamic> m) => UserProfile(
-        id: (m['id'] ?? '') as String,
-        name: m['name'] as String?,
-        identifier: (m['identifier'] ?? '') as String,
-      );
-
-  Map<String, dynamic> _dopeEntryToMap(RifleDopeEntry e) => {
-        'id': e.id,
-        'distance': e.distance,
-        'elevation': e.elevation,
-        'windage': e.windage,
-        'notes': e.notes,
-      };
-
-  RifleDopeEntry _dopeEntryFromMap(Map<String, dynamic> m) => RifleDopeEntry(
-        id: (m['id'] ?? '') as String,
-        distance: (m['distance'] ?? '') as String,
-        elevation: (m['elevation'] ?? '') as String,
-        windage: (m['windage'] ?? '') as String,
-        notes: (m['notes'] ?? '') as String,
-      );
-
-  Map<String, dynamic> _rifleToMap(Rifle r) => {
-        'id': r.id,
-        'name': r.name,
-        'caliber': r.caliber,
-        'notes': r.notes,
-        'dope': r.dope,
-        'dopeEntries': r.dopeEntries.map(_dopeEntryToMap).toList(),
-        'preferredUnit': r.preferredUnit.name,
-        'manufacturer': r.manufacturer,
-        'model': r.model,
-        'serialNumber': r.serialNumber,
-        'barrelLength': r.barrelLength,
-        'twistRate': r.twistRate,
-        'purchaseDate': r.purchaseDate?.toIso8601String(),
-        'purchasePrice': r.purchasePrice,
-        'purchaseLocation': r.purchaseLocation,
-      };
-
-  Rifle _rifleFromMap(Map<String, dynamic> m) => Rifle(
-        id: (m['id'] ?? '') as String,
-        name: m['name'] as String?,
-        caliber: (m['caliber'] ?? '') as String,
-        notes: (m['notes'] ?? '') as String,
-        dope: (m['dope'] ?? '') as String,
-        dopeEntries: (((m['dopeEntries'] as List?) ?? const [])).map((e) => _dopeEntryFromMap(e as Map<String, dynamic>)).toList(),
-        preferredUnit: ElevationUnit.values.firstWhere(
-          (x) => x.name == (m['preferredUnit'] ?? ElevationUnit.moa.name),
-          orElse: () => ElevationUnit.moa,
-        ),
-        manufacturer: m['manufacturer'] as String?,
-        model: m['model'] as String?,
-        serialNumber: m['serialNumber'] as String?,
-        barrelLength: m['barrelLength'] as String?,
-        twistRate: m['twistRate'] as String?,
-        purchaseDate: (m['purchaseDate'] == null) ? null : DateTime.tryParse(m['purchaseDate'] as String),
-        purchasePrice: m['purchasePrice'] as String?,
-        purchaseLocation: m['purchaseLocation'] as String?,
-      );
-
-  Map<String, dynamic> _ammoToMap(AmmoLot a) => {
-        'id': a.id,
-        'name': a.name,
-        'caliber': a.caliber,
-        'grain': a.grain,
-        'bullet': a.bullet,
-        'notes': a.notes,
-        'manufacturer': a.manufacturer,
-        'lotNumber': a.lotNumber,
-        'purchaseDate': a.purchaseDate?.toIso8601String(),
-        'purchasePrice': a.purchasePrice,
-        'ballisticCoefficient': a.ballisticCoefficient,
-      };
-
-  AmmoLot _ammoFromMap(Map<String, dynamic> m) => AmmoLot(
-        id: (m['id'] ?? '') as String,
-        name: m['name'] as String?,
-        caliber: (m['caliber'] ?? '') as String,
-        grain: (m['grain'] ?? 0) as int,
-        bullet: (m['bullet'] ?? '') as String,
-        notes: (m['notes'] ?? '') as String,
-        manufacturer: m['manufacturer'] as String?,
-        lotNumber: m['lotNumber'] as String?,
-        purchaseDate: (m['purchaseDate'] == null) ? null : DateTime.tryParse(m['purchaseDate'] as String),
-        purchasePrice: m['purchasePrice'] as String?,
-        ballisticCoefficient: (m['ballisticCoefficient'] is num) ? (m['ballisticCoefficient'] as num).toDouble() : null,
-      );
-
-  Map<String, dynamic> _photoNoteToMap(PhotoNote p) => {
-        'id': p.id,
-        'time': p.time.toIso8601String(),
-        'caption': p.caption,
-      };
-
-  PhotoNote _photoNoteFromMap(Map<String, dynamic> m) => PhotoNote(
-        id: (m['id'] ?? '') as String,
-        time: DateTime.tryParse((m['time'] ?? '') as String) ?? DateTime.now(),
-        caption: (m['caption'] ?? '') as String,
-      );
-
-  Map<String, dynamic> _sessionPhotoToMap(SessionPhoto p) => {
-        'id': p.id,
-        'time': p.time.toIso8601String(),
-        'bytes': base64Encode(p.bytes),
-        'caption': p.caption,
-      };
-
-  SessionPhoto _sessionPhotoFromMap(Map<String, dynamic> m) => SessionPhoto(
-        id: (m['id'] ?? '') as String,
-        time: DateTime.tryParse((m['time'] ?? '') as String) ?? DateTime.now(),
-        bytes: base64Decode((m['bytes'] ?? '') as String),
-        caption: (m['caption'] ?? '') as String,
-      );
-
-  
-Map<String, dynamic> _coldBorePhotoToMap(ColdBorePhoto p) => {
-      'id': p.id,
-      'time': p.time.toIso8601String(),
-      'bytes': base64Encode(p.bytes),
-      'caption': p.caption,
-    };
-
-ColdBorePhoto _coldBorePhotoFromMap(Map<String, dynamic> m) => ColdBorePhoto(
-      id: (m['id'] ?? '') as String,
-      time: DateTime.tryParse((m['time'] ?? '') as String) ?? DateTime.now(),
-      bytes: base64Decode((m['bytes'] ?? '') as String),
-      caption: (m['caption'] ?? '') as String,
-    );
-
-Map<String, dynamic> _shotToMap(ShotEntry s) => {
-      'id': s.id,
-      'time': s.time.toIso8601String(),
-      'distance': s.distance,
-      'result': s.result,
-      'notes': s.notes,
-      'isColdBore': s.isColdBore,
-      'isBaseline': s.isBaseline,
-      'photos': s.photos.map(_coldBorePhotoToMap).toList(),
-    };
-
-ShotEntry _shotFromMap(Map<String, dynamic> m) => ShotEntry(
-      id: (m['id'] ?? '') as String,
-      time: DateTime.tryParse((m['time'] ?? '') as String) ?? DateTime.now(),
-      isColdBore: (m['isColdBore'] ?? false) as bool,
-      isBaseline: (m['isBaseline'] ?? false) as bool,
-      distance: (m['distance'] ?? '') as String,
-      result: (m['result'] ?? '') as String,
-      notes: (m['notes'] ?? '') as String,
-      photos: (((m['photos'] as List?) ?? const [])).map((e) => _coldBorePhotoFromMap(e as Map<String, dynamic>)).toList(),
-    );
-
-Map<String, dynamic> _dopeToMap(DopeEntry d) => {
-        'id': d.id,
-        'time': d.time.toIso8601String(),
-        'rifleId': d.rifleId,
-        'ammoLotId': d.ammoLotId,
-        'distance': d.distance,
-        'distanceUnit': d.distanceUnit.name,
-        'elevation': d.elevation,
-        'elevationUnit': d.elevationUnit.name,
-        'elevationNotes': d.elevationNotes,
-        'windType': d.windType.name,
-        'windValue': d.windValue,
-        'windNotes': d.windNotes,
-        'windageLeft': d.windageLeft,
-        'windageRight': d.windageRight,
-      };
-
-  DopeEntry _dopeFromMap(Map<String, dynamic> m) => DopeEntry(
-        id: (m['id'] ?? '') as String,
-        time: DateTime.tryParse((m['time'] ?? '') as String) ?? DateTime.now(),
-        rifleId: m['rifleId'] as String?,
-        ammoLotId: m['ammoLotId'] as String?,
-        distance: (m['distance'] is num) ? (m['distance'] as num).toDouble() : 0.0,
-        distanceUnit: DistanceUnit.values.firstWhere(
-          (x) => x.name == (m['distanceUnit'] ?? DistanceUnit.yards.name),
-          orElse: () => DistanceUnit.yards,
-        ),
-        elevation: (m['elevation'] is num) ? (m['elevation'] as num).toDouble() : 0.0,
-        elevationUnit: ElevationUnit.values.firstWhere(
-          (x) => x.name == (m['elevationUnit'] ?? ElevationUnit.moa.name),
-          orElse: () => ElevationUnit.moa,
-        ),
-        elevationNotes: (m['elevationNotes'] ?? '') as String,
-        windType: WindType.values.firstWhere(
-          (x) => x.name == (m['windType'] ?? WindType.fullValue.name),
-          orElse: () => WindType.fullValue,
-        ),
-        windValue: (m['windValue'] ?? '') as String,
-        windNotes: (m['windNotes'] ?? '') as String,
-        windageLeft: (m['windageLeft'] is num) ? (m['windageLeft'] as num).toDouble() : 0.0,
-        windageRight: (m['windageRight'] is num) ? (m['windageRight'] as num).toDouble() : 0.0,
-      );
-
-  Map<String, dynamic> _sessionToMap(TrainingSession s) => {
-        'id': s.id,
-        'userId': s.userId,
-        'dateTime': s.dateTime.toIso8601String(),
-        'locationName': s.locationName,
-        'notes': s.notes,
-        'latitude': s.latitude,
-        'longitude': s.longitude,
-        'temperatureF': s.temperatureF,
-        'windSpeedMph': s.windSpeedMph,
-        'windDirectionDeg': s.windDirectionDeg,
-        'rifleId': s.rifleId,
-        'ammoLotId': s.ammoLotId,
-        'shots': s.shots.map(_shotToMap).toList(),
-        'photos': s.photos.map(_photoNoteToMap).toList(),
-        'sessionPhotos': s.sessionPhotos.map(_sessionPhotoToMap).toList(),
-        'trainingDope': s.trainingDope.map(_dopeToMap).toList(),
-      };
-
-  TrainingSession _sessionFromMap(Map<String, dynamic> m) => TrainingSession(
-        id: (m['id'] ?? '') as String,
-        userId: (m['userId'] ?? '') as String,
-        dateTime: DateTime.tryParse((m['dateTime'] ?? '') as String) ?? DateTime.now(),
-        locationName: (m['locationName'] ?? '') as String,
-        notes: (m['notes'] ?? '') as String,
-        latitude: (m['latitude'] is num) ? (m['latitude'] as num).toDouble() : null,
-        longitude: (m['longitude'] is num) ? (m['longitude'] as num).toDouble() : null,
-        temperatureF: (m['temperatureF'] is num) ? (m['temperatureF'] as num).toDouble() : null,
-        windSpeedMph: (m['windSpeedMph'] is num) ? (m['windSpeedMph'] as num).toDouble() : null,
-        windDirectionDeg: (m['windDirectionDeg'] is num) ? (m['windDirectionDeg'] as num).toInt() : null,
-        rifleId: m['rifleId'] as String?,
-        ammoLotId: m['ammoLotId'] as String?,
-        shots: (((m['shots'] as List?) ?? const [])).map((e) => _shotFromMap(e as Map<String, dynamic>)).toList(),
-        photos: (((m['photos'] as List?) ?? const [])).map((e) => _photoNoteFromMap(e as Map<String, dynamic>)).toList(),
-        sessionPhotos: (((m['sessionPhotos'] as List?) ?? const [])).map((e) => _sessionPhotoFromMap(e as Map<String, dynamic>)).toList(),
-        trainingDope: (((m['trainingDope'] as List?) ?? const [])).map((e) => _dopeFromMap(e as Map<String, dynamic>)).toList(),
-      );
-
-  Map<String, dynamic> _encodeWorkingDope(Map<String, Map<DistanceKey, DopeEntry>> src) {
-    final out = <String, dynamic>{};
-    src.forEach((key, inner) {
-      out[key] = inner.entries
-          .map((e) => {
-                'distance': e.key.value,
-                'unit': e.key.unit.name,
-                'dope': _dopeToMap(e.value),
-              })
-          .toList();
-    });
-    return out;
-  }
-
-  Map<String, Map<DistanceKey, DopeEntry>> _decodeWorkingDope(dynamic raw) {
-    final out = <String, Map<DistanceKey, DopeEntry>>{};
-    if (raw is! Map) return out;
-    raw.forEach((k, v) {
-      final key = k.toString();
-      final inner = <DistanceKey, DopeEntry>{};
-      if (v is List) {
-        for (final item in v) {
-          if (item is Map) {
-            final dist = (item['distance'] is num) ? (item['distance'] as num).toDouble() : 0.0;
-            final unitName = (item['unit'] ?? DistanceUnit.yards.name).toString();
-            final unit = DistanceUnit.values.firstWhere((x) => x.name == unitName, orElse: () => DistanceUnit.yards);
-            final dopeMap = (item['dope'] is Map) ? (item['dope'] as Map).cast<String, dynamic>() : <String, dynamic>{};
-            inner[DistanceKey(dist, unit)] = _dopeFromMap(dopeMap);
-          }
-        }
-      }
-      out[key] = inner;
-    });
-    return out;
-  }
-
 
 class UserProfile {
   final String id;
@@ -1751,6 +1413,11 @@ class TrainingSession {
   final List<SessionPhoto> sessionPhotos;
   final List<DopeEntry> trainingDope;
 
+  // Cloud sharing
+  final bool isCloudBacked;
+  final String? cloudSessionId;
+  final String? shareCode;
+
   TrainingSession({
     required this.id,
     required this.userId,
@@ -1768,6 +1435,9 @@ class TrainingSession {
     required this.photos,
     required this.sessionPhotos,
     required this.trainingDope,
+    this.isCloudBacked = false,
+    this.cloudSessionId,
+    this.shareCode,
   });
 
   TrainingSession copyWith({
@@ -1785,7 +1455,10 @@ class TrainingSession {
     List<PhotoNote>? photos,
     List<SessionPhoto>? sessionPhotos,
     List<DopeEntry>? trainingDope,
-  }) {
+      bool? isCloudBacked,
+    String? cloudSessionId,
+    String? shareCode,
+}) {
     return TrainingSession(
       id: id,
       userId: userId,
@@ -1803,6 +1476,9 @@ class TrainingSession {
       photos: photos ?? this.photos,
       sessionPhotos: sessionPhotos ?? this.sessionPhotos,
       trainingDope: trainingDope ?? this.trainingDope,
+      isCloudBacked: isCloudBacked ?? this.isCloudBacked,
+      cloudSessionId: cloudSessionId ?? this.cloudSessionId,
+      shareCode: shareCode ?? this.shareCode,
     );
   }
 }
@@ -1909,7 +1585,389 @@ class _ColdBoreRow {
     required this.rifle,
     required this.ammo,
   });
-}
+
+
+  Future<User?> _requireAccount(BuildContext context) async {
+    final existing = _auth.currentUser;
+    if (existing != null) return existing;
+
+    // Sign-in required: use Sign in with Apple via Firebase Auth OAuthProvider.
+    try {
+      final provider = OAuthProvider('apple.com');
+      final cred = await _auth.signInWithProvider(provider);
+      return cred.user;
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Sign in failed: $e')),
+        );
+      }
+      return null;
+    }
+  }
+
+  String _randomShareCode({int len = 6}) {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    final r = Random();
+    return List.generate(len, (_) => chars[r.nextInt(chars.length)]).join();
+  }
+
+  Future<void> shareExistingSession(BuildContext context) async {
+    if (_sessions.isEmpty) return;
+    final user = await _requireAccount(context);
+    if (user == null) return;
+
+    // Pick a local session to share.
+    final pick = await showDialog<TrainingSession>(
+      context: context,
+      builder: (ctx) {
+        final shareable = _sessions.where((s) => !s.isCloudBacked).toList();
+        return SimpleDialog(
+          title: const Text('Share which session?'),
+          children: [
+            if (shareable.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('All sessions are already shared.'),
+              ),
+            ...shareable.map((s) => SimpleDialogOption(
+                  onPressed: () => Navigator.of(ctx).pop(s),
+                  child: Text('${s.locationName} • ${_fmtDateTime(s.dateTime)}'),
+                )),
+          ],
+        );
+      },
+    );
+    if (pick == null) return;
+
+    final shareCode = _randomShareCode();
+    await _createOrUpdateCloudSession(pick, ownerUid: user.uid, shareCode: shareCode);
+
+    // Mark locally as cloud-backed and start listeners.
+    final idx = _sessions.indexWhere((s) => s.id == pick.id);
+    if (idx >= 0) {
+      _sessions[idx] = pick.copyWith(
+        isCloudBacked: true,
+        cloudSessionId: pick.id,
+        shareCode: shareCode,
+      );
+      _startCloudListenersForSession(pick.id);
+      notifyListeners();
+    }
+
+    if (context.mounted) {
+      await Clipboard.setData(ClipboardData(text: shareCode));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Share code copied: $shareCode')),
+      );
+    }
+  }
+
+  Future<void> joinSharedSession(BuildContext context) async {
+    final user = await _requireAccount(context);
+    if (user == null) return;
+
+    final code = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        final c = TextEditingController();
+        return AlertDialog(
+          title: const Text('Join shared session'),
+          content: TextField(
+            controller: c,
+            decoration: const InputDecoration(
+              labelText: 'Session code',
+            ),
+            textCapitalization: TextCapitalization.characters,
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () => Navigator.of(ctx).pop(c.text.trim().toUpperCase()),
+              child: const Text('Join'),
+            ),
+          ],
+        );
+      },
+    );
+    if (code == null || code.isEmpty) return;
+
+    // Find session by shareCode.
+    final q = await _db
+        .collection(_sessionsCollection)
+        .where('shareCode', isEqualTo: code)
+        .limit(1)
+        .get();
+    if (q.docs.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No session found for that code.')),
+        );
+      }
+      return;
+    }
+
+    final doc = q.docs.first;
+    final sessionId = doc.id;
+
+    // Add member record.
+    await _db
+        .collection(_sessionsCollection)
+        .doc(sessionId)
+        .collection('members')
+        .doc(user.uid)
+        .set({
+      'role': 'member',
+      'joinedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    final downloaded = await _downloadCloudSession(sessionId);
+    final existingIdx = _sessions.indexWhere((s) => s.id == sessionId);
+    if (existingIdx >= 0) {
+      _sessions[existingIdx] = downloaded;
+    } else {
+      _sessions.add(downloaded);
+    }
+    _startCloudListenersForSession(sessionId);
+    notifyListeners();
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Joined shared session.')),
+      );
+    }
+  }
+
+  Future<void> _createOrUpdateCloudSession(
+    TrainingSession s, {
+    required String ownerUid,
+    required String shareCode,
+  }) async {
+    final doc = _db.collection(_sessionsCollection).doc(s.id);
+
+    await doc.set({
+      'ownerUid': ownerUid,
+      'shareCode': shareCode,
+      'title': s.locationName,
+      'dateTime': Timestamp.fromDate(s.dateTime),
+      'updatedAt': FieldValue.serverTimestamp(),
+      'rifleId': s.rifleId,
+      'ammoLotId': s.ammoLotId,
+      'notes': s.notes,
+    }, SetOptions(merge: true));
+
+    // Owner member record.
+    await doc.collection('members').doc(ownerUid).set({
+      'role': 'owner',
+      'joinedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    // Upload shots (idempotent).
+    for (final sh in s.shots) {
+      await doc.collection('shots').doc(sh.id).set({
+        'authorUid': ownerUid,
+        'createdAt': Timestamp.fromDate(sh.time),
+        'updatedAt': FieldValue.serverTimestamp(),
+        'isDeleted': false,
+        'isColdBore': sh.isColdBore,
+        'isBaseline': sh.isBaseline,
+        'distance': sh.distance,
+        'result': sh.result,
+        'notes': sh.notes,
+      }, SetOptions(merge: true));
+    }
+
+    // Upload training dope (idempotent).
+    for (final d in s.trainingDope) {
+      await doc.collection('dope').doc(d.id).set({
+        'authorUid': ownerUid,
+        'createdAt': Timestamp.fromDate(d.time),
+        'updatedAt': FieldValue.serverTimestamp(),
+        'isDeleted': false,
+        'rifleId': d.rifleId,
+        'ammoLotId': d.ammoLotId,
+        'distance': d.distance,
+        'distanceUnit': d.distanceUnit.name,
+        'elevation': d.elevation,
+        'elevationUnit': d.elevationUnit.name,
+        'elevationNotes': d.elevationNotes,
+        'windType': d.windType.name,
+        'windValue': d.windValue,
+        'windNotes': d.windNotes,
+        'windageLeft': d.windageLeft,
+        'windageRight': d.windageRight,
+      }, SetOptions(merge: true));
+    }
+  }
+
+  Future<TrainingSession> _downloadCloudSession(String sessionId) async {
+    final doc = await _db.collection(_sessionsCollection).doc(sessionId).get();
+    final data = doc.data() ?? {};
+    final title = (data['title'] as String?) ?? 'Shared Session';
+    final dt = (data['dateTime'] is Timestamp)
+        ? (data['dateTime'] as Timestamp).toDate()
+        : DateTime.now();
+
+    final shotsSnap = await _db.collection(_sessionsCollection).doc(sessionId).collection('shots').get();
+    final shots = <ShotEntry>[];
+    for (final d in shotsSnap.docs) {
+      final m = d.data();
+      if ((m['isDeleted'] as bool?) == true) continue;
+      final createdAt = m['createdAt'];
+      final time = createdAt is Timestamp ? createdAt.toDate() : DateTime.now();
+      shots.add(ShotEntry(
+        id: d.id,
+        time: time,
+        isColdBore: (m['isColdBore'] as bool?) ?? false,
+        isBaseline: (m['isBaseline'] as bool?) ?? false,
+        distance: (m['distance'] as String?) ?? '',
+        result: (m['result'] as String?) ?? '',
+        notes: (m['notes'] as String?) ?? '',
+        photos: const [],
+      ));
+    }
+
+    final dopeSnap = await _db.collection(_sessionsCollection).doc(sessionId).collection('dope').get();
+    final dope = <DopeEntry>[];
+    for (final d in dopeSnap.docs) {
+      final m = d.data();
+      if ((m['isDeleted'] as bool?) == true) continue;
+      final createdAt = m['createdAt'];
+      final time = createdAt is Timestamp ? createdAt.toDate() : DateTime.now();
+      dope.add(DopeEntry(
+        id: d.id,
+        time: time,
+        rifleId: m['rifleId'] as String?,
+        ammoLotId: m['ammoLotId'] as String?,
+        distance: (m['distance'] as num?)?.toDouble() ?? 0,
+        distanceUnit: DistanceUnit.values.firstWhere(
+          (x) => x.name == (m['distanceUnit'] as String? ?? DistanceUnit.yards.name),
+          orElse: () => DistanceUnit.yards,
+        ),
+        elevation: (m['elevation'] as num?)?.toDouble() ?? 0,
+        elevationUnit: ElevationUnit.values.firstWhere(
+          (x) => x.name == (m['elevationUnit'] as String? ?? ElevationUnit.moa.name),
+          orElse: () => ElevationUnit.moa,
+        ),
+        elevationNotes: (m['elevationNotes'] as String?) ?? '',
+        windType: WindType.values.firstWhere(
+          (x) => x.name == (m['windType'] as String? ?? WindType.fullValue.name),
+          orElse: () => WindType.fullValue,
+        ),
+        windValue: (m['windValue'] as String?) ?? '',
+        windNotes: (m['windNotes'] as String?) ?? '',
+        windageLeft: (m['windageLeft'] as num?)?.toDouble() ?? 0.0,
+        windageRight: (m['windageRight'] as num?)?.toDouble() ?? 0.0,
+      ));
+    }
+
+    final localUser = activeUser?.id ?? '';
+    return TrainingSession(
+      id: sessionId,
+      userId: localUser,
+      dateTime: dt,
+      locationName: title,
+      notes: (data['notes'] as String?) ?? '',
+      latitude: null,
+      longitude: null,
+      temperatureF: null,
+      windSpeedMph: null,
+      windDirectionDeg: null,
+      rifleId: data['rifleId'] as String?,
+      ammoLotId: data['ammoLotId'] as String?,
+      shots: shots,
+      photos: const [],
+      sessionPhotos: const [],
+      trainingDope: dope,
+      isCloudBacked: true,
+      cloudSessionId: sessionId,
+      shareCode: (data['shareCode'] as String?) ?? '',
+    );
+  }
+
+  void _startCloudListenersForSession(String sessionId) {
+    if (_cloudSubs.containsKey(sessionId)) return;
+    final subs = <StreamSubscription>[];
+
+    final shotsStream = _db
+        .collection(_sessionsCollection)
+        .doc(sessionId)
+        .collection('shots')
+        .snapshots()
+        .listen((snap) {
+      final idx = _sessions.indexWhere((s) => s.id == sessionId);
+      if (idx < 0) return;
+      final existing = _sessions[idx];
+      final nextShots = <ShotEntry>[];
+      for (final d in snap.docs) {
+        final m = d.data();
+        if ((m['isDeleted'] as bool?) == true) continue;
+        final createdAt = m['createdAt'];
+        final time = createdAt is Timestamp ? createdAt.toDate() : DateTime.now();
+        nextShots.add(ShotEntry(
+          id: d.id,
+          time: time,
+          isColdBore: (m['isColdBore'] as bool?) ?? false,
+          isBaseline: (m['isBaseline'] as bool?) ?? false,
+          distance: (m['distance'] as String?) ?? '',
+          result: (m['result'] as String?) ?? '',
+          notes: (m['notes'] as String?) ?? '',
+          photos: const [],
+        ));
+      }
+      _sessions[idx] = existing.copyWith(shots: nextShots);
+      notifyListeners();
+    });
+    subs.add(shotsStream);
+
+    final dopeStream = _db
+        .collection(_sessionsCollection)
+        .doc(sessionId)
+        .collection('dope')
+        .snapshots()
+        .listen((snap) {
+      final idx = _sessions.indexWhere((s) => s.id == sessionId);
+      if (idx < 0) return;
+      final existing = _sessions[idx];
+      final nextDope = <DopeEntry>[];
+      for (final d in snap.docs) {
+        final m = d.data();
+        if ((m['isDeleted'] as bool?) == true) continue;
+        final createdAt = m['createdAt'];
+        final time = createdAt is Timestamp ? createdAt.toDate() : DateTime.now();
+        nextDope.add(DopeEntry(
+          id: d.id,
+          time: time,
+          rifleId: m['rifleId'] as String?,
+          ammoLotId: m['ammoLotId'] as String?,
+          distance: (m['distance'] as num?)?.toDouble() ?? 0,
+          distanceUnit: DistanceUnit.values.firstWhere(
+            (x) => x.name == (m['distanceUnit'] as String? ?? DistanceUnit.yards.name),
+            orElse: () => DistanceUnit.yards,
+          ),
+          elevation: (m['elevation'] as num?)?.toDouble() ?? 0,
+          elevationUnit: ElevationUnit.values.firstWhere(
+            (x) => x.name == (m['elevationUnit'] as String? ?? ElevationUnit.moa.name),
+            orElse: () => ElevationUnit.moa,
+          ),
+          elevationNotes: (m['elevationNotes'] as String?) ?? '',
+          windType: WindType.values.firstWhere(
+            (x) => x.name == (m['windType'] as String? ?? WindType.fullValue.name),
+            orElse: () => WindType.fullValue,
+          ),
+          windValue: (m['windValue'] as String?) ?? '',
+          windNotes: (m['windNotes'] as String?) ?? '',
+          windageLeft: (m['windageLeft'] as num?)?.toDouble() ?? 0.0,
+          windageRight: (m['windageRight'] as num?)?.toDouble() ?? 0.0,
+        ));
+      }
+      _sessions[idx] = existing.copyWith(trainingDope: nextDope);
+      notifyListeners();
+    });
+    subs.add(dopeStream);
+
+    _cloudSubs[sessionId] = subs;
+  }
 
 ///
 /// Screens
@@ -1991,8 +2049,7 @@ class _HomeShellState extends State<HomeShell> {
 
 class DataScreen extends StatefulWidget {
   final AppState state;
-  final bool embedded;
-  const DataScreen({super.key, required this.state, this.embedded = true});
+  const DataScreen({super.key, required this.state});
 
   @override
   State<DataScreen> createState() => _DataScreenState();
@@ -2077,7 +2134,7 @@ class _DataScreenState extends State<DataScreen> {
           );
         }
 
-        final content = Padding(
+        return Padding(
           padding: const EdgeInsets.all(16),
           child: ListView(
             children: [
@@ -2183,14 +2240,6 @@ class _DataScreenState extends State<DataScreen> {
             ],
           ),
         );
-        return widget.embedded
-            ? content
-            : Scaffold(
-                appBar: AppBar(
-                  title: const Text('Data'),
-                ),
-                body: SafeArea(child: content),
-              );
       },
     );
   }
@@ -2301,6 +2350,21 @@ class SessionsScreen extends StatelessWidget {
         }
 
         return Scaffold(
+          appBar: AppBar(
+            title: const Text('Sessions'),
+            actions: [
+              IconButton(
+                tooltip: 'Join shared session',
+                onPressed: () => state.joinSharedSession(context),
+                icon: const Icon(Icons.input),
+              ),
+              IconButton(
+                tooltip: 'Share a session',
+                onPressed: () => state.shareExistingSession(context),
+                icon: const Icon(Icons.share),
+              ),
+            ],
+          ),
           floatingActionButton: FloatingActionButton.extended(
             onPressed: () => _newSession(context),
             icon: const Icon(Icons.add),
@@ -2320,8 +2384,8 @@ class SessionsScreen extends StatelessWidget {
               ];
 
               return ListTile(
-                title: Text(_cleanText(s.locationName), maxLines: 1, overflow: TextOverflow.ellipsis),
-                subtitle: Text(_cleanText(subtitleBits.join(' • ')), maxLines: 2, overflow: TextOverflow.ellipsis),
+                title: Text(s.locationName),
+                subtitle: Text(_cleanText(subtitleBits.join(' • '))),
                 trailing: s.shots.any((x) => x.isColdBore)
                     ? const Icon(Icons.ac_unit_outlined)
                     : null,
@@ -3016,7 +3080,7 @@ Card(
                   TextButton.icon(
                     onPressed: () {
                       Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => DataScreen(state: state, embedded: false)),
+                        MaterialPageRoute(builder: (_) => DataScreen(state: state)),
                       );
                     },
                     icon: const Icon(Icons.open_in_new),
@@ -4489,207 +4553,6 @@ class _EditDopeDialogState extends State<_EditDopeDialog> {
         ElevatedButton(
           onPressed: () => Navigator.of(context).pop(_c.text),
           child: const Text('Save'),
-        ),
-      ],
-    );
-  }
-}
-
-class _NewRifleDialog extends StatefulWidget {
-  const _NewRifleDialog({this.existing});
-  final Rifle? existing;
-
-  @override
-  State<_NewRifleDialog> createState() => _NewRifleDialogState();
-}
-
-class _NewRifleDialogState extends State<_NewRifleDialog> {
-  final _name = TextEditingController();
-  final _caliber = TextEditingController();
-  final _notes = TextEditingController();
-  final _dope = TextEditingController();
-
-  final _manufacturer = TextEditingController();
-  final _model = TextEditingController();
-  final _serialNumber = TextEditingController();
-  final _barrelLength = TextEditingController();
-  final _twistRate = TextEditingController();
-  final _purchasePrice = TextEditingController();
-  final _purchaseLocation = TextEditingController();
-
-  DateTime? _purchaseDate;
-
-  @override
-  void initState() {
-    super.initState();
-    final r = widget.existing;
-    if (r != null) {
-      _name.text = r.name ?? '';
-      _caliber.text = r.caliber;
-      _notes.text = r.notes;
-      _dope.text = r.dope;
-
-      _manufacturer.text = r.manufacturer ?? '';
-      _model.text = r.model ?? '';
-      _serialNumber.text = r.serialNumber ?? '';
-      _barrelLength.text = r.barrelLength ?? '';
-      _twistRate.text = r.twistRate ?? '';
-      _purchaseDate = r.purchaseDate;
-      _purchasePrice.text = r.purchasePrice ?? '';
-      _purchaseLocation.text = r.purchaseLocation ?? '';
-    }
-  }
-
-  @override
-  void dispose() {
-    _name.dispose();
-    _caliber.dispose();
-    _notes.dispose();
-    _dope.dispose();
-    _manufacturer.dispose();
-    _model.dispose();
-    _serialNumber.dispose();
-    _barrelLength.dispose();
-    _twistRate.dispose();
-    _purchasePrice.dispose();
-    _purchaseLocation.dispose();
-    super.dispose();
-  }
-
-  Future<void> _pickPurchaseDate() async {
-    final now = DateTime.now();
-    final initial = _purchaseDate ?? now;
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: initial,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(now.year + 2),
-    );
-    if (picked == null) return;
-    setState(() => _purchaseDate = picked);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isEdit = widget.existing != null;
-
-    return AlertDialog(
-      title: Text(isEdit ? 'Edit Rifle' : 'Add Rifle'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _name,
-              decoration: const InputDecoration(labelText: 'Name (optional)'),
-              textInputAction: TextInputAction.next,
-            ),
-            TextField(
-              controller: _caliber,
-              decoration: const InputDecoration(labelText: 'Caliber'),
-              textInputAction: TextInputAction.next,
-            ),
-            TextField(
-              controller: _manufacturer,
-              decoration: const InputDecoration(labelText: 'Manufacturer (optional)'),
-              textInputAction: TextInputAction.next,
-            ),
-            TextField(
-              controller: _model,
-              decoration: const InputDecoration(labelText: 'Model (optional)'),
-              textInputAction: TextInputAction.next,
-            ),
-            TextField(
-              controller: _serialNumber,
-              decoration: const InputDecoration(labelText: 'Serial Number (optional)'),
-              textInputAction: TextInputAction.next,
-            ),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _barrelLength,
-                    decoration: const InputDecoration(labelText: 'Barrel Length (optional)'),
-                    textInputAction: TextInputAction.next,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    controller: _twistRate,
-                    decoration: const InputDecoration(labelText: 'Twist Rate (optional)'),
-                    textInputAction: TextInputAction.next,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(_purchaseDate == null ? 'Purchase Date: —' : 'Purchase Date: ${_fmtDate(_purchaseDate!)}'),
-                ),
-                TextButton(onPressed: _pickPurchaseDate, child: const Text('Pick')),
-              ],
-            ),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _purchasePrice,
-                    decoration: const InputDecoration(labelText: 'Purchase Price (optional)'),
-                    textInputAction: TextInputAction.next,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    controller: _purchaseLocation,
-                    decoration: const InputDecoration(labelText: 'Purchase Location (optional)'),
-                    textInputAction: TextInputAction.next,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _dope,
-              decoration: const InputDecoration(labelText: 'DOPE (optional)'),
-              maxLines: 3,
-            ),
-            TextField(
-              controller: _notes,
-              decoration: const InputDecoration(labelText: 'Notes (optional)'),
-              maxLines: 3,
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-        FilledButton(
-          onPressed: () {
-            final cal = _caliber.text.trim();
-            if (cal.isEmpty) return;
-
-            Navigator.of(context).pop(
-              _NewRifleResult(
-                name: _name.text.trim().isEmpty ? null : _name.text.trim(),
-                caliber: cal,
-                notes: _notes.text,
-                dope: _dope.text,
-                manufacturer: _manufacturer.text.trim().isEmpty ? null : _manufacturer.text.trim(),
-                model: _model.text.trim().isEmpty ? null : _model.text.trim(),
-                serialNumber: _serialNumber.text.trim().isEmpty ? null : _serialNumber.text.trim(),
-                barrelLength: _barrelLength.text.trim().isEmpty ? null : _barrelLength.text.trim(),
-                twistRate: _twistRate.text.trim().isEmpty ? null : _twistRate.text.trim(),
-                purchaseDate: _purchaseDate,
-                purchasePrice: _purchasePrice.text.trim().isEmpty ? null : _purchasePrice.text.trim(),
-                purchaseLocation: _purchaseLocation.text.trim().isEmpty ? null : _purchaseLocation.text.trim(),
-              ),
-            );
-          },
-          child: Text(isEdit ? 'Save' : 'Add'),
         ),
       ],
     );
