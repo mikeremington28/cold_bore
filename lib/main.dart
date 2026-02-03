@@ -493,11 +493,56 @@ class RifleDopeEntry {
   }
 }
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
-  runApp(const ColdBoreApp());
+
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    debugPrint(details.toString());
+  };
+
+  runZonedGuarded(() async {
+    bool firebaseReady = false;
+    String? firebaseError;
+
+    try {
+      await Firebase.initializeApp();
+      firebaseReady = true;
+    } catch (e, st) {
+      firebaseReady = false;
+      firebaseError = '$e';
+      debugPrint('Firebase init failed: $e');
+      debugPrint('$st');
+    }
+
+    runApp(ColdBoreApp(firebaseReady: firebaseReady, firebaseError: firebaseError));
+  }, (error, stack) {
+    debugPrint('Uncaught zone error: $error');
+    debugPrint('$stack');
+    runApp(MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        backgroundColor: Colors.black,
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: SingleChildScrollView(
+              child: Text(
+                'Startup error:
+
+$error
+
+$stack',
+                style: const TextStyle(color: Colors.white),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ));
+  });
 }
+
 
 ///
 /// Cold Bore (MVP Shell + First Feature Set)
@@ -509,10 +554,34 @@ void main() async {
 /// NOTE: Still "no database yet". We'll swap AppState storage to a real DB later.
 ///
 class ColdBoreApp extends StatelessWidget {
-  const ColdBoreApp({super.key});
+  final bool firebaseReady;
+  final String? firebaseError;
+
+  const ColdBoreApp({super.key, required this.firebaseReady, this.firebaseError});
 
   @override
   Widget build(BuildContext context) {
+    if (!firebaseReady) {
+      return MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(title: const Text('Cold Bore')),
+          body: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: SingleChildScrollView(
+                child: Text(
+                  'Firebase failed to start.\n\nError:\n${firebaseError ?? "Unknown"}',
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     return MaterialApp(
       title: 'Cold Bore',
       debugShowCheckedModeBanner: false,
