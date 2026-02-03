@@ -1267,325 +1267,8 @@ class AppState extends ChangeNotifier {
 
   // Public helper used by widgets that need a fresh id without accessing a static private method.
   String newIdForChild() => _newId();
-}
 
-class UserProfile {
-  final String id;
-  final String? name;
-  final String identifier;
-
-  UserProfile({
-    required this.id,
-    this.name,
-    required this.identifier,
-  });
-}
-
-class Rifle {
-  final String id;
-  final String? name;
-  final String caliber;
-  final String notes;
-  final String dope;
-  final List<RifleDopeEntry> dopeEntries;
-
-  final ElevationUnit preferredUnit;
-
-  // Optional details
-  final String? manufacturer;
-  final String? model;
-  final String? serialNumber;
-  final String? barrelLength;
-  final String? twistRate;
-  final DateTime? purchaseDate;
-  final String? purchasePrice;
-  final String? purchaseLocation;
-
-  Rifle({
-    required this.id,
-    this.name,
-    required this.caliber,
-    this.preferredUnit = ElevationUnit.mil,
-    required this.notes,
-    required this.dope,
-    this.dopeEntries = const [],
-    this.manufacturer,
-    this.model,
-    this.serialNumber,
-    this.barrelLength,
-    this.twistRate,
-    this.purchaseDate,
-    this.purchasePrice,
-    this.purchaseLocation,
-  });
-
-  Rifle copyWith({
-    String? name,
-    String? caliber,
-    String? notes,
-    String? dope,
-    List<RifleDopeEntry>? dopeEntries,
-    ElevationUnit? preferredUnit,
-    String? manufacturer,
-    String? model,
-    String? serialNumber,
-    String? barrelLength,
-    String? twistRate,
-    DateTime? purchaseDate,
-    String? purchasePrice,
-    String? purchaseLocation,
-  }) {
-    return Rifle(
-      id: id,
-      name: name ?? this.name,
-      caliber: caliber ?? this.caliber,
-      notes: notes ?? this.notes,
-      dope: dope ?? this.dope,
-      dopeEntries: dopeEntries ?? this.dopeEntries,
-      preferredUnit: preferredUnit ?? this.preferredUnit,
-      manufacturer: manufacturer ?? this.manufacturer,
-      model: model ?? this.model,
-      serialNumber: serialNumber ?? this.serialNumber,
-      barrelLength: barrelLength ?? this.barrelLength,
-      twistRate: twistRate ?? this.twistRate,
-      purchaseDate: purchaseDate ?? this.purchaseDate,
-      purchasePrice: purchasePrice ?? this.purchasePrice,
-      purchaseLocation: purchaseLocation ?? this.purchaseLocation,
-    );
-  }
-}
-
-
-class AmmoLot {
-  final String id;
-  final String? name;
-  final String caliber;
-  final int grain;
-  final String bullet;
-  final String notes;
-
-  // Optional details
-  final String? manufacturer;
-  final String? lotNumber;
-  final DateTime? purchaseDate;
-  final String? purchasePrice;
-
-  // Optional ballistics
-  final double? ballisticCoefficient;
-
-  AmmoLot({
-    required this.id,
-    this.name,
-    required this.caliber,
-    required this.grain,
-    required this.bullet,
-    required this.notes,
-    this.manufacturer,
-    this.lotNumber,
-    this.purchaseDate,
-    this.purchasePrice,
-    this.ballisticCoefficient,
-  });
-}
-
-
-class TrainingSession {
-  final String id;
-  final String userId;
-  final DateTime dateTime;
-  final String locationName;
-  final String notes;
-
-  // Optional GPS (saved only if user taps Use GPS)
-  final double? latitude;
-  final double? longitude;
-
-  // Optional Weather (stored on the session)
-  final double? temperatureF;
-  final double? windSpeedMph;
-  final int? windDirectionDeg;
-
-  final String? rifleId;
-  final String? ammoLotId;
-
-  final List<ShotEntry> shots;
-  final List<PhotoNote> photos;
-  final List<SessionPhoto> sessionPhotos;
-  final List<DopeEntry> trainingDope;
-
-  // Cloud sharing
-  final bool isCloudBacked;
-  final String? cloudSessionId;
-  final String? shareCode;
-
-  TrainingSession({
-    required this.id,
-    required this.userId,
-    required this.dateTime,
-    required this.locationName,
-    required this.notes,
-    this.latitude,
-    this.longitude,
-    this.temperatureF,
-    this.windSpeedMph,
-    this.windDirectionDeg,
-    required this.rifleId,
-    required this.ammoLotId,
-    required this.shots,
-    required this.photos,
-    required this.sessionPhotos,
-    required this.trainingDope,
-    this.isCloudBacked = false,
-    this.cloudSessionId,
-    this.shareCode,
-  });
-
-  TrainingSession copyWith({
-    double? latitude,
-    double? longitude,
-    double? temperatureF,
-    double? windSpeedMph,
-    int? windDirectionDeg,
-    DateTime? dateTime,
-    String? locationName,
-    String? notes,
-    String? rifleId,
-    String? ammoLotId,
-    List<ShotEntry>? shots,
-    List<PhotoNote>? photos,
-    List<SessionPhoto>? sessionPhotos,
-    List<DopeEntry>? trainingDope,
-      bool? isCloudBacked,
-    String? cloudSessionId,
-    String? shareCode,
-}) {
-    return TrainingSession(
-      id: id,
-      userId: userId,
-      dateTime: dateTime ?? this.dateTime,
-      locationName: locationName ?? this.locationName,
-      notes: notes ?? this.notes,
-      latitude: latitude ?? this.latitude,
-      longitude: longitude ?? this.longitude,
-      temperatureF: temperatureF ?? this.temperatureF,
-      windSpeedMph: windSpeedMph ?? this.windSpeedMph,
-      windDirectionDeg: windDirectionDeg ?? this.windDirectionDeg,
-      rifleId: rifleId ?? this.rifleId,
-      ammoLotId: ammoLotId ?? this.ammoLotId,
-      shots: shots ?? this.shots,
-      photos: photos ?? this.photos,
-      sessionPhotos: sessionPhotos ?? this.sessionPhotos,
-      trainingDope: trainingDope ?? this.trainingDope,
-      isCloudBacked: isCloudBacked ?? this.isCloudBacked,
-      cloudSessionId: cloudSessionId ?? this.cloudSessionId,
-      shareCode: shareCode ?? this.shareCode,
-    );
-  }
-}
-
-class ShotEntry {
-  final String id;
-  final DateTime time;
-  final bool isColdBore;
-
-  /// When true, this cold bore entry is the baseline "first shot" to compare against.
-  /// (We enforce a single baseline per active user, for now.)
-  final bool isBaseline;
-
-  final String distance;
-  final String result;
-  final String notes;
-
-  /// Cold-bore-only photos (stored in-memory as bytes for MVP).
-  final List<ColdBorePhoto> photos;
-
-  ShotEntry({
-    required this.id,
-    required this.time,
-    required this.isColdBore,
-    required this.isBaseline,
-    required this.distance,
-    required this.result,
-    required this.notes,
-    required this.photos,
-  });
-
-  ShotEntry copyWith({
-    DateTime? time,
-    bool? isColdBore,
-    bool? isBaseline,
-    String? distance,
-    String? result,
-    String? notes,
-    List<ColdBorePhoto>? photos,
-  }) {
-    return ShotEntry(
-      id: id,
-      time: time ?? this.time,
-      isColdBore: isColdBore ?? this.isColdBore,
-      isBaseline: isBaseline ?? this.isBaseline,
-      distance: distance ?? this.distance,
-      result: result ?? this.result,
-      notes: notes ?? this.notes,
-      photos: photos ?? this.photos,
-    );
-  }
-}
-
-class ColdBorePhoto {
-  final String id;
-  final DateTime time;
-  final Uint8List bytes;
-  final String caption;
-
-  ColdBorePhoto({
-    required this.id,
-    required this.time,
-    required this.bytes,
-    required this.caption,
-  });
-}
-
-/// Session-level photo captured from the Session screen.
-class SessionPhoto {
-  final String id;
-  final DateTime time;
-  final Uint8List bytes;
-  final String caption;
-
-  SessionPhoto({
-    required this.id,
-    required this.time,
-    required this.bytes,
-    required this.caption,
-  });
-}
-
-/// Text-only session note (kept for quick caption-only notes).
-class PhotoNote {
-  final String id;
-  final DateTime time;
-  final String caption;
-
-  PhotoNote({
-    required this.id,
-    required this.time,
-    required this.caption,
-  });
-}
-
-class _ColdBoreRow {
-  final TrainingSession session;
-  final ShotEntry shot;
-  final Rifle? rifle;
-  final AmmoLot? ammo;
-  _ColdBoreRow({
-    required this.session,
-    required this.shot,
-    required this.rifle,
-    required this.ammo,
-  });
-
+  // --- Cloud sharing (Firebase Auth + Firestore) -------------------------
 
   Future<User?> _requireAccount(BuildContext context) async {
     final existing = _auth.currentUser;
@@ -1968,6 +1651,314 @@ class _ColdBoreRow {
 
     _cloudSubs[sessionId] = subs;
   }
+
+
+}
+
+class UserProfile {
+  final String id;
+  final String? name;
+  final String identifier;
+
+  UserProfile({
+    required this.id,
+    this.name,
+    required this.identifier,
+  });
+}
+
+class Rifle {
+  final String id;
+  final String? name;
+  final String caliber;
+  final String notes;
+  final String dope;
+  final List<RifleDopeEntry> dopeEntries;
+
+  final ElevationUnit preferredUnit;
+
+  // Optional details
+  final String? manufacturer;
+  final String? model;
+  final String? serialNumber;
+  final String? barrelLength;
+  final String? twistRate;
+  final DateTime? purchaseDate;
+  final String? purchasePrice;
+  final String? purchaseLocation;
+
+  Rifle({
+    required this.id,
+    this.name,
+    required this.caliber,
+    this.preferredUnit = ElevationUnit.mil,
+    required this.notes,
+    required this.dope,
+    this.dopeEntries = const [],
+    this.manufacturer,
+    this.model,
+    this.serialNumber,
+    this.barrelLength,
+    this.twistRate,
+    this.purchaseDate,
+    this.purchasePrice,
+    this.purchaseLocation,
+  });
+
+  Rifle copyWith({
+    String? name,
+    String? caliber,
+    String? notes,
+    String? dope,
+    List<RifleDopeEntry>? dopeEntries,
+    ElevationUnit? preferredUnit,
+    String? manufacturer,
+    String? model,
+    String? serialNumber,
+    String? barrelLength,
+    String? twistRate,
+    DateTime? purchaseDate,
+    String? purchasePrice,
+    String? purchaseLocation,
+  }) {
+    return Rifle(
+      id: id,
+      name: name ?? this.name,
+      caliber: caliber ?? this.caliber,
+      notes: notes ?? this.notes,
+      dope: dope ?? this.dope,
+      dopeEntries: dopeEntries ?? this.dopeEntries,
+      preferredUnit: preferredUnit ?? this.preferredUnit,
+      manufacturer: manufacturer ?? this.manufacturer,
+      model: model ?? this.model,
+      serialNumber: serialNumber ?? this.serialNumber,
+      barrelLength: barrelLength ?? this.barrelLength,
+      twistRate: twistRate ?? this.twistRate,
+      purchaseDate: purchaseDate ?? this.purchaseDate,
+      purchasePrice: purchasePrice ?? this.purchasePrice,
+      purchaseLocation: purchaseLocation ?? this.purchaseLocation,
+    );
+  }
+}
+
+
+class AmmoLot {
+  final String id;
+  final String? name;
+  final String caliber;
+  final int grain;
+  final String bullet;
+  final String notes;
+
+  // Optional details
+  final String? manufacturer;
+  final String? lotNumber;
+  final DateTime? purchaseDate;
+  final String? purchasePrice;
+
+  // Optional ballistics
+  final double? ballisticCoefficient;
+
+  AmmoLot({
+    required this.id,
+    this.name,
+    required this.caliber,
+    required this.grain,
+    required this.bullet,
+    required this.notes,
+    this.manufacturer,
+    this.lotNumber,
+    this.purchaseDate,
+    this.purchasePrice,
+    this.ballisticCoefficient,
+  });
+}
+
+
+class TrainingSession {
+  final String id;
+  final String userId;
+  final DateTime dateTime;
+  final String locationName;
+  final String notes;
+
+  // Optional GPS (saved only if user taps Use GPS)
+  final double? latitude;
+  final double? longitude;
+
+  // Optional Weather (stored on the session)
+  final double? temperatureF;
+  final double? windSpeedMph;
+  final int? windDirectionDeg;
+
+  final String? rifleId;
+  final String? ammoLotId;
+
+  final List<ShotEntry> shots;
+  final List<PhotoNote> photos;
+  final List<SessionPhoto> sessionPhotos;
+  final List<DopeEntry> trainingDope;
+
+  // Cloud sharing
+  final bool isCloudBacked;
+  final String? cloudSessionId;
+  final String? shareCode;
+
+  TrainingSession({
+    required this.id,
+    required this.userId,
+    required this.dateTime,
+    required this.locationName,
+    required this.notes,
+    this.latitude,
+    this.longitude,
+    this.temperatureF,
+    this.windSpeedMph,
+    this.windDirectionDeg,
+    required this.rifleId,
+    required this.ammoLotId,
+    required this.shots,
+    required this.photos,
+    required this.sessionPhotos,
+    required this.trainingDope,
+    this.isCloudBacked = false,
+    this.cloudSessionId,
+    this.shareCode,
+  });
+
+  TrainingSession copyWith({
+    double? latitude,
+    double? longitude,
+    double? temperatureF,
+    double? windSpeedMph,
+    int? windDirectionDeg,
+    DateTime? dateTime,
+    String? locationName,
+    String? notes,
+    String? rifleId,
+    String? ammoLotId,
+    List<ShotEntry>? shots,
+    List<PhotoNote>? photos,
+    List<SessionPhoto>? sessionPhotos,
+    List<DopeEntry>? trainingDope,
+      bool? isCloudBacked,
+    String? cloudSessionId,
+    String? shareCode,
+}) {
+    return TrainingSession(
+      id: id,
+      userId: userId,
+      dateTime: dateTime ?? this.dateTime,
+      locationName: locationName ?? this.locationName,
+      notes: notes ?? this.notes,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      temperatureF: temperatureF ?? this.temperatureF,
+      windSpeedMph: windSpeedMph ?? this.windSpeedMph,
+      windDirectionDeg: windDirectionDeg ?? this.windDirectionDeg,
+      rifleId: rifleId ?? this.rifleId,
+      ammoLotId: ammoLotId ?? this.ammoLotId,
+      shots: shots ?? this.shots,
+      photos: photos ?? this.photos,
+      sessionPhotos: sessionPhotos ?? this.sessionPhotos,
+      trainingDope: trainingDope ?? this.trainingDope,
+      isCloudBacked: isCloudBacked ?? this.isCloudBacked,
+      cloudSessionId: cloudSessionId ?? this.cloudSessionId,
+      shareCode: shareCode ?? this.shareCode,
+    );
+  }
+}
+
+class ShotEntry {
+  final String id;
+  final DateTime time;
+  final bool isColdBore;
+
+  /// When true, this cold bore entry is the baseline "first shot" to compare against.
+  /// (We enforce a single baseline per active user, for now.)
+  final bool isBaseline;
+
+  final String distance;
+  final String result;
+  final String notes;
+
+  /// Cold-bore-only photos (stored in-memory as bytes for MVP).
+  final List<ColdBorePhoto> photos;
+
+  ShotEntry({
+    required this.id,
+    required this.time,
+    required this.isColdBore,
+    required this.isBaseline,
+    required this.distance,
+    required this.result,
+    required this.notes,
+    required this.photos,
+  });
+
+  ShotEntry copyWith({
+    DateTime? time,
+    bool? isColdBore,
+    bool? isBaseline,
+    String? distance,
+    String? result,
+    String? notes,
+    List<ColdBorePhoto>? photos,
+  }) {
+    return ShotEntry(
+      id: id,
+      time: time ?? this.time,
+      isColdBore: isColdBore ?? this.isColdBore,
+      isBaseline: isBaseline ?? this.isBaseline,
+      distance: distance ?? this.distance,
+      result: result ?? this.result,
+      notes: notes ?? this.notes,
+      photos: photos ?? this.photos,
+    );
+  }
+}
+
+class ColdBorePhoto {
+  final String id;
+  final DateTime time;
+  final Uint8List bytes;
+  final String caption;
+
+  ColdBorePhoto({
+    required this.id,
+    required this.time,
+    required this.bytes,
+    required this.caption,
+  });
+}
+
+/// Session-level photo captured from the Session screen.
+class SessionPhoto {
+  final String id;
+  final DateTime time;
+  final Uint8List bytes;
+  final String caption;
+
+  SessionPhoto({
+    required this.id,
+    required this.time,
+    required this.bytes,
+    required this.caption,
+  });
+}
+
+/// Text-only session note (kept for quick caption-only notes).
+class PhotoNote {
+  final String id;
+  final DateTime time;
+  final String caption;
+
+  PhotoNote({
+    required this.id,
+    required this.time,
+    required this.caption,
+  });
+}
 
 ///
 /// Screens
@@ -5045,9 +5036,11 @@ class _RifleDopeEntryDialogState extends State<_RifleDopeEntryDialog> {
       ],
     );
 
+  }
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
   runApp(const ColdBoreApp());
-}
-  }
 }
