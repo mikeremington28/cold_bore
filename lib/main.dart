@@ -1259,12 +1259,8 @@ class AppState extends ChangeNotifier {
       }
     }
 
-    rows.sort((a, b) {
-      final aa = a as _ColdBoreRow;
-      final bb = b as _ColdBoreRow;
-      return bb.shot.time.compareTo(aa.shot.time);
-    });
-return rows;
+    rows.sort((a, b) => b.shot.time.compareTo(a.shot.time));
+    return rows;
   }
 
   static String _newId() => DateTime.now().microsecondsSinceEpoch.toString();
@@ -1589,9 +1585,13 @@ class _ColdBoreRow {
     required this.rifle,
     required this.ammo,
   });
+}
 
 
-  Future<User?> _requireAccount(BuildContext context) async {
+
+
+  extension _AppStateCloudSharing on AppState {
+Future<User?> _requireAccount(BuildContext context) async {
     final existing = _auth.currentUser;
     if (existing != null) return existing;
 
@@ -1972,6 +1972,8 @@ class _ColdBoreRow {
 
     _cloudSubs[sessionId] = subs;
   }
+
+}
 
 ///
 /// Screens
@@ -4556,181 +4558,6 @@ class _EditDopeDialogState extends State<_EditDopeDialog> {
         TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
         ElevatedButton(
           onPressed: () => Navigator.of(context).pop(_c.text),
-          child: const Text('Save'),
-        ),
-      ],
-    );
-  }
-}
-
-
-class _NewRifleDialog extends StatefulWidget {
-  final Rifle? existing;
-  const _NewRifleDialog({super.key, this.existing});
-
-  @override
-  State<_NewRifleDialog> createState() => _NewRifleDialogState();
-}
-
-class _NewRifleDialogState extends State<_NewRifleDialog> {
-  late final TextEditingController _name;
-  late final TextEditingController _caliber;
-  late final TextEditingController _notes;
-  late final TextEditingController _manufacturer;
-  late final TextEditingController _model;
-  late final TextEditingController _serialNumber;
-  late final TextEditingController _barrelLength;
-  late final TextEditingController _twistRate;
-  late final TextEditingController _purchasePrice;
-  late final TextEditingController _purchaseLocation;
-  DateTime? _purchaseDate;
-
-  @override
-  void initState() {
-    super.initState();
-    final r = widget.existing;
-    _name = TextEditingController(text: r?.name ?? '');
-    _caliber = TextEditingController(text: r?.caliber ?? '');
-    _notes = TextEditingController(text: r?.notes ?? '');
-    _manufacturer = TextEditingController(text: r?.manufacturer ?? '');
-    _model = TextEditingController(text: r?.model ?? '');
-    _serialNumber = TextEditingController(text: r?.serialNumber ?? '');
-    _barrelLength = TextEditingController(text: r?.barrelLength ?? '');
-    _twistRate = TextEditingController(text: r?.twistRate ?? '');
-    _purchasePrice = TextEditingController(text: r?.purchasePrice ?? '');
-    _purchaseLocation = TextEditingController(text: r?.purchaseLocation ?? '');
-    _purchaseDate = r?.purchaseDate;
-  }
-
-  @override
-  void dispose() {
-    _name.dispose();
-    _caliber.dispose();
-    _notes.dispose();
-    _manufacturer.dispose();
-    _model.dispose();
-    _serialNumber.dispose();
-    _barrelLength.dispose();
-    _twistRate.dispose();
-    _purchasePrice.dispose();
-    _purchaseLocation.dispose();
-    super.dispose();
-  }
-
-  Future<void> _pickPurchaseDate() async {
-    final now = DateTime.now();
-    final initial = _purchaseDate ?? DateTime(now.year, now.month, now.day);
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: initial,
-      firstDate: DateTime(1970),
-      lastDate: DateTime(now.year + 5),
-    );
-    if (picked != null) {
-      setState(() => _purchaseDate = picked);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isEdit = widget.existing != null;
-    return AlertDialog(
-      title: Text(isEdit ? 'Edit Rifle' : 'Add Rifle'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _name,
-              decoration: const InputDecoration(labelText: 'Name'),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _caliber,
-              decoration: const InputDecoration(labelText: 'Caliber'),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _manufacturer,
-              decoration: const InputDecoration(labelText: 'Manufacturer'),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _model,
-              decoration: const InputDecoration(labelText: 'Model'),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _serialNumber,
-              decoration: const InputDecoration(labelText: 'Serial Number'),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _barrelLength,
-              decoration: const InputDecoration(labelText: 'Barrel Length'),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _twistRate,
-              decoration: const InputDecoration(labelText: 'Twist Rate'),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    _purchaseDate == null ? 'Purchase Date: (none)' : 'Purchase Date: ${_fmtDate(_purchaseDate!)}',
-                  ),
-                ),
-                TextButton(onPressed: _pickPurchaseDate, child: const Text('Pick')),
-              ],
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _purchasePrice,
-              decoration: const InputDecoration(labelText: 'Purchase Price'),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _purchaseLocation,
-              decoration: const InputDecoration(labelText: 'Purchase Location'),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _notes,
-              decoration: const InputDecoration(labelText: 'Notes'),
-              maxLines: 3,
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-        FilledButton(
-          onPressed: () {
-            final caliber = _caliber.text.trim();
-            if (caliber.isEmpty) {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Caliber is required.')));
-              return;
-            }
-            Navigator.of(context).pop(
-              _NewRifleResult(
-                name: _name.text.trim().isEmpty ? null : _name.text.trim(),
-                caliber: caliber,
-                notes: _notes.text,
-                dope: '', // legacy field; dope entries preferred
-                dopeEntries: const [],
-                manufacturer: _manufacturer.text.trim().isEmpty ? null : _manufacturer.text.trim(),
-                model: _model.text.trim().isEmpty ? null : _model.text.trim(),
-                serialNumber: _serialNumber.text.trim().isEmpty ? null : _serialNumber.text.trim(),
-                barrelLength: _barrelLength.text.trim().isEmpty ? null : _barrelLength.text.trim(),
-                twistRate: _twistRate.text.trim().isEmpty ? null : _twistRate.text.trim(),
-                purchaseDate: _purchaseDate,
-                purchasePrice: _purchasePrice.text.trim().isEmpty ? null : _purchasePrice.text.trim(),
-                purchaseLocation: _purchaseLocation.text.trim().isEmpty ? null : _purchaseLocation.text.trim(),
-              ),
-            );
-          },
           child: const Text('Save'),
         ),
       ],
