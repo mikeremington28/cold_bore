@@ -1006,7 +1006,7 @@ class AppState extends ChangeNotifier {
     if (s.isCloudBacked) {
       final uid = _auth.currentUser?.uid;
       if (uid != null) {
-        _db.collection(_sessionsCollection).doc(sessionId).collection('shots').doc(entry.id).set({
+        _db.collection(AppState._sessionsCollection).doc(sessionId).collection('shots').doc(entry.id).set({
           'authorUid': uid,
           'createdAt': Timestamp.fromDate(entry.time),
           'updatedAt': FieldValue.serverTimestamp(),
@@ -1088,7 +1088,7 @@ class AppState extends ChangeNotifier {
     if (session.isCloudBacked) {
       final uid = _auth.currentUser?.uid;
       if (uid != null) {
-        _db.collection(_sessionsCollection).doc(sessionId).collection('dope').doc(updatedEntry.id).set({
+        _db.collection(AppState._sessionsCollection).doc(sessionId).collection('dope').doc(updatedEntry.id).set({
           'authorUid': uid,
           'createdAt': Timestamp.fromDate(updatedEntry.time),
           'updatedAt': FieldValue.serverTimestamp(),
@@ -1698,7 +1698,7 @@ Future<User?> _requireAccount(BuildContext context) async {
 
     // Find session by shareCode.
     final q = await _db
-        .collection(_sessionsCollection)
+        .collection(AppState._sessionsCollection)
         .where('shareCode', isEqualTo: code)
         .limit(1)
         .get();
@@ -1716,7 +1716,7 @@ Future<User?> _requireAccount(BuildContext context) async {
 
     // Add member record.
     await _db
-        .collection(_sessionsCollection)
+        .collection(AppState._sessionsCollection)
         .doc(sessionId)
         .collection('members')
         .doc(user.uid)
@@ -1747,7 +1747,7 @@ Future<User?> _requireAccount(BuildContext context) async {
     required String ownerUid,
     required String shareCode,
   }) async {
-    final doc = _db.collection(_sessionsCollection).doc(s.id);
+    final doc = _db.collection(AppState._sessionsCollection).doc(s.id);
 
     await doc.set({
       'ownerUid': ownerUid,
@@ -1805,14 +1805,14 @@ Future<User?> _requireAccount(BuildContext context) async {
   }
 
   Future<TrainingSession> _downloadCloudSession(String sessionId) async {
-    final doc = await _db.collection(_sessionsCollection).doc(sessionId).get();
+    final doc = await _db.collection(AppState._sessionsCollection).doc(sessionId).get();
     final data = doc.data() ?? {};
     final title = (data['title'] as String?) ?? 'Shared Session';
     final dt = (data['dateTime'] is Timestamp)
         ? (data['dateTime'] as Timestamp).toDate()
         : DateTime.now();
 
-    final shotsSnap = await _db.collection(_sessionsCollection).doc(sessionId).collection('shots').get();
+    final shotsSnap = await _db.collection(AppState._sessionsCollection).doc(sessionId).collection('shots').get();
     final shots = <ShotEntry>[];
     for (final d in shotsSnap.docs) {
       final m = d.data();
@@ -1831,7 +1831,7 @@ Future<User?> _requireAccount(BuildContext context) async {
       ));
     }
 
-    final dopeSnap = await _db.collection(_sessionsCollection).doc(sessionId).collection('dope').get();
+    final dopeSnap = await _db.collection(AppState._sessionsCollection).doc(sessionId).collection('dope').get();
     final dope = <DopeEntry>[];
     for (final d in dopeSnap.docs) {
       final m = d.data();
@@ -1894,7 +1894,7 @@ Future<User?> _requireAccount(BuildContext context) async {
     final subs = <StreamSubscription>[];
 
     final shotsStream = _db
-        .collection(_sessionsCollection)
+        .collection(AppState._sessionsCollection)
         .doc(sessionId)
         .collection('shots')
         .snapshots()
@@ -1925,7 +1925,7 @@ Future<User?> _requireAccount(BuildContext context) async {
     subs.add(shotsStream);
 
     final dopeStream = _db
-        .collection(_sessionsCollection)
+        .collection(AppState._sessionsCollection)
         .doc(sessionId)
         .collection('dope')
         .snapshots()
@@ -4624,6 +4624,208 @@ class _NewAmmoResult {
   final DateTime? purchaseDate;
   final String? purchasePrice;
   final String? notes;
+}
+
+
+class _NewRifleDialog extends StatefulWidget {
+  final Rifle? existing;
+  const _NewRifleDialog({this.existing, super.key});
+
+  @override
+  State<_NewRifleDialog> createState() => _NewRifleDialogState();
+}
+
+class _NewRifleDialogState extends State<_NewRifleDialog> {
+  late final TextEditingController _name;
+  late final TextEditingController _caliber;
+  late final TextEditingController _notes;
+  late final TextEditingController _dope;
+
+  late final TextEditingController _manufacturer;
+  late final TextEditingController _model;
+  late final TextEditingController _serialNumber;
+  late final TextEditingController _barrelLength;
+  late final TextEditingController _twistRate;
+  late final TextEditingController _purchasePrice;
+  late final TextEditingController _purchaseLocation;
+
+  DateTime? _purchaseDate;
+
+  @override
+  void initState() {
+    super.initState();
+    _name = TextEditingController(text: widget.existing?.name ?? '');
+    _caliber = TextEditingController(text: widget.existing?.caliber ?? '');
+    _notes = TextEditingController(text: widget.existing?.notes ?? '');
+    _dope = TextEditingController(text: widget.existing?.dope ?? '');
+
+    _manufacturer = TextEditingController(text: widget.existing?.manufacturer ?? '');
+    _model = TextEditingController(text: widget.existing?.model ?? '');
+    _serialNumber = TextEditingController(text: widget.existing?.serialNumber ?? '');
+    _barrelLength = TextEditingController(text: widget.existing?.barrelLength ?? '');
+    _twistRate = TextEditingController(text: widget.existing?.twistRate ?? '');
+    _purchasePrice = TextEditingController(text: widget.existing?.purchasePrice ?? '');
+    _purchaseLocation = TextEditingController(text: widget.existing?.purchaseLocation ?? '');
+    _purchaseDate = widget.existing?.purchaseDate;
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _caliber.dispose();
+    _notes.dispose();
+    _dope.dispose();
+    _manufacturer.dispose();
+    _model.dispose();
+    _serialNumber.dispose();
+    _barrelLength.dispose();
+    _twistRate.dispose();
+    _purchasePrice.dispose();
+    _purchaseLocation.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickPurchaseDate() async {
+    final now = DateTime.now();
+    final initial = _purchaseDate ?? DateTime(now.year, now.month, now.day);
+    final picked = await showDatePicker(
+      context: context,
+      firstDate: DateTime(1970, 1, 1),
+      lastDate: DateTime(now.year + 1, 12, 31),
+      initialDate: initial,
+    );
+    if (picked != null) {
+      setState(() => _purchaseDate = picked);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dateLabel = _purchaseDate == null
+        ? 'Purchase date (optional)'
+        : 'Purchase date: ${_purchaseDate!.year}-${_purchaseDate!.month.toString().padLeft(2, '0')}-${_purchaseDate!.day.toString().padLeft(2, '0')}';
+
+    return AlertDialog(
+      title: Text(widget.existing == null ? 'Add Rifle' : 'Edit Rifle'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _name,
+              decoration: const InputDecoration(labelText: 'Name (optional)'),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _caliber,
+              decoration: const InputDecoration(labelText: 'Caliber *'),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _manufacturer,
+              decoration: const InputDecoration(labelText: 'Manufacturer (optional)'),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _model,
+              decoration: const InputDecoration(labelText: 'Model (optional)'),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _serialNumber,
+              decoration: const InputDecoration(labelText: 'Serial number (optional)'),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _barrelLength,
+                    decoration: const InputDecoration(labelText: 'Barrel length (optional)'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: _twistRate,
+                    decoration: const InputDecoration(labelText: 'Twist rate (optional)'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _purchaseLocation,
+              decoration: const InputDecoration(labelText: 'Purchase location (optional)'),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _purchasePrice,
+              decoration: const InputDecoration(labelText: 'Purchase price (optional)'),
+              keyboardType: TextInputType.number,
+            ),
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: _pickPurchaseDate,
+                icon: const Icon(Icons.event),
+                label: Text(dateLabel),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _dope,
+              decoration: const InputDecoration(
+                labelText: 'DOPE / Come-ups',
+                hintText: 'Example: 100y 0.0 | 200y 0.6 | 300y 1.4 ...',
+              ),
+              maxLines: 4,
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _notes,
+              decoration: const InputDecoration(labelText: 'Notes'),
+              maxLines: 3,
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        FilledButton(
+          onPressed: () {
+            final caliber = _caliber.text.trim();
+            if (caliber.isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Caliber is required.')),
+              );
+              return;
+            }
+
+            final res = _NewRifleResult(
+              name: _name.text.trim().isEmpty ? null : _name.text.trim(),
+              caliber: caliber,
+              notes: _notes.text.trim(),
+              dope: _dope.text.trim(),
+              manufacturer: _manufacturer.text.trim().isEmpty ? null : _manufacturer.text.trim(),
+              model: _model.text.trim().isEmpty ? null : _model.text.trim(),
+              serialNumber: _serialNumber.text.trim().isEmpty ? null : _serialNumber.text.trim(),
+              barrelLength: _barrelLength.text.trim().isEmpty ? null : _barrelLength.text.trim(),
+              twistRate: _twistRate.text.trim().isEmpty ? null : _twistRate.text.trim(),
+              purchaseDate: _purchaseDate,
+              purchasePrice: _purchasePrice.text.trim().isEmpty ? null : _purchasePrice.text.trim(),
+              purchaseLocation: _purchaseLocation.text.trim().isEmpty ? null : _purchaseLocation.text.trim(),
+              dopeEntries: widget.existing?.dopeEntries ?? const [],
+            );
+
+            Navigator.of(context).pop(res);
+          },
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
 }
 
 class _NewAmmoDialog extends StatefulWidget {
