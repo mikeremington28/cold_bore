@@ -1259,16 +1259,337 @@ class AppState extends ChangeNotifier {
       }
     }
 
-    rows.sort((a, b) => b.shot.time.compareTo(a.shot.time));
-    return rows;
+    rows.sort((a, b) {
+      final aa = a as _ColdBoreRow;
+      final bb = b as _ColdBoreRow;
+      return bb.shot.time.compareTo(aa.shot.time);
+    });
+return rows;
   }
 
   static String _newId() => DateTime.now().microsecondsSinceEpoch.toString();
 
   // Public helper used by widgets that need a fresh id without accessing a static private method.
   String newIdForChild() => _newId();
+}
 
-  // --- Cloud sharing (Firebase Auth + Firestore) -------------------------
+class UserProfile {
+  final String id;
+  final String? name;
+  final String identifier;
+
+  UserProfile({
+    required this.id,
+    this.name,
+    required this.identifier,
+  });
+}
+
+class Rifle {
+  final String id;
+  final String? name;
+  final String caliber;
+  final String notes;
+  final String dope;
+  final List<RifleDopeEntry> dopeEntries;
+
+  final ElevationUnit preferredUnit;
+
+  // Optional details
+  final String? manufacturer;
+  final String? model;
+  final String? serialNumber;
+  final String? barrelLength;
+  final String? twistRate;
+  final DateTime? purchaseDate;
+  final String? purchasePrice;
+  final String? purchaseLocation;
+
+  Rifle({
+    required this.id,
+    this.name,
+    required this.caliber,
+    this.preferredUnit = ElevationUnit.mil,
+    required this.notes,
+    required this.dope,
+    this.dopeEntries = const [],
+    this.manufacturer,
+    this.model,
+    this.serialNumber,
+    this.barrelLength,
+    this.twistRate,
+    this.purchaseDate,
+    this.purchasePrice,
+    this.purchaseLocation,
+  });
+
+  Rifle copyWith({
+    String? name,
+    String? caliber,
+    String? notes,
+    String? dope,
+    List<RifleDopeEntry>? dopeEntries,
+    ElevationUnit? preferredUnit,
+    String? manufacturer,
+    String? model,
+    String? serialNumber,
+    String? barrelLength,
+    String? twistRate,
+    DateTime? purchaseDate,
+    String? purchasePrice,
+    String? purchaseLocation,
+  }) {
+    return Rifle(
+      id: id,
+      name: name ?? this.name,
+      caliber: caliber ?? this.caliber,
+      notes: notes ?? this.notes,
+      dope: dope ?? this.dope,
+      dopeEntries: dopeEntries ?? this.dopeEntries,
+      preferredUnit: preferredUnit ?? this.preferredUnit,
+      manufacturer: manufacturer ?? this.manufacturer,
+      model: model ?? this.model,
+      serialNumber: serialNumber ?? this.serialNumber,
+      barrelLength: barrelLength ?? this.barrelLength,
+      twistRate: twistRate ?? this.twistRate,
+      purchaseDate: purchaseDate ?? this.purchaseDate,
+      purchasePrice: purchasePrice ?? this.purchasePrice,
+      purchaseLocation: purchaseLocation ?? this.purchaseLocation,
+    );
+  }
+}
+
+
+class AmmoLot {
+  final String id;
+  final String? name;
+  final String caliber;
+  final int grain;
+  final String bullet;
+  final String notes;
+
+  // Optional details
+  final String? manufacturer;
+  final String? lotNumber;
+  final DateTime? purchaseDate;
+  final String? purchasePrice;
+
+  // Optional ballistics
+  final double? ballisticCoefficient;
+
+  AmmoLot({
+    required this.id,
+    this.name,
+    required this.caliber,
+    required this.grain,
+    required this.bullet,
+    required this.notes,
+    this.manufacturer,
+    this.lotNumber,
+    this.purchaseDate,
+    this.purchasePrice,
+    this.ballisticCoefficient,
+  });
+}
+
+
+class TrainingSession {
+  final String id;
+  final String userId;
+  final DateTime dateTime;
+  final String locationName;
+  final String notes;
+
+  // Optional GPS (saved only if user taps Use GPS)
+  final double? latitude;
+  final double? longitude;
+
+  // Optional Weather (stored on the session)
+  final double? temperatureF;
+  final double? windSpeedMph;
+  final int? windDirectionDeg;
+
+  final String? rifleId;
+  final String? ammoLotId;
+
+  final List<ShotEntry> shots;
+  final List<PhotoNote> photos;
+  final List<SessionPhoto> sessionPhotos;
+  final List<DopeEntry> trainingDope;
+
+  // Cloud sharing
+  final bool isCloudBacked;
+  final String? cloudSessionId;
+  final String? shareCode;
+
+  TrainingSession({
+    required this.id,
+    required this.userId,
+    required this.dateTime,
+    required this.locationName,
+    required this.notes,
+    this.latitude,
+    this.longitude,
+    this.temperatureF,
+    this.windSpeedMph,
+    this.windDirectionDeg,
+    required this.rifleId,
+    required this.ammoLotId,
+    required this.shots,
+    required this.photos,
+    required this.sessionPhotos,
+    required this.trainingDope,
+    this.isCloudBacked = false,
+    this.cloudSessionId,
+    this.shareCode,
+  });
+
+  TrainingSession copyWith({
+    double? latitude,
+    double? longitude,
+    double? temperatureF,
+    double? windSpeedMph,
+    int? windDirectionDeg,
+    DateTime? dateTime,
+    String? locationName,
+    String? notes,
+    String? rifleId,
+    String? ammoLotId,
+    List<ShotEntry>? shots,
+    List<PhotoNote>? photos,
+    List<SessionPhoto>? sessionPhotos,
+    List<DopeEntry>? trainingDope,
+      bool? isCloudBacked,
+    String? cloudSessionId,
+    String? shareCode,
+}) {
+    return TrainingSession(
+      id: id,
+      userId: userId,
+      dateTime: dateTime ?? this.dateTime,
+      locationName: locationName ?? this.locationName,
+      notes: notes ?? this.notes,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      temperatureF: temperatureF ?? this.temperatureF,
+      windSpeedMph: windSpeedMph ?? this.windSpeedMph,
+      windDirectionDeg: windDirectionDeg ?? this.windDirectionDeg,
+      rifleId: rifleId ?? this.rifleId,
+      ammoLotId: ammoLotId ?? this.ammoLotId,
+      shots: shots ?? this.shots,
+      photos: photos ?? this.photos,
+      sessionPhotos: sessionPhotos ?? this.sessionPhotos,
+      trainingDope: trainingDope ?? this.trainingDope,
+      isCloudBacked: isCloudBacked ?? this.isCloudBacked,
+      cloudSessionId: cloudSessionId ?? this.cloudSessionId,
+      shareCode: shareCode ?? this.shareCode,
+    );
+  }
+}
+
+class ShotEntry {
+  final String id;
+  final DateTime time;
+  final bool isColdBore;
+
+  /// When true, this cold bore entry is the baseline "first shot" to compare against.
+  /// (We enforce a single baseline per active user, for now.)
+  final bool isBaseline;
+
+  final String distance;
+  final String result;
+  final String notes;
+
+  /// Cold-bore-only photos (stored in-memory as bytes for MVP).
+  final List<ColdBorePhoto> photos;
+
+  ShotEntry({
+    required this.id,
+    required this.time,
+    required this.isColdBore,
+    required this.isBaseline,
+    required this.distance,
+    required this.result,
+    required this.notes,
+    required this.photos,
+  });
+
+  ShotEntry copyWith({
+    DateTime? time,
+    bool? isColdBore,
+    bool? isBaseline,
+    String? distance,
+    String? result,
+    String? notes,
+    List<ColdBorePhoto>? photos,
+  }) {
+    return ShotEntry(
+      id: id,
+      time: time ?? this.time,
+      isColdBore: isColdBore ?? this.isColdBore,
+      isBaseline: isBaseline ?? this.isBaseline,
+      distance: distance ?? this.distance,
+      result: result ?? this.result,
+      notes: notes ?? this.notes,
+      photos: photos ?? this.photos,
+    );
+  }
+}
+
+class ColdBorePhoto {
+  final String id;
+  final DateTime time;
+  final Uint8List bytes;
+  final String caption;
+
+  ColdBorePhoto({
+    required this.id,
+    required this.time,
+    required this.bytes,
+    required this.caption,
+  });
+}
+
+/// Session-level photo captured from the Session screen.
+class SessionPhoto {
+  final String id;
+  final DateTime time;
+  final Uint8List bytes;
+  final String caption;
+
+  SessionPhoto({
+    required this.id,
+    required this.time,
+    required this.bytes,
+    required this.caption,
+  });
+}
+
+/// Text-only session note (kept for quick caption-only notes).
+class PhotoNote {
+  final String id;
+  final DateTime time;
+  final String caption;
+
+  PhotoNote({
+    required this.id,
+    required this.time,
+    required this.caption,
+  });
+}
+
+class _ColdBoreRow {
+  final TrainingSession session;
+  final ShotEntry shot;
+  final Rifle? rifle;
+  final AmmoLot? ammo;
+  _ColdBoreRow({
+    required this.session,
+    required this.shot,
+    required this.rifle,
+    required this.ammo,
+  });
+
 
   Future<User?> _requireAccount(BuildContext context) async {
     final existing = _auth.currentUser;
@@ -1651,314 +1972,6 @@ class AppState extends ChangeNotifier {
 
     _cloudSubs[sessionId] = subs;
   }
-
-
-}
-
-class UserProfile {
-  final String id;
-  final String? name;
-  final String identifier;
-
-  UserProfile({
-    required this.id,
-    this.name,
-    required this.identifier,
-  });
-}
-
-class Rifle {
-  final String id;
-  final String? name;
-  final String caliber;
-  final String notes;
-  final String dope;
-  final List<RifleDopeEntry> dopeEntries;
-
-  final ElevationUnit preferredUnit;
-
-  // Optional details
-  final String? manufacturer;
-  final String? model;
-  final String? serialNumber;
-  final String? barrelLength;
-  final String? twistRate;
-  final DateTime? purchaseDate;
-  final String? purchasePrice;
-  final String? purchaseLocation;
-
-  Rifle({
-    required this.id,
-    this.name,
-    required this.caliber,
-    this.preferredUnit = ElevationUnit.mil,
-    required this.notes,
-    required this.dope,
-    this.dopeEntries = const [],
-    this.manufacturer,
-    this.model,
-    this.serialNumber,
-    this.barrelLength,
-    this.twistRate,
-    this.purchaseDate,
-    this.purchasePrice,
-    this.purchaseLocation,
-  });
-
-  Rifle copyWith({
-    String? name,
-    String? caliber,
-    String? notes,
-    String? dope,
-    List<RifleDopeEntry>? dopeEntries,
-    ElevationUnit? preferredUnit,
-    String? manufacturer,
-    String? model,
-    String? serialNumber,
-    String? barrelLength,
-    String? twistRate,
-    DateTime? purchaseDate,
-    String? purchasePrice,
-    String? purchaseLocation,
-  }) {
-    return Rifle(
-      id: id,
-      name: name ?? this.name,
-      caliber: caliber ?? this.caliber,
-      notes: notes ?? this.notes,
-      dope: dope ?? this.dope,
-      dopeEntries: dopeEntries ?? this.dopeEntries,
-      preferredUnit: preferredUnit ?? this.preferredUnit,
-      manufacturer: manufacturer ?? this.manufacturer,
-      model: model ?? this.model,
-      serialNumber: serialNumber ?? this.serialNumber,
-      barrelLength: barrelLength ?? this.barrelLength,
-      twistRate: twistRate ?? this.twistRate,
-      purchaseDate: purchaseDate ?? this.purchaseDate,
-      purchasePrice: purchasePrice ?? this.purchasePrice,
-      purchaseLocation: purchaseLocation ?? this.purchaseLocation,
-    );
-  }
-}
-
-
-class AmmoLot {
-  final String id;
-  final String? name;
-  final String caliber;
-  final int grain;
-  final String bullet;
-  final String notes;
-
-  // Optional details
-  final String? manufacturer;
-  final String? lotNumber;
-  final DateTime? purchaseDate;
-  final String? purchasePrice;
-
-  // Optional ballistics
-  final double? ballisticCoefficient;
-
-  AmmoLot({
-    required this.id,
-    this.name,
-    required this.caliber,
-    required this.grain,
-    required this.bullet,
-    required this.notes,
-    this.manufacturer,
-    this.lotNumber,
-    this.purchaseDate,
-    this.purchasePrice,
-    this.ballisticCoefficient,
-  });
-}
-
-
-class TrainingSession {
-  final String id;
-  final String userId;
-  final DateTime dateTime;
-  final String locationName;
-  final String notes;
-
-  // Optional GPS (saved only if user taps Use GPS)
-  final double? latitude;
-  final double? longitude;
-
-  // Optional Weather (stored on the session)
-  final double? temperatureF;
-  final double? windSpeedMph;
-  final int? windDirectionDeg;
-
-  final String? rifleId;
-  final String? ammoLotId;
-
-  final List<ShotEntry> shots;
-  final List<PhotoNote> photos;
-  final List<SessionPhoto> sessionPhotos;
-  final List<DopeEntry> trainingDope;
-
-  // Cloud sharing
-  final bool isCloudBacked;
-  final String? cloudSessionId;
-  final String? shareCode;
-
-  TrainingSession({
-    required this.id,
-    required this.userId,
-    required this.dateTime,
-    required this.locationName,
-    required this.notes,
-    this.latitude,
-    this.longitude,
-    this.temperatureF,
-    this.windSpeedMph,
-    this.windDirectionDeg,
-    required this.rifleId,
-    required this.ammoLotId,
-    required this.shots,
-    required this.photos,
-    required this.sessionPhotos,
-    required this.trainingDope,
-    this.isCloudBacked = false,
-    this.cloudSessionId,
-    this.shareCode,
-  });
-
-  TrainingSession copyWith({
-    double? latitude,
-    double? longitude,
-    double? temperatureF,
-    double? windSpeedMph,
-    int? windDirectionDeg,
-    DateTime? dateTime,
-    String? locationName,
-    String? notes,
-    String? rifleId,
-    String? ammoLotId,
-    List<ShotEntry>? shots,
-    List<PhotoNote>? photos,
-    List<SessionPhoto>? sessionPhotos,
-    List<DopeEntry>? trainingDope,
-      bool? isCloudBacked,
-    String? cloudSessionId,
-    String? shareCode,
-}) {
-    return TrainingSession(
-      id: id,
-      userId: userId,
-      dateTime: dateTime ?? this.dateTime,
-      locationName: locationName ?? this.locationName,
-      notes: notes ?? this.notes,
-      latitude: latitude ?? this.latitude,
-      longitude: longitude ?? this.longitude,
-      temperatureF: temperatureF ?? this.temperatureF,
-      windSpeedMph: windSpeedMph ?? this.windSpeedMph,
-      windDirectionDeg: windDirectionDeg ?? this.windDirectionDeg,
-      rifleId: rifleId ?? this.rifleId,
-      ammoLotId: ammoLotId ?? this.ammoLotId,
-      shots: shots ?? this.shots,
-      photos: photos ?? this.photos,
-      sessionPhotos: sessionPhotos ?? this.sessionPhotos,
-      trainingDope: trainingDope ?? this.trainingDope,
-      isCloudBacked: isCloudBacked ?? this.isCloudBacked,
-      cloudSessionId: cloudSessionId ?? this.cloudSessionId,
-      shareCode: shareCode ?? this.shareCode,
-    );
-  }
-}
-
-class ShotEntry {
-  final String id;
-  final DateTime time;
-  final bool isColdBore;
-
-  /// When true, this cold bore entry is the baseline "first shot" to compare against.
-  /// (We enforce a single baseline per active user, for now.)
-  final bool isBaseline;
-
-  final String distance;
-  final String result;
-  final String notes;
-
-  /// Cold-bore-only photos (stored in-memory as bytes for MVP).
-  final List<ColdBorePhoto> photos;
-
-  ShotEntry({
-    required this.id,
-    required this.time,
-    required this.isColdBore,
-    required this.isBaseline,
-    required this.distance,
-    required this.result,
-    required this.notes,
-    required this.photos,
-  });
-
-  ShotEntry copyWith({
-    DateTime? time,
-    bool? isColdBore,
-    bool? isBaseline,
-    String? distance,
-    String? result,
-    String? notes,
-    List<ColdBorePhoto>? photos,
-  }) {
-    return ShotEntry(
-      id: id,
-      time: time ?? this.time,
-      isColdBore: isColdBore ?? this.isColdBore,
-      isBaseline: isBaseline ?? this.isBaseline,
-      distance: distance ?? this.distance,
-      result: result ?? this.result,
-      notes: notes ?? this.notes,
-      photos: photos ?? this.photos,
-    );
-  }
-}
-
-class ColdBorePhoto {
-  final String id;
-  final DateTime time;
-  final Uint8List bytes;
-  final String caption;
-
-  ColdBorePhoto({
-    required this.id,
-    required this.time,
-    required this.bytes,
-    required this.caption,
-  });
-}
-
-/// Session-level photo captured from the Session screen.
-class SessionPhoto {
-  final String id;
-  final DateTime time;
-  final Uint8List bytes;
-  final String caption;
-
-  SessionPhoto({
-    required this.id,
-    required this.time,
-    required this.bytes,
-    required this.caption,
-  });
-}
-
-/// Text-only session note (kept for quick caption-only notes).
-class PhotoNote {
-  final String id;
-  final DateTime time;
-  final String caption;
-
-  PhotoNote({
-    required this.id,
-    required this.time,
-    required this.caption,
-  });
-}
 
 ///
 /// Screens
@@ -4550,6 +4563,181 @@ class _EditDopeDialogState extends State<_EditDopeDialog> {
   }
 }
 
+
+class _NewRifleDialog extends StatefulWidget {
+  final Rifle? existing;
+  const _NewRifleDialog({super.key, this.existing});
+
+  @override
+  State<_NewRifleDialog> createState() => _NewRifleDialogState();
+}
+
+class _NewRifleDialogState extends State<_NewRifleDialog> {
+  late final TextEditingController _name;
+  late final TextEditingController _caliber;
+  late final TextEditingController _notes;
+  late final TextEditingController _manufacturer;
+  late final TextEditingController _model;
+  late final TextEditingController _serialNumber;
+  late final TextEditingController _barrelLength;
+  late final TextEditingController _twistRate;
+  late final TextEditingController _purchasePrice;
+  late final TextEditingController _purchaseLocation;
+  DateTime? _purchaseDate;
+
+  @override
+  void initState() {
+    super.initState();
+    final r = widget.existing;
+    _name = TextEditingController(text: r?.name ?? '');
+    _caliber = TextEditingController(text: r?.caliber ?? '');
+    _notes = TextEditingController(text: r?.notes ?? '');
+    _manufacturer = TextEditingController(text: r?.manufacturer ?? '');
+    _model = TextEditingController(text: r?.model ?? '');
+    _serialNumber = TextEditingController(text: r?.serialNumber ?? '');
+    _barrelLength = TextEditingController(text: r?.barrelLength ?? '');
+    _twistRate = TextEditingController(text: r?.twistRate ?? '');
+    _purchasePrice = TextEditingController(text: r?.purchasePrice ?? '');
+    _purchaseLocation = TextEditingController(text: r?.purchaseLocation ?? '');
+    _purchaseDate = r?.purchaseDate;
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _caliber.dispose();
+    _notes.dispose();
+    _manufacturer.dispose();
+    _model.dispose();
+    _serialNumber.dispose();
+    _barrelLength.dispose();
+    _twistRate.dispose();
+    _purchasePrice.dispose();
+    _purchaseLocation.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickPurchaseDate() async {
+    final now = DateTime.now();
+    final initial = _purchaseDate ?? DateTime(now.year, now.month, now.day);
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(1970),
+      lastDate: DateTime(now.year + 5),
+    );
+    if (picked != null) {
+      setState(() => _purchaseDate = picked);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isEdit = widget.existing != null;
+    return AlertDialog(
+      title: Text(isEdit ? 'Edit Rifle' : 'Add Rifle'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _name,
+              decoration: const InputDecoration(labelText: 'Name'),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _caliber,
+              decoration: const InputDecoration(labelText: 'Caliber'),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _manufacturer,
+              decoration: const InputDecoration(labelText: 'Manufacturer'),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _model,
+              decoration: const InputDecoration(labelText: 'Model'),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _serialNumber,
+              decoration: const InputDecoration(labelText: 'Serial Number'),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _barrelLength,
+              decoration: const InputDecoration(labelText: 'Barrel Length'),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _twistRate,
+              decoration: const InputDecoration(labelText: 'Twist Rate'),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _purchaseDate == null ? 'Purchase Date: (none)' : 'Purchase Date: ${_fmtDate(_purchaseDate!)}',
+                  ),
+                ),
+                TextButton(onPressed: _pickPurchaseDate, child: const Text('Pick')),
+              ],
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _purchasePrice,
+              decoration: const InputDecoration(labelText: 'Purchase Price'),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _purchaseLocation,
+              decoration: const InputDecoration(labelText: 'Purchase Location'),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _notes,
+              decoration: const InputDecoration(labelText: 'Notes'),
+              maxLines: 3,
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        FilledButton(
+          onPressed: () {
+            final caliber = _caliber.text.trim();
+            if (caliber.isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Caliber is required.')));
+              return;
+            }
+            Navigator.of(context).pop(
+              _NewRifleResult(
+                name: _name.text.trim().isEmpty ? null : _name.text.trim(),
+                caliber: caliber,
+                notes: _notes.text,
+                dope: '', // legacy field; dope entries preferred
+                dopeEntries: const [],
+                manufacturer: _manufacturer.text.trim().isEmpty ? null : _manufacturer.text.trim(),
+                model: _model.text.trim().isEmpty ? null : _model.text.trim(),
+                serialNumber: _serialNumber.text.trim().isEmpty ? null : _serialNumber.text.trim(),
+                barrelLength: _barrelLength.text.trim().isEmpty ? null : _barrelLength.text.trim(),
+                twistRate: _twistRate.text.trim().isEmpty ? null : _twistRate.text.trim(),
+                purchaseDate: _purchaseDate,
+                purchasePrice: _purchasePrice.text.trim().isEmpty ? null : _purchasePrice.text.trim(),
+                purchaseLocation: _purchaseLocation.text.trim().isEmpty ? null : _purchaseLocation.text.trim(),
+              ),
+            );
+          },
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
 class _NewRifleResult {
   final String? name;
   final String caliber;
@@ -5036,11 +5224,9 @@ class _RifleDopeEntryDialogState extends State<_RifleDopeEntryDialog> {
       ],
     );
 
-  }
-}
-
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
   runApp(const ColdBoreApp());
+}
+  }
 }
