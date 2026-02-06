@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
@@ -7,6 +8,50 @@ import 'dart:convert';
 import 'package:image_picker/image_picker.dart';
 import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:universal_html/html.dart' as html;
+import 'dart:io';
+
+const String kBackupSchemaVersion = '2026-02-05';
+
+
+
+
+// --- Web-only: download a text file (no-op on mobile/desktop) ---
+void _downloadTextFileWeb(String filename, String content, {String mimeType = 'text/plain'}) {
+  if (!kIsWeb) return;
+  final bytes = utf8.encode(content);
+  final blob = html.Blob([bytes], mimeType);
+  final url = html.Url.createObjectUrlFromBlob(blob);
+  final a = html.AnchorElement(href: url)
+    ..download = filename
+    ..style.display = 'none';
+  html.document.body?.children.add(a);
+  a.click();
+  a.remove();
+  html.Url.revokeObjectUrl(url);
+}
+
+
+Future<String?> _pickWebJsonFile() async {
+  if (!kIsWeb) return null;
+  final input = html.FileUploadInputElement()
+    ..accept = '.json,application/json'
+    ..multiple = false;
+  input.click();
+  await input.onChange.first;
+  final files = input.files;
+  if (files == null || files.isEmpty) return null;
+
+  final file = files.first;
+  final reader = html.FileReader();
+  reader.readAsText(file);
+  await reader.onLoadEnd.first;
+  final result = reader.result;
+  return result is String ? result : null;
+}
 
 String _cleanText(String s) {
   // Fix common mojibake / smart punctuation that can show up from copy/paste.
@@ -294,7 +339,7 @@ String _buildCsvBundle(AppState state, {required bool redactLocation}) {
       r.purchaseLocation ?? '',
       r.notes,
       r.dope,
-    ].map(_csvEscape).join(','));
+    ].map((x) => _csvEscape(x.toString())).join(','));
   }
   b.writeln('');
   b.writeln('### ammo_lots.csv');
@@ -312,7 +357,7 @@ String _buildCsvBundle(AppState state, {required bool redactLocation}) {
       a.purchaseDate == null ? '' : _fmtDateIso(a.purchaseDate!),
       a.purchasePrice ?? '',
       a.notes,
-    ].map(_csvEscape).join(','));
+    ].map((x) => _csvEscape(x.toString())).join(','));
   }
   b.writeln('');
   b.writeln('### sessions.csv');
@@ -342,7 +387,7 @@ String _buildCsvBundle(AppState state, {required bool redactLocation}) {
       sess.ammoLotId ?? '',
       ammoLabel,
       sess.notes,
-    ].map(_csvEscape).join(','));
+    ].map((x) => _csvEscape(x.toString())).join(','));
   }
 
 b.writeln('');
@@ -362,7 +407,7 @@ for (final sess in state.allSessions) {
       shot.result,
       shot.notes,
       shot.photos.length.toString(),
-    ].map(_csvEscape).join(','));
+    ].map((x) => _csvEscape(x.toString())).join(','));
   }
 }
 
@@ -389,7 +434,7 @@ for (final sess in state.allSessions) {
       d.windNotes,
       d.windageLeft.toString(),
       d.windageRight.toString(),
-    ].map(_csvEscape).join(','));
+    ].map((x) => _csvEscape(x.toString())).join(','));
   }
 }
 
@@ -402,6 +447,8 @@ for (final sess in state.allSessions) {
 }
 
 // ---------------------------------------------------------------------------
+enum ScopeUnit { mil, moa, inches }
+
 enum DistanceUnit { yards, meters }
 
 enum ElevationUnit { mil, moa, inches }
@@ -472,6 +519,22 @@ class RifleDopeEntry {
     required this.notes,
   });
 
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'distance': distance,
+        'elevation': elevation,
+        'windage': windage,
+        'notes': notes,
+      };
+
+  static RifleDopeEntry fromMap(Map<String, dynamic> m) => RifleDopeEntry(
+        id: (m['id'] ?? '').toString(),
+        distance: (m['distance'] ?? '').toString(),
+        elevation: (m['elevation'] ?? '').toString(),
+        windage: (m['windage'] ?? '').toString(),
+        notes: (m['notes'] ?? '').toString(),
+      );
+
   RifleDopeEntry copyWith({
     String? id,
     String? distance,
@@ -502,7 +565,9 @@ void main() {
     String? firebaseError;
 
     try {
-      await Firebase.initializeApp();
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
       firebaseReady = true;
     } catch (e, st) {
       firebaseReady = false;
@@ -658,7 +723,7 @@ class AppState extends ChangeNotifier {
   List<AmmoLot> get ammoLots => List.unmodifiable(_ammoLots);
 
   List<TrainingSession> get sessions => List.unmodifiable(
-        _sessions.where((s) => s.userId == _activeUser?.id),
+        _sessions.where((s) => s.memberUserIds.contains(_activeUser?.id)),
       );
   /// Convenience lookups used by exports/case packets.
   Rifle? findRifleById(String id) {
@@ -698,19 +763,38 @@ class AppState extends ChangeNotifier {
     _activeUser = u;
 
     // Start with a clean slate (no placeholder rifle/ammo).
+    final sid = _newId();
     _sessions.add(
       TrainingSession(
         id: _newId(),
         userId: u.id,
+        memberUserIds: [u.id],
         dateTime: DateTime.now(),
         locationName: '',
         notes: '',
+        latitude: null,
+        longitude: null,
+        temperatureF: null,
+        windSpeedMph: null,
+        windDirectionDeg: null,
         rifleId: null,
         ammoLotId: null,
         shots: const [],
         photos: const [],
         sessionPhotos: const [],
         trainingDope: const [],
+        trainingDopeByString: {sid: const []},
+        shotsByString: {sid: const []},
+        strings: [
+          SessionStringMeta(
+            id: sid,
+            startedAt: DateTime.now(),
+            endedAt: null,
+            rifleId: null,
+            ammoLotId: null,
+          ),
+        ],
+        activeStringId: sid,
       ),
     );
 
@@ -734,6 +818,13 @@ class AppState extends ChangeNotifier {
   }
 
   void addRifle({
+    ScopeUnit? scopeUnit,
+    int manualRoundCount = 0,
+    String? scopeMake,
+    String? scopeModel,
+    String? scopeSerial,
+    String? scopeMount,
+    String? scopeNotes,
     required String name,
     required String caliber,
     String notes = '',
@@ -748,8 +839,14 @@ class AppState extends ChangeNotifier {
     String? purchaseLocation,
   }) {
     _rifles.add(
-      Rifle(
-        id: _newId(),
+      Rifle(id: _newId(),
+      scopeUnit: scopeUnit ?? ScopeUnit.mil,
+        manualRoundCount: manualRoundCount,
+        scopeMake: scopeMake?.trim().isEmpty == true ? null : scopeMake?.trim(),
+        scopeModel: scopeModel?.trim().isEmpty == true ? null : scopeModel?.trim(),
+        scopeSerial: scopeSerial?.trim().isEmpty == true ? null : scopeSerial?.trim(),
+        scopeMount: scopeMount?.trim().isEmpty == true ? null : scopeMount?.trim(),
+        scopeNotes: scopeNotes?.trim().isEmpty == true ? null : scopeNotes?.trim(),
         name: name.trim().isEmpty ? null : name.trim(),
         caliber: caliber.trim(),
         notes: notes.trim(),
@@ -775,6 +872,12 @@ class AppState extends ChangeNotifier {
     String notes = '',
     String dope = '',
     ElevationUnit? preferredUnit,
+    ScopeUnit? scopeUnit,
+    String? scopeMake,
+    String? scopeModel,
+    String? scopeSerial,
+    String? scopeMount,
+    String? scopeNotes,
     String? manufacturer,
     String? model,
     String? serialNumber,
@@ -801,8 +904,13 @@ class AppState extends ChangeNotifier {
       purchaseDate: purchaseDate,
       purchasePrice: purchasePrice?.trim().isEmpty == true ? null : purchasePrice?.trim(),
       purchaseLocation: purchaseLocation?.trim().isEmpty == true ? null : purchaseLocation?.trim(),
-    );
-    notifyListeners();
+      scopeUnit: scopeUnit ?? r.scopeUnit,
+      scopeMake: scopeMake?.trim().isEmpty == true ? null : scopeMake?.trim(),
+        scopeModel: scopeModel?.trim().isEmpty == true ? null : scopeModel?.trim(),
+        scopeSerial: scopeSerial?.trim().isEmpty == true ? null : scopeSerial?.trim(),
+        scopeMount: scopeMount?.trim().isEmpty == true ? null : scopeMount?.trim(),
+        scopeNotes: scopeNotes?.trim().isEmpty == true ? null : scopeNotes?.trim(),
+    );    notifyListeners();
   }
 
   /// Deletes a rifle from active equipment lists. Historical sessions keep the rifleId;
@@ -935,23 +1043,38 @@ class AppState extends ChangeNotifier {
     final user = _activeUser;
     if (user == null) return null;
 
+    final stringId = _newId();
+
     final created = TrainingSession(
       id: _newId(),
       userId: user.id,
+      memberUserIds: [user.id],
       dateTime: dateTime,
       locationName: locationName.trim(),
       notes: notes.trim(),
-      latitude: null,
-      longitude: null,
-      temperatureF: null,
-      windSpeedMph: null,
-      windDirectionDeg: null,
+      latitude: latitude,
+      longitude: longitude,
+      temperatureF: temperatureF,
+      windSpeedMph: windSpeedMph,
+      windDirectionDeg: windDirectionDeg,
       rifleId: null,
       ammoLotId: null,
       shots: const [],
       photos: const [],
-        sessionPhotos: const [],
-        trainingDope: const [],
+      sessionPhotos: const [],
+      trainingDope: const [],
+      trainingDopeByString: {stringId: const []},
+      shotsByString: {stringId: const []},
+      strings: [
+        SessionStringMeta(
+          id: stringId,
+          startedAt: dateTime,
+          endedAt: null,
+          rifleId: null,
+          ammoLotId: null,
+        ),
+      ],
+      activeStringId: stringId,
     );
 
     _sessions.add(created);
@@ -965,6 +1088,23 @@ class AppState extends ChangeNotifier {
     } catch (_) {
       return null;
     }
+  }
+
+  void shareSessionWithUsers({
+    required String sessionId,
+    required List<String> userIds,
+  }) {
+    final idx = _sessions.indexWhere((s) => s.id == sessionId);
+    if (idx == -1) return;
+
+    final existing = _sessions[idx];
+    final merged = <String>{
+      ...existing.memberUserIds,
+      ...userIds,
+    }.toList();
+
+    _sessions[idx] = existing.copyWith(memberUserIds: merged);
+    notifyListeners();
   }
 
   Rifle? rifleById(String? id) {
@@ -989,6 +1129,7 @@ class AppState extends ChangeNotifier {
     required String sessionId,
     String? rifleId,
     String? ammoLotId,
+    bool startNewString = true,
   }) {
     final idx = _sessions.indexWhere((s) => s.id == sessionId);
     if (idx < 0) return;
@@ -1000,19 +1141,73 @@ class AppState extends ChangeNotifier {
     // If rifle changes, clear ammo when incompatible with the new rifle.
     if (nextRifleId != null) {
       final newRifle = rifleById(nextRifleId);
-      if (newRifle != null) {
-        if (nextAmmoId != null) {
-          final a = ammoById(nextAmmoId);
-          if (a == null || a.caliber != newRifle.caliber) {
-            nextAmmoId = null;
-          }
+      if (newRifle != null && nextAmmoId != null) {
+        final a = ammoById(nextAmmoId);
+        if (a == null || a.caliber != newRifle.caliber) {
+          nextAmmoId = null;
         }
       }
     }
 
+    final loadoutChanged = (nextRifleId != s.rifleId) || (nextAmmoId != s.ammoLotId);
+
+    if (!loadoutChanged) {
+      _sessions[idx] = s.copyWith(rifleId: nextRifleId, ammoLotId: nextAmmoId);
+      notifyListeners();
+      return;
+    }
+
+    final now = DateTime.now();
+    final currentStrings = [...s.strings];
+
+    // Close the active string (if any).
+    final activeIndex = currentStrings.indexWhere((x) => x.id == s.activeStringId);
+    if (activeIndex != -1 && currentStrings[activeIndex].endedAt == null) {
+      currentStrings[activeIndex] = currentStrings[activeIndex].copyWith(endedAt: now);
+    }
+
+    final newStringId = _newId();
+    currentStrings.add(
+      SessionStringMeta(
+        id: newStringId,
+        startedAt: now,
+        endedAt: null,
+        rifleId: nextRifleId,
+        ammoLotId: nextAmmoId,
+      ),
+    );
+
     _sessions[idx] = s.copyWith(
       rifleId: nextRifleId,
       ammoLotId: nextAmmoId,
+      strings: currentStrings,
+      activeStringId: newStringId,
+      trainingDopeByString: {
+        ...s.trainingDopeByString,
+        newStringId: const <DopeEntry>[],
+      },
+      shotsByString: {
+        ...s.shotsByString,
+        newStringId: const <ShotEntry>[],
+      },
+    );
+    notifyListeners();
+  }
+
+
+  void setActiveString({
+    required String sessionId,
+    required String stringId,
+  }) {
+    final idx = _sessions.indexWhere((s) => s.id == sessionId);
+    if (idx == -1) return;
+    final s = _sessions[idx];
+    final st = s.strings.firstWhere((x) => x.id == stringId, orElse: () => s.strings.isNotEmpty ? s.strings.last : SessionStringMeta(id: stringId, startedAt: DateTime.now(), endedAt: null, rifleId: s.rifleId, ammoLotId: s.ammoLotId));
+    _sessions[idx] = s.copyWith(
+      activeStringId: stringId,
+      // Snap loadout display to the string meta (if present)
+      rifleId: st.rifleId ?? s.rifleId,
+      ammoLotId: st.ammoLotId ?? s.ammoLotId,
     );
     notifyListeners();
   }
@@ -1050,15 +1245,23 @@ class AppState extends ChangeNotifier {
       photos: const [],
     );
 
-    _sessions[idx] = s.copyWith(shots: [...s.shots, entry]);
+        final sid = (s.activeStringId.isEmpty && s.strings.isNotEmpty) ? s.strings.last.id : s.activeStringId;
+    final currentList = List<ShotEntry>.from(s.shotsByString[sid] ?? const <ShotEntry>[]);
+    _sessions[idx] = s.copyWith(
+      shots: [...s.shots, entry],
+      shotsByString: {
+        ...s.shotsByString,
+        sid: [...currentList, entry],
+      },
+    );
     notifyListeners();
   }
 
   void addTrainingDope({
     required String sessionId,
     required DopeEntry entry,
-    bool promote = false,
-    bool rifleOnly = true,
+    bool promote = true,
+    bool rifleOnly = false,
   }) {
     final idx = _sessions.indexWhere((s) => s.id == sessionId);
     if (idx < 0) return;
@@ -1093,7 +1296,23 @@ class AppState extends ChangeNotifier {
       return edk != dk;
     }).toList();
 
-    _sessions[idx] = s.copyWith(trainingDope: [...filtered, updatedEntry]);
+        final sid = (s.activeStringId.isEmpty && s.strings.isNotEmpty) ? s.strings.last.id : s.activeStringId;
+    final currentList = List<DopeEntry>.from(s.trainingDopeByString[sid] ?? const <DopeEntry>[]);
+    final filtered2 = currentList.where((e) {
+      if (e.rifleId != updatedEntry.rifleId) return true;
+      if (e.ammoLotId != updatedEntry.ammoLotId) return true;
+      final edk = DistanceKey(e.distance, e.distanceUnit);
+      return edk != dk;
+    }).toList();
+
+    _sessions[idx] = s.copyWith(
+      trainingDope: [...filtered, updatedEntry],
+      trainingDopeByString: {
+        ...s.trainingDopeByString,
+        sid: [...filtered2, updatedEntry],
+      },
+    );
+
 
     if (promote) {
       final rifleId = updatedEntry.rifleId;
@@ -1275,6 +1494,336 @@ class AppState extends ChangeNotifier {
 
   // Public helper used by widgets that need a fresh id without accessing a static private method.
   String newIdForChild() => _newId();
+
+  String exportBackupJson() {
+    final payload = <String, dynamic>{
+      'schema': kBackupSchemaVersion,
+      'generatedAt': DateTime.now().toIso8601String(),
+      'rifles': _rifles.map((r) => {
+        'id': r.id,
+        'name': r.name,
+        'caliber': r.caliber,
+        'manufacturer': r.manufacturer,
+        'model': r.model,
+        'serialNumber': r.serialNumber,
+        'barrelLength': r.barrelLength,
+        'twistRate': r.twistRate,
+        'scopeUnit': r.scopeUnit.name,
+        'notes': r.notes,
+        'dope': r.dope,
+        'manualRoundCount': r.manualRoundCount,
+        'purchaseDate': r.purchaseDate?.toIso8601String(),
+        'purchasePrice': r.purchasePrice,
+        'purchaseLocation': r.purchaseLocation,
+        'scopeMake': r.scopeMake,
+        'scopeModel': r.scopeModel,
+        'scopeSerial': r.scopeSerial,
+        'scopeMount': r.scopeMount,
+        'scopeNotes': r.scopeNotes,
+      }).toList(),
+      'ammoLots': _ammoLots.map((a) => {
+        'id': a.id,
+        'name': a.name,
+        'caliber': a.caliber,
+        'manufacturer': a.manufacturer,
+        'grain': a.grain,
+        'bullet': a.bullet,
+        'notes': a.notes,
+        'lotNumber': a.lotNumber,
+        'purchaseDate': a.purchaseDate?.toIso8601String(),
+        'purchasePrice': a.purchasePrice,
+        'ballisticCoefficient': a.ballisticCoefficient,
+      }).toList(),
+    };
+    return const JsonEncoder.withIndent('  ').convert(payload);
+  }
+
+  void importBackupJson(String jsonText, {required bool replaceExisting}) {
+    final decoded = json.decode(jsonText);
+    if (decoded is! Map) throw FormatException('Invalid backup JSON');
+    final map = Map<String, dynamic>.from(decoded as Map);
+
+int _toInt(dynamic v) {
+  if (v == null) return 0;
+  if (v is int) return v;
+  if (v is num) return v.round();
+  return int.tryParse(v.toString().trim()) ?? 0;
+}
+
+double? _toDouble(dynamic v) {
+  if (v == null) return null;
+  if (v is double) return v;
+  if (v is num) return v.toDouble();
+  return double.tryParse(v.toString().trim());
+}
+
+String _toStr(dynamic v) => v == null ? '' : v.toString();
+
+
+    final rifles = ((map['rifles'] as List?) ?? const []).map((x) {
+      final m = Map<String, dynamic>.from(x as Map);
+      return Rifle(
+        id: m['id'] as String,
+        name: (m['name'] as String?) ?? '',
+        caliber: (m['caliber'] as String?) ?? '',
+        manufacturer: m['manufacturer'] as String?,
+        model: m['model'] as String?,
+        serialNumber: m['serialNumber'] as String?,
+        barrelLength: m['barrelLength'] as String?,
+        twistRate: m['twistRate'] as String?,
+      scopeUnit: ScopeUnit.values.firstWhere(
+          (e) => e.name == (m['scopeUnit'] as String? ?? 'mil'),
+          orElse: () => ScopeUnit.mil,
+        ),
+        notes: (m['notes'] as String?) ?? '',
+        dope: (m['dope'] as String?) ?? '',
+        manualRoundCount: (m['manualRoundCount'] as num?)?.round() ?? 0,
+        purchaseDate: (m['purchaseDate'] as String?) == null ? null : DateTime.tryParse(m['purchaseDate'] as String),
+        purchasePrice: m['purchasePrice'] as String?,
+        purchaseLocation: m['purchaseLocation'] as String?,
+        scopeMake: m['scopeMake'] as String?,
+        scopeModel: m['scopeModel'] as String?,
+        scopeSerial: m['scopeSerial'] as String?,
+        scopeMount: m['scopeMount'] as String?,
+        scopeNotes: m['scopeNotes'] as String?,
+      );
+    }).toList();
+
+    final ammo = ((map['ammoLots'] as List?) ?? const []).map((x) {
+      final m = Map<String, dynamic>.from(x as Map);
+      return AmmoLot(
+        id: _toStr(m['id']).isEmpty ? DateTime.now().microsecondsSinceEpoch.toString() : _toStr(m['id']),
+        caliber: _toStr(m['caliber']),
+        grain: _toInt(m['grain']),
+        name: (m['name'] as String?)?.trim(),
+        bullet: (() {
+          final b = _toStr(m['bullet']).trim();
+          if (b.isNotEmpty) return b;
+          final b2 = _toStr(m['bulletName']).trim();
+          if (b2.isNotEmpty) return b2;
+          return 'Bullet';
+        })(),
+        ballisticCoefficient: _toDouble(m['ballisticCoefficient'] ?? m['bc']),
+        manufacturer: (m['manufacturer'] as String?)?.trim(),
+        lotNumber: (m['lotNumber'] as String?)?.trim(),
+        purchaseDate: (m['purchaseDate'] as String?) == null ? null : DateTime.tryParse((m['purchaseDate'] as String).trim()),
+        purchasePrice: (m['purchasePrice'] as String?)?.trim(),
+        notes: _toStr(m['notes']),
+      );
+    }).toList();
+
+    if (replaceExisting) {
+      _rifles..clear()..addAll(rifles);
+      _ammoLots..clear()..addAll(ammo);
+    } else {
+      for (final r in rifles) {
+        final i = _rifles.indexWhere((e) => e.id == r.id);
+        if (i >= 0) _rifles[i] = r; else _rifles.add(r);
+      }
+      for (final a in ammo) {
+        final i = _ammoLots.indexWhere((e) => e.id == a.id);
+        if (i >= 0) _ammoLots[i] = a; else _ammoLots.add(a);
+      }
+    }
+    notifyListeners();
+  }
+
+  // Merge rifles/ammo from a backup JSON into the current app state.
+  // - Keeps existing IDs (so historical sessions/shots keep pointing at the right equipment)
+  // - Adds any new rifles/ammo that don't match
+  // - Overwrites scope fields on matched rifles when overwriteScope == true
+  void mergeBackupJson(String jsonText, {bool overwriteScope = true}) {
+    final decoded = json.decode(jsonText);
+    if (decoded is! Map) throw FormatException('Invalid backup JSON');
+    final map = Map<String, dynamic>.from(decoded as Map);
+
+    final importedRifles = ((map['rifles'] as List?) ?? const []).map((x) {
+      final m = Map<String, dynamic>.from(x as Map);
+      return Rifle(
+        id: (m['id'] ?? '').toString(),
+        caliber: (m['caliber'] ?? '').toString(),
+        name: (m['name'] as String?)?.toString(),
+        manufacturer: (m['manufacturer'] as String?)?.toString(),
+        model: (m['model'] as String?)?.toString(),
+        serialNumber: (m['serialNumber'] as String?)?.toString(),
+        barrelLength: (m['barrelLength'] as String?)?.toString(),
+        twistRate: (m['twistRate'] as String?)?.toString(),
+        purchaseDate: (m['purchaseDate'] as String?) != null
+            ? DateTime.tryParse((m['purchaseDate'] as String))
+            : null,
+        purchasePrice: (m['purchasePrice'] as String?)?.toString(),
+        purchaseLocation: (m['purchaseLocation'] as String?)?.toString(),
+        notes: (m['notes'] as String?)?.toString() ?? '',
+        dope: (m['dope'] as String?)?.toString() ?? '',
+        scopeMake: (m['scopeMake'] as String?)?.toString(),
+        scopeModel: (m['scopeModel'] as String?)?.toString(),
+        scopeSerial: (m['scopeSerial'] as String?)?.toString(),
+        scopeMount: (m['scopeMount'] as String?)?.toString(),
+        scopeNotes: (m['scopeNotes'] as String?)?.toString(),
+      scopeUnit: ScopeUnit.values.firstWhere(
+          (u) => u.name == (m['scopeUnit'] ?? ScopeUnit.mil.name).toString(),
+          orElse: () => ScopeUnit.mil,
+        ),
+        manualRoundCount: (m['manualRoundCount'] as int?) ?? 0,
+        dopeEntries: (m['dopeEntries'] as List?)
+                ?.map((e) => RifleDopeEntry.fromMap(Map<String, dynamic>.from(e as Map)))
+                .toList() ??
+            const [],
+      );
+    }).where((r) => r.caliber.trim().isNotEmpty).toList();
+
+    final importedAmmo = ((map['ammoLots'] as List?) ?? const []).map((x) {
+      final m = Map<String, dynamic>.from(x as Map);
+      return AmmoLot(
+        id: (m['id'] ?? '').toString(),
+        caliber: (m['caliber'] ?? '').toString(),
+        grain: (m['grain'] as num?)?.round() ?? 0,
+        name: (m['name'] as String?)?.toString(),
+        bullet: (m['bullet'] as String?) ?? '',
+        ballisticCoefficient: (m['ballisticCoefficient'] as num?)?.toDouble(),
+        manufacturer: (m['manufacturer'] as String?)?.toString(),
+        lotNumber: (m['lotNumber'] as String?)?.toString(),
+        purchaseDate: (m['purchaseDate'] as String?) != null
+            ? DateTime.tryParse((m['purchaseDate'] as String))
+            : null,
+        purchasePrice: (m['purchasePrice'] as String?)?.toString(),
+        notes: (m['notes'] as String?)?.toString() ?? '',
+      );
+    }).where((a) => a.caliber.trim().isNotEmpty).toList();
+
+    int _findRifleMatchIndex(Rifle incoming) {
+      String norm(dynamic s) => (s ?? '').toString().trim().toLowerCase();
+      final inCal = norm(incoming.caliber);
+      final inMan = norm(incoming.manufacturer);
+      final inMod = norm(incoming.model);
+      final inSer = norm(incoming.serialNumber);
+      for (int i = 0; i < _rifles.length; i++) {
+        final r = _rifles[i];
+        if (norm(r.caliber) != inCal) continue;
+
+        final rSer = norm(r.serialNumber);
+        if (inSer.isNotEmpty && rSer.isNotEmpty) {
+          if (inSer == rSer) return i;
+          continue;
+        }
+
+        if (inMan.isNotEmpty && inMod.isNotEmpty) {
+          if (norm(r.manufacturer) == inMan && norm(r.model) == inMod) return i;
+        } else {
+          // fallback: caliber + name
+          if (norm(r.name).isNotEmpty && norm(r.name) == norm(incoming.name)) return i;
+        }
+      }
+      return -1;
+    }
+
+    int _findAmmoMatchIndex(AmmoLot incoming) {
+      String norm(dynamic s) => (s ?? '').toString().trim().toLowerCase();
+      final inCal = norm(incoming.caliber);
+      final inMan = norm(incoming.manufacturer);
+      final inGr = norm(incoming.grain);
+      final inBullet = norm(incoming.bullet);
+      for (int i = 0; i < _ammoLots.length; i++) {
+        final a = _ammoLots[i];
+        if (norm(a.caliber) != inCal) continue;
+        // Prefer match on manufacturer + grain + bullet
+        final okMan = inMan.isEmpty || norm(a.manufacturer) == inMan;
+        final okGr = inGr.isEmpty || norm(a.grain) == inGr;
+        final okBullet = inBullet.isEmpty || norm(a.bullet) == inBullet;
+        if (okMan && okGr && okBullet) return i;
+        // fallback: caliber + name
+        if (norm(a.name).isNotEmpty && norm(a.name) == norm(incoming.name)) return i;
+      }
+      return -1;
+    }
+
+    String? _preferExistingNullable(String? existing, String? incoming) {
+  final e = (existing ?? '').trim();
+  if (e.isNotEmpty) return existing;
+  final n = (incoming ?? '').trim();
+  return n.isEmpty ? existing : incoming;
+}
+
+DateTime? _preferExistingDateTime(DateTime? existing, DateTime? incoming) {
+  return incoming ?? existing;
+}
+
+
+String _preferExistingRequired(String existing, String incoming) {
+  final e = existing.trim();
+  if (e.isNotEmpty) return existing;
+  final n = incoming.trim();
+  return n.isNotEmpty ? incoming : existing;
+}
+
+int _preferExistingInt(int existing, int incoming) => existing != 0 ? existing : incoming;
+
+double? _preferExistingDouble(double? existing, double? incoming) => existing ?? incoming;
+
+
+    // Merge rifles
+    for (final incoming in importedRifles) {
+      final idx = _findRifleMatchIndex(incoming);
+      if (idx < 0) {
+        _rifles.add(incoming);
+        continue;
+      }
+      final existing = _rifles[idx];
+
+      final updated = existing.copyWith(
+        name: _preferExistingNullable(existing.name, incoming.name),
+        manufacturer: _preferExistingNullable(existing.manufacturer, incoming.manufacturer),
+        model: _preferExistingNullable(existing.model, incoming.model),
+        serialNumber: _preferExistingNullable(existing.serialNumber, incoming.serialNumber),
+        barrelLength: _preferExistingNullable(existing.barrelLength, incoming.barrelLength),
+        twistRate: _preferExistingNullable(existing.twistRate, incoming.twistRate),
+        purchaseDate: existing.purchaseDate ?? incoming.purchaseDate,
+        purchasePrice: _preferExistingNullable(existing.purchasePrice, incoming.purchasePrice),
+        purchaseLocation: _preferExistingNullable(existing.purchaseLocation, incoming.purchaseLocation),
+        notes: _preferExistingRequired(existing.notes, incoming.notes),
+        dope: _preferExistingRequired(existing.dope, incoming.dope),
+        // Never overwrite history fields here (manualRoundCount, dopeEntries).
+      scopeUnit: overwriteScope ? incoming.scopeUnit : existing.scopeUnit,
+        scopeMake: overwriteScope ? incoming.scopeMake : existing.scopeMake,
+        scopeModel: overwriteScope ? incoming.scopeModel : existing.scopeModel,
+        scopeSerial: overwriteScope ? incoming.scopeSerial : existing.scopeSerial,
+        scopeMount: overwriteScope ? incoming.scopeMount : existing.scopeMount,
+        scopeNotes: overwriteScope ? incoming.scopeNotes : existing.scopeNotes,
+      );
+
+      _rifles[idx] = updated;
+    }
+
+    // Merge ammo
+    for (final incoming in importedAmmo) {
+      final idx = _findAmmoMatchIndex(incoming);
+      if (idx < 0) {
+        _ammoLots.add(incoming);
+        continue;
+      }
+      final existing = _ammoLots[idx];
+      final updated = AmmoLot(
+  id: existing.id,
+  caliber: existing.caliber,
+  grain: _preferExistingInt(existing.grain, incoming.grain),
+  name: _preferExistingNullable(existing.name, incoming.name),
+  bullet: _preferExistingRequired(existing.bullet, incoming.bullet),
+  ballisticCoefficient: _preferExistingDouble(existing.ballisticCoefficient, incoming.ballisticCoefficient),
+  manufacturer: _preferExistingNullable(existing.manufacturer, incoming.manufacturer),
+  lotNumber: _preferExistingNullable(existing.lotNumber, incoming.lotNumber),
+  purchaseDate: _preferExistingDateTime(existing.purchaseDate, incoming.purchaseDate),
+  purchasePrice: _preferExistingNullable(existing.purchasePrice, incoming.purchasePrice),
+  notes: _preferExistingRequired(existing.notes, incoming.notes),
+);
+      _ammoLots[idx] = updated;
+    }
+
+    // Persist (if available in this app) and refresh UI
+    try {
+    } catch (_) {}
+    notifyListeners();
+  }
+
 }
 
 class UserProfile {
@@ -1293,13 +1842,23 @@ class Rifle {
   final String id;
   final String? name;
   final String caliber;
+
   final String notes;
   final String dope;
   final List<RifleDopeEntry> dopeEntries;
 
   final ElevationUnit preferredUnit;
 
-  // Optional details
+  final ScopeUnit scopeUnit;
+
+  final int manualRoundCount;
+
+  final String? scopeMake;
+  final String? scopeModel;
+  final String? scopeSerial;
+  final String? scopeMount;
+  final String? scopeNotes;
+
   final String? manufacturer;
   final String? model;
   final String? serialNumber;
@@ -1313,10 +1872,17 @@ class Rifle {
     required this.id,
     this.name,
     required this.caliber,
-    this.preferredUnit = ElevationUnit.mil,
-    required this.notes,
-    required this.dope,
+    this.notes = '',
+    this.dope = '',
     this.dopeEntries = const [],
+    this.preferredUnit = ElevationUnit.mil,
+    this.scopeUnit = ScopeUnit.mil,
+    this.manualRoundCount = 0,
+    this.scopeMake,
+    this.scopeModel,
+    this.scopeSerial,
+    this.scopeMount,
+    this.scopeNotes,
     this.manufacturer,
     this.model,
     this.serialNumber,
@@ -1328,12 +1894,20 @@ class Rifle {
   });
 
   Rifle copyWith({
+    String? id,
     String? name,
     String? caliber,
     String? notes,
     String? dope,
     List<RifleDopeEntry>? dopeEntries,
     ElevationUnit? preferredUnit,
+    ScopeUnit? scopeUnit,
+    int? manualRoundCount,
+    String? scopeMake,
+    String? scopeModel,
+    String? scopeSerial,
+    String? scopeMount,
+    String? scopeNotes,
     String? manufacturer,
     String? model,
     String? serialNumber,
@@ -1344,13 +1918,20 @@ class Rifle {
     String? purchaseLocation,
   }) {
     return Rifle(
-      id: id,
+      id: id ?? this.id,
       name: name ?? this.name,
       caliber: caliber ?? this.caliber,
       notes: notes ?? this.notes,
       dope: dope ?? this.dope,
       dopeEntries: dopeEntries ?? this.dopeEntries,
       preferredUnit: preferredUnit ?? this.preferredUnit,
+      scopeUnit: scopeUnit ?? this.scopeUnit,
+      manualRoundCount: manualRoundCount ?? this.manualRoundCount,
+      scopeMake: scopeMake ?? this.scopeMake,
+      scopeModel: scopeModel ?? this.scopeModel,
+      scopeSerial: scopeSerial ?? this.scopeSerial,
+      scopeMount: scopeMount ?? this.scopeMount,
+      scopeNotes: scopeNotes ?? this.scopeNotes,
       manufacturer: manufacturer ?? this.manufacturer,
       model: model ?? this.model,
       serialNumber: serialNumber ?? this.serialNumber,
@@ -1362,7 +1943,6 @@ class Rifle {
     );
   }
 }
-
 
 class AmmoLot {
   final String id;
@@ -1385,7 +1965,7 @@ class AmmoLot {
     required this.id,
     this.name,
     required this.caliber,
-    required this.grain,
+required this.grain,
     required this.bullet,
     required this.notes,
     this.manufacturer,
@@ -1397,9 +1977,43 @@ class AmmoLot {
 }
 
 
+
+class SessionStringMeta {
+  final String id;
+  final DateTime startedAt;
+  final DateTime? endedAt;
+  final String? rifleId;
+  final String? ammoLotId;
+
+  const SessionStringMeta({
+    required this.id,
+    required this.startedAt,
+    this.endedAt,
+    this.rifleId,
+    this.ammoLotId,
+  });
+
+  SessionStringMeta copyWith({
+    DateTime? startedAt,
+    DateTime? endedAt,
+    String? rifleId,
+    String? ammoLotId,
+  }) {
+    return SessionStringMeta(
+      id: id,
+      startedAt: startedAt ?? this.startedAt,
+      endedAt: endedAt ?? this.endedAt,
+      rifleId: rifleId ?? this.rifleId,
+      ammoLotId: ammoLotId ?? this.ammoLotId,
+    );
+  }
+}
+
+
 class TrainingSession {
   final String id;
   final String userId;
+  final List<String> memberUserIds;
   final DateTime dateTime;
   final String locationName;
   final String notes;
@@ -1416,6 +2030,13 @@ class TrainingSession {
   final String? rifleId;
   final String? ammoLotId;
 
+  final List<SessionStringMeta> strings;
+  final String activeStringId;
+
+  // Phase 2: per-string storage (keeps session-level lists for backward compatibility)
+  final Map<String, List<DopeEntry>> trainingDopeByString;
+  final Map<String, List<ShotEntry>> shotsByString;
+
   final List<ShotEntry> shots;
   final List<PhotoNote> photos;
   final List<SessionPhoto> sessionPhotos;
@@ -1424,6 +2045,7 @@ class TrainingSession {
   TrainingSession({
     required this.id,
     required this.userId,
+    required this.memberUserIds,
     required this.dateTime,
     required this.locationName,
     required this.notes,
@@ -1438,27 +2060,38 @@ class TrainingSession {
     required this.photos,
     required this.sessionPhotos,
     required this.trainingDope,
+    required this.trainingDopeByString,
+    required this.shotsByString,
+    required this.strings,
+    required this.activeStringId,
   });
 
+
   TrainingSession copyWith({
+    List<String>? memberUserIds,
+    DateTime? dateTime,
+    String? locationName,
+    String? notes,
     double? latitude,
     double? longitude,
     double? temperatureF,
     double? windSpeedMph,
     int? windDirectionDeg,
-    DateTime? dateTime,
-    String? locationName,
-    String? notes,
     String? rifleId,
     String? ammoLotId,
     List<ShotEntry>? shots,
     List<PhotoNote>? photos,
     List<SessionPhoto>? sessionPhotos,
     List<DopeEntry>? trainingDope,
+    Map<String, List<DopeEntry>>? trainingDopeByString,
+    Map<String, List<ShotEntry>>? shotsByString,
+    List<SessionStringMeta>? strings,
+    String? activeStringId,
   }) {
     return TrainingSession(
       id: id,
       userId: userId,
+      memberUserIds: memberUserIds ?? this.memberUserIds,
       dateTime: dateTime ?? this.dateTime,
       locationName: locationName ?? this.locationName,
       notes: notes ?? this.notes,
@@ -1473,8 +2106,14 @@ class TrainingSession {
       photos: photos ?? this.photos,
       sessionPhotos: sessionPhotos ?? this.sessionPhotos,
       trainingDope: trainingDope ?? this.trainingDope,
+      trainingDopeByString: trainingDopeByString ?? this.trainingDopeByString,
+      shotsByString: shotsByString ?? this.shotsByString,
+      strings: strings ?? this.strings,
+      activeStringId: activeStringId ?? this.activeStringId,
     );
   }
+
+
 }
 
 class ShotEntry {
@@ -1668,7 +2307,7 @@ class DataScreen extends StatefulWidget {
 }
 
 class _DataScreenState extends State<DataScreen> {
-  bool _rifleOnly = true;
+  bool _rifleOnly = false;
   bool _allDistances = true;
 
   @override
@@ -1724,10 +2363,10 @@ class _DataScreenState extends State<DataScreen> {
                           final e = inner[dk]!;
                           return DataRow(cells: [
                             DataCell(Text('${dk.value} ${dk.unit.name[0]}')),
-                            DataCell(Text('')),
-                            DataCell(Text('')),
-                            DataCell(Text('')),
-                            DataCell(Text('')),
+                            DataCell(Text(_cleanText('${e.elevation} ${e.elevationUnit.name}${e.elevationNotes.isNotEmpty ? " • ${e.elevationNotes}" : ""}'))),
+                            DataCell(Text(_cleanText('${e.windType.name}: ${e.windValue}${e.windNotes.isNotEmpty ? " • ${e.windNotes}" : ""}'))),
+                            DataCell(Text(e.windageLeft.toStringAsFixed(2))),
+                            DataCell(Text(e.windageRight.toStringAsFixed(2))),
                           ]);
                         }).toList(),
                       ),
@@ -1941,7 +2580,7 @@ class SessionsScreen extends StatelessWidget {
       animation: state,
       builder: (context, _) {
         final user = state.activeUser;
-        final sessions = state.sessions;
+        final sessions = [...state.sessions]..sort((a, b) => b.dateTime.compareTo(a.dateTime));
 
         if (user == null) {
           return const _EmptyState(
@@ -2050,8 +2689,8 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
   final _windNotesCtrl = TextEditingController();
   double _windageLeft = 0.0;
   double _windageRight = 0.0;
-  bool _promote = false;
-  bool _rifleOnly = true;
+  bool _promote = true;
+  bool _rifleOnly = false;
 
 
   @override
@@ -2065,6 +2704,12 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final ammoById = <String, AmmoLot>{ for (final a in widget.ammoOptions) a.id: a };
+    final uniqueAmmoOptions = ammoById.values.toList();
+    final safeAmmoLotId = ammoById.containsKey(_ammoLotId)
+        ? _ammoLotId
+        : (uniqueAmmoOptions.isNotEmpty ? uniqueAmmoOptions.first.id : null);
+
     return AlertDialog(
       title: const Text('Add Training DOPE'),
       content: SingleChildScrollView(
@@ -2072,14 +2717,15 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
           mainAxisSize: MainAxisSize.min,
           children: [
             DropdownButtonFormField<String?>(
-              value: _ammoLotId,
+              value: safeAmmoLotId,
               decoration: const InputDecoration(labelText: 'Ammo (for this entry)'),
-              items: widget.ammoOptions
+              items: uniqueAmmoOptions
                   .map((a) => DropdownMenuItem<String?>(value: a.id, child: Text('${a.name ?? 'Ammo'} (${a.caliber})')))
                   .toList(),
               onChanged: (v) => setState(() => _ammoLotId = v),
             ),
-            const SizedBox(height: 12),
+
+const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
@@ -2249,6 +2895,62 @@ class SessionDetailScreen extends StatelessWidget {
   final String sessionId;
   const SessionDetailScreen({super.key, required this.state, required this.sessionId});
 
+
+  Future<bool> _promptStartNewStringDialog(BuildContext context) async {
+    final res = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Start a new string?'),
+        content: const Text(
+          'Changing the rifle or ammo can start a new string so data stays separated.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Edit current'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Start new'),
+          ),
+        ],
+      ),
+    );
+    // Default to starting a new string (Option A).
+    return res ?? true;
+  }
+
+
+
+  Future<void> _shareSession(BuildContext context, TrainingSession s) async {
+    final me = state.activeUser;
+    if (me == null) return;
+
+    final others = state.users.where((u) => u.id != me.id).toList();
+    if (others.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No other users found. Create another user first.')),
+      );
+      return;
+    }
+
+    final selected = await showDialog<Set<String>>(
+      context: context,
+      builder: (_) => _ShareSessionDialog(
+        sessionTitle: s.locationName.isEmpty ? 'Session' : s.locationName,
+        users: others,
+        initiallySelected: s.memberUserIds.where((id) => id != me.id).toSet(),
+      ),
+    );
+
+    if (selected == null) return;
+    state.shareSessionWithUsers(sessionId: s.id, userIds: selected.toList());
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Session shared with ${selected.length} user(s).')),
+    );
+  }
+
   Future<void> _addColdBore(BuildContext context, TrainingSession s) async {
     final res = await showDialog<_ColdBoreResult>(
       context: context,
@@ -2268,7 +2970,7 @@ class SessionDetailScreen extends StatelessWidget {
   Future<void> _addPhotoNote(BuildContext context, TrainingSession s) async {
     final res = await showDialog<String>(
       context: context,
-      builder: (_) => const _PhotoNoteDialog(),
+      builder: (_) => _PhotoNoteDialog(),
     );
     if (res == null || res.trim().isEmpty) return;
 
@@ -2387,7 +3089,7 @@ Future<void> _addDope(BuildContext context, TrainingSession s) async {
           rifleId: s.rifleId!,
           ammoOptions: ammoOptions,
           defaultAmmoId: s.ammoLotId,
-          lockedUnit: rifle?.preferredUnit ?? ElevationUnit.mil,
+          lockedUnit: (rifle?.scopeUnit == ScopeUnit.moa ? ElevationUnit.moa : ElevationUnit.mil),
         );
       },
     );
@@ -2453,10 +3155,27 @@ Future<void> _addDope(BuildContext context, TrainingSession s) async {
             ? <AmmoLot>[]
             : state.ammoLots.where((a) => a.caliber == rifle.caliber).toList();
 
+        // Defensive: avoid DropdownButton value mismatch and duplicate IDs.
+        final rifleById = <String, Rifle>{ for (final r in state.rifles) r.id: r };
+        final uniqueRifles = rifleById.values.toList();
+
+        final compatibleAmmoById = <String, AmmoLot>{ for (final a in compatibleAmmo) a.id: a };
+        final uniqueCompatibleAmmo = compatibleAmmoById.values.toList();
+
+        final ammoIsCompatible = s.ammoLotId == null || compatibleAmmoById.containsKey(s.ammoLotId);
+        final safeAmmoLotId = ammoIsCompatible ? s.ammoLotId : null;
+
+        final currentTrainingDope = s.trainingDopeByString[s.activeStringId] ?? const <DopeEntry>[];
+
         return Scaffold(
           appBar: AppBar(
             title: const Text('Session'),
             actions: [
+              IconButton(
+                tooltip: 'Share session',
+                onPressed: () => _shareSession(context, s),
+                icon: const Icon(Icons.share_outlined),
+              ),
               IconButton(
                 tooltip: 'Edit training notes',
                 onPressed: () => _editTrainingNotes(context, s),
@@ -2545,7 +3264,11 @@ Card(
                 ),
               ),
               const SizedBox(height: 16),
-              _SectionTitle('Loadout'),
+                            _SectionTitle('String'),
+              const SizedBox(height: 8),
+              _StringSummaryCard(state: state, session: s),
+              const SizedBox(height: 16),
+_SectionTitle('Loadout'),
               const SizedBox(height: 8),
               Row(
                 children: [
@@ -2563,17 +3286,26 @@ Card(
                         ...state.rifles.map(
                           (r) => DropdownMenuItem<String?>(
                             value: r.id,
-                            child: Text('${r.name ?? 'Rifle'} (${r.caliber})'),
+                            child: Text('${r.caliber} • ${r.manufacturer ?? ''}${(r.manufacturer ?? '').trim().isEmpty ? '' : ''} • ${r.model ?? ''}${(r.name ?? '').trim().isEmpty ? '' : ' • ${r.name}'}'),
                           ),
                         ),
                       ],
-                      onChanged: (v) => state.updateSessionLoadout(sessionId: s.id, rifleId: v, ammoLotId: s.ammoLotId),
+                      onChanged: (v) async {
+                        if (v == null || v == s.rifleId) return;
+                        final startNew = await _promptStartNewStringDialog(context);
+                        state.updateSessionLoadout(
+                          sessionId: s.id,
+                          rifleId: v,
+                          ammoLotId: null,
+                          startNewString: startNew,
+                        );
+                      },
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: DropdownButtonFormField<String?>(
-                      value: s.ammoLotId,
+                      value: safeAmmoLotId,
                       decoration: const InputDecoration(labelText: 'Ammo'),
                       items: [
                         const DropdownMenuItem<String?>(value: null, child: Text('- None -')),
@@ -2585,13 +3317,21 @@ Card(
                         ...compatibleAmmo.map(
                           (a) => DropdownMenuItem<String?>(
                             value: a.id,
-                            child: Text('${a.name ?? 'Ammo'} (${a.caliber})'),
+                            child: Text('${a.caliber} • ${a.manufacturer ?? ''} • ${a.bullet ?? (a.name ?? 'Ammo')} • ${a.grain}gr'),
                           ),
                         ),
                       ],
                       onChanged: (rifle == null)
                           ? null
-                          : (v) => state.updateSessionLoadout(sessionId: s.id, rifleId: s.rifleId, ammoLotId: v),
+                          : (v) async {
+                              final startNew = await _promptStartNewStringDialog(context);
+                              state.updateSessionLoadout(
+                                sessionId: s.id,
+                                rifleId: s.rifleId,
+                                ammoLotId: v,
+                                startNewString: startNew,
+                              );
+                            },
                     ),
                   ),
                 ],
@@ -2617,7 +3357,7 @@ Card(
                 )
               else
                 ...(() {
-                  final list = [...s.trainingDope];
+                  final list = [...currentTrainingDope];
                   list.sort((a, b) {
                     final cmp = a.distance.compareTo(b.distance);
                     if (cmp != 0) return cmp;
@@ -2767,7 +3507,7 @@ Card(
                         String caption = '';
                         final cap = await showDialog<String>(
                           context: context,
-                          builder: (_) => const _PhotoNoteDialog(),
+                          builder: (_) => _PhotoNoteDialog(),
                         );
                         if (cap != null) caption = cap;
 
@@ -3169,6 +3909,13 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
       twistRate: res.twistRate,
       purchaseDate: res.purchaseDate,
       purchasePrice: res.purchasePrice,
+      scopeUnit: res.scopeUnit,
+      manualRoundCount: res.manualRoundCount,
+      scopeMake: res.scopeMake,
+      scopeModel: res.scopeModel,
+      scopeSerial: res.scopeSerial,
+      scopeMount: res.scopeMount,
+      scopeNotes: res.scopeNotes,
       purchaseLocation: res.purchaseLocation,
     );
   }
@@ -3214,6 +3961,12 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
       purchaseDate: res.purchaseDate,
       purchasePrice: res.purchasePrice,
       purchaseLocation: res.purchaseLocation,
+      scopeUnit: res.scopeUnit,
+      scopeMake: res.scopeMake,
+      scopeModel: res.scopeModel,
+      scopeSerial: res.scopeSerial,
+      scopeMount: res.scopeMount,
+      scopeNotes: res.scopeNotes,
     );
   }
 
@@ -3458,11 +4211,28 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
             onPressed: () async {
               await Clipboard.setData(ClipboardData(text: text));
               if (!mounted) return;
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied to clipboard.')));
+              ScaffoldMessenger.of(context)
+                  .showSnackBar(const SnackBar(content: Text('Copied to clipboard.')));
             },
             child: const Text('Copy'),
           ),
+          if (kIsWeb)
+            TextButton(
+              onPressed: () {
+                final safe = title
+                    .toLowerCase()
+                    .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+                    .replaceAll(RegExp(r'_+'), '_')
+                    .replaceAll(RegExp(r'^_|_$'), '');
+                final ext = title.toLowerCase().contains('csv') ? 'csv' : 'txt';
+                _downloadTextFileWeb(
+                  'cold_bore_${safe.isEmpty ? 'export' : safe}.$ext',
+                  text,
+                  mimeType: ext == 'csv' ? 'text/csv' : 'text/plain',
+                );
+              },
+              child: const Text('Download'),
+            ),
           ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
         ],
       ),
@@ -3503,6 +4273,20 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                       'CSV bundle',
                       _buildCsvBundle(widget.state, redactLocation: _redactLocation),
                     ),
+                  ),
+                ),
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.swap_vert),
+                    title: const Text('Backup / restore (JSON)'),
+                    subtitle: const Text('Download a backup file or import one (merge: scope/data only).'),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => _BackupScreen(state: widget.state),
+                        ),
+                      );
+                    },
                   ),
                 ),
               ],
@@ -3555,6 +4339,142 @@ class _EmptyState extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+
+
+class _StringSummaryCard extends StatelessWidget {
+  final AppState state;
+  final TrainingSession session;
+  const _StringSummaryCard({required this.state, required this.session});
+
+  String _rifleLabel(String? id) {
+    if (id == null) return '—';
+    final r = state.rifles.firstWhere((x) => x.id == id, orElse: () => Rifle(id: id, caliber: '', notes: '', dope: '', dopeEntries: const [], preferredUnit: ElevationUnit.mil));
+    final parts = <String>[];
+    if (r.manufacturer != null && r.manufacturer!.trim().isNotEmpty) parts.add(r.manufacturer!.trim());
+    if (r.model != null && r.model!.trim().isNotEmpty) parts.add(r.model!.trim());
+    if (r.caliber.trim().isNotEmpty) parts.add(r.caliber.trim());
+    if (r.name != null && r.name!.trim().isNotEmpty) parts.add('"${r.name!.trim()}"');
+    return parts.isEmpty ? id : parts.join(' • ');
+  }
+
+  String _ammoLabel(String? id) {
+    if (id == null) return '—';
+    final a = state.ammoLots.firstWhere((x) => x.id == id, orElse: () => AmmoLot(id: id, caliber: '', grain: 0, bullet: '', notes: ''));
+    final parts = <String>[];
+    if (a.manufacturer != null && a.manufacturer!.trim().isNotEmpty) parts.add(a.manufacturer!.trim());
+    if (a.name != null && a.name!.trim().isNotEmpty) parts.add(a.name!.trim());
+    final bullet = a.bullet.trim().isEmpty ? null : a.bullet.trim();
+    if (bullet != null) parts.add(bullet);
+    if (a.grain > 0) parts.add('${a.grain}gr');
+    if (a.caliber.trim().isNotEmpty) parts.add(a.caliber.trim());
+    return parts.isEmpty ? id : parts.join(' • ');
+  }
+
+  String _fmt(DateTime d) {
+    return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')} '
+        '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final total = session.strings.length;
+    final activeIdx = session.strings.indexWhere((x) => x.id == session.activeStringId);
+    final n = (activeIdx >= 0) ? (activeIdx + 1) : total;
+    final active = (activeIdx >= 0) ? session.strings[activeIdx] : null;
+
+    final started = (active == null) ? '—' : _fmt(active.startedAt);
+
+    return Card(
+      child: ListTile(
+        title: Text('String $n of $total'),
+        subtitle: Text('Started: $started\nRifle: ${_rifleLabel(active?.rifleId)}\nAmmo: ${_ammoLabel(active?.ammoLotId)}'),
+        trailing: const Icon(Icons.list),
+        onTap: () {
+          showDialog(
+            context: context,
+            builder: (_) => _StringsDialog(state: state, session: session),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _StringsDialog extends StatelessWidget {
+  final AppState state;
+  final TrainingSession session;
+  const _StringsDialog({required this.state, required this.session});
+
+  String _fmt(DateTime d) {
+    return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')} '
+        '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+  }
+
+  String _rifleLabel(String? id) {
+    if (id == null) return '—';
+    final r = state.rifles.firstWhere((x) => x.id == id, orElse: () => Rifle(id: id, caliber: '', notes: '', dope: '', dopeEntries: const [], preferredUnit: ElevationUnit.mil));
+    final parts = <String>[];
+    if (r.manufacturer != null && r.manufacturer!.trim().isNotEmpty) parts.add(r.manufacturer!.trim());
+    if (r.model != null && r.model!.trim().isNotEmpty) parts.add(r.model!.trim());
+    if (r.caliber.trim().isNotEmpty) parts.add(r.caliber.trim());
+    if (r.name != null && r.name!.trim().isNotEmpty) parts.add('"${r.name!.trim()}"');
+    return parts.isEmpty ? id : parts.join(' • ');
+  }
+
+  String _ammoLabel(String? id) {
+    if (id == null) return '—';
+    final a = state.ammoLots.firstWhere((x) => x.id == id, orElse: () => AmmoLot(id: id, caliber: '', grain: 0, bullet: '', notes: ''));
+    final parts = <String>[];
+    if (a.manufacturer != null && a.manufacturer!.trim().isNotEmpty) parts.add(a.manufacturer!.trim());
+    if (a.name != null && a.name!.trim().isNotEmpty) parts.add(a.name!.trim());
+    final bullet = a.bullet.trim().isEmpty ? null : a.bullet.trim();
+    if (bullet != null) parts.add(bullet);
+    if (a.grain > 0) parts.add('${a.grain}gr');
+    if (a.caliber.trim().isNotEmpty) parts.add(a.caliber.trim());
+    return parts.isEmpty ? id : parts.join(' • ');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Strings'),
+      content: SizedBox(
+        width: 520,
+        child: ListView.builder(
+          shrinkWrap: true,
+          itemCount: session.strings.length,
+          itemBuilder: (context, i) {
+            final st = session.strings[i];
+            final isActive = st.id == session.activeStringId;
+
+            final parts = <String>[
+              'Started: ${_fmt(st.startedAt)}',
+              if (st.endedAt != null) 'Ended: ${_fmt(st.endedAt!)}',
+              'Rifle: ${_rifleLabel(st.rifleId)}',
+              'Ammo: ${_ammoLabel(st.ammoLotId)}',
+            ];
+            final subtitle = parts.join('\n');
+
+            return Card(
+              child: ListTile(
+                title: Text('String ${i + 1}${isActive ? ' (active)' : ''}'),
+                subtitle: Text(subtitle),
+                onTap: () {
+                  state.setActiveString(sessionId: session.id, stringId: st.id);
+                  Navigator.pop(context);
+                },
+              ),
+            );
+          },
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+      ],
     );
   }
 }
@@ -4053,19 +4973,26 @@ class _EditNotesDialogState extends State<_EditNotesDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('Notes'),
-      content: TextField(
-        controller: _c,
-        maxLines: 6,
-        decoration: const InputDecoration(
-          hintText: 'Add training notes for this session"¦',
+      content: SizedBox(
+        width: 520,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _c,
+              decoration: const InputDecoration(labelText: 'DOPE notes (optional)'),
+              maxLines: 3,
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Tip: Keep this in whatever format you prefer (e.g., come-ups, holds, or a quick reference table).',
+            ),
+          ],
         ),
       ),
       actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(null),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        ElevatedButton(
           onPressed: () => Navigator.of(context).pop(_c.text),
           child: const Text('Save'),
         ),
@@ -4073,6 +5000,9 @@ class _EditNotesDialogState extends State<_EditNotesDialog> {
     );
   }
 }
+
+
+
 
 class _PhotoNoteDialog extends StatefulWidget {
   const _PhotoNoteDialog();
@@ -4082,27 +5012,30 @@ class _PhotoNoteDialog extends StatefulWidget {
 }
 
 class _PhotoNoteDialogState extends State<_PhotoNoteDialog> {
-  final _caption = TextEditingController();
+  final TextEditingController _c = TextEditingController();
 
   @override
   void dispose() {
-    _caption.dispose();
+    _c.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Photo note'),
-      content: TextField(
-        controller: _caption,
-        decoration: const InputDecoration(labelText: 'Caption'),
-        maxLines: 2,
+      title: const Text('Photo caption'),
+      content: SizedBox(
+        width: 520,
+        child: TextField(
+          controller: _c,
+          decoration: const InputDecoration(labelText: 'Caption (optional)'),
+          textInputAction: TextInputAction.done,
+        ),
       ),
       actions: [
         TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
         ElevatedButton(
-          onPressed: () => Navigator.of(context).pop(_caption.text),
+          onPressed: () => Navigator.of(context).pop(_c.text.trim()),
           child: const Text('Save'),
         ),
       ],
@@ -4137,19 +5070,82 @@ class _EditDopeDialogState extends State<_EditDopeDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('Edit DOPE'),
-      content: TextField(
-        controller: _c,
-        decoration: const InputDecoration(
-          labelText: 'DOPE / Come-ups',
-          hintText: 'Example: 100y 0.0 | 200y 0.6 | 300y 1.4 ...',
+      content: SizedBox(
+        width: 520,
+        child: TextField(
+          controller: _c,
+          decoration: const InputDecoration(labelText: 'DOPE notes'),
+          maxLines: 6,
         ),
-        maxLines: 6,
       ),
       actions: [
         TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
         ElevatedButton(
-          onPressed: () => Navigator.of(context).pop(_c.text),
+          onPressed: () => Navigator.of(context).pop(_c.text.trim()),
           child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
+
+class _ShareSessionDialog extends StatefulWidget {
+  final String sessionTitle;
+  final List<UserProfile> users;
+  final Set<String> initiallySelected;
+
+  const _ShareSessionDialog({
+    required this.sessionTitle,
+    required this.users,
+    required this.initiallySelected,
+  });
+
+  @override
+  State<_ShareSessionDialog> createState() => _ShareSessionDialogState();
+}
+
+class _ShareSessionDialogState extends State<_ShareSessionDialog> {
+  late final Set<String> _selected;
+
+  @override
+  void initState() {
+    super.initState();
+    _selected = {...widget.initiallySelected};
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Share "${_cleanText(widget.sessionTitle)}"'),
+      content: SizedBox(
+        width: 420,
+        child: ListView(
+          shrinkWrap: true,
+          children: widget.users.map((u) {
+            final checked = _selected.contains(u.id);
+            return CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              value: checked,
+              title: Text(u.identifier),
+              onChanged: (v) {
+                setState(() {
+                  if (v == true) {
+                    _selected.add(u.id);
+                  } else {
+                    _selected.remove(u.id);
+                  }
+                });
+              },
+            );
+          }).toList(),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        ElevatedButton(
+          onPressed: () => Navigator.of(context).pop(_selected),
+          child: const Text('Share'),
         ),
       ],
     );
@@ -4171,6 +5167,11 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
   final _caliber = TextEditingController();
   final _manufacturer = TextEditingController();
   final _model = TextEditingController();
+  final _scopeMake = TextEditingController();
+  final _scopeModel = TextEditingController();
+  final _scopeSerial = TextEditingController();
+  final _scopeMount = TextEditingController();
+  final _scopeNotes = TextEditingController();
   final _serialNumber = TextEditingController();
   final _barrelLength = TextEditingController();
   final _twistRate = TextEditingController();
@@ -4179,6 +5180,7 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
   final _notes = TextEditingController();
   final _dope = TextEditingController();
   DateTime? _purchaseDate;
+  ScopeUnit _scopeUnit = ScopeUnit.mil;
 
   @override
   void initState() {
@@ -4189,6 +5191,12 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
       _caliber.text = r.caliber;
       _manufacturer.text = r.manufacturer ?? '';
       _model.text = r.model ?? '';
+      _scopeUnit = r.scopeUnit;
+      _scopeMake.text = r.scopeMake ?? '';
+      _scopeModel.text = r.scopeModel ?? '';
+      _scopeSerial.text = r.scopeSerial ?? '';
+      _scopeMount.text = r.scopeMount ?? '';
+      _scopeNotes.text = r.scopeNotes ?? '';
       _serialNumber.text = r.serialNumber ?? '';
       _barrelLength.text = r.barrelLength ?? '';
       _twistRate.text = r.twistRate ?? '';
@@ -4197,6 +5205,7 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
       _purchaseLocation.text = r.purchaseLocation ?? '';
       _notes.text = r.notes;
       _dope.text = r.dope;
+      _scopeUnit = r.scopeUnit;
     }
   }
 
@@ -4213,6 +5222,11 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
     _purchaseLocation.dispose();
     _notes.dispose();
     _dope.dispose();
+    _scopeMake.dispose();
+    _scopeModel.dispose();
+    _scopeSerial.dispose();
+    _scopeMount.dispose();
+    _scopeNotes.dispose();
     super.dispose();
   }
 
@@ -4225,9 +5239,26 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
       return;
     }
 
-    Navigator.of(context).pop(
+    
+    final man = _manufacturer.text.trim();
+    final mod = _model.text.trim();
+    if (man.isEmpty || mod.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Manufacturer and model are required')),
+      );
+      return;
+    }
+
+Navigator.of(context).pop(
       _NewRifleResult(
-        name: _name.text.trim().isEmpty ? null : _name.text.trim(),
+      scopeUnit: _scopeUnit,
+        manualRoundCount: widget.existing?.manualRoundCount ?? 0,
+        scopeMake: _scopeMake.text.trim().isEmpty ? null : _scopeMake.text.trim(),
+        scopeModel: _scopeModel.text.trim().isEmpty ? null : _scopeModel.text.trim(),
+        scopeSerial: _scopeSerial.text.trim().isEmpty ? null : _scopeSerial.text.trim(),
+        scopeMount: _scopeMount.text.trim().isEmpty ? null : _scopeMount.text.trim(),
+        scopeNotes: _scopeNotes.text.trim().isEmpty ? null : _scopeNotes.text.trim(),
+name: _name.text.trim().isEmpty ? null : _name.text.trim(),
         caliber: caliber,
         notes: _notes.text.trim(),
         dope: _dope.text.trim(),
@@ -4252,9 +5283,22 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+
             TextField(
               controller: _caliber,
               decoration: const InputDecoration(labelText: 'Caliber (ex: .308) *'),
+              textInputAction: TextInputAction.next,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _manufacturer,
+              decoration: const InputDecoration(labelText: 'Manufacturer *'),
+              textInputAction: TextInputAction.next,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _model,
+              decoration: const InputDecoration(labelText: 'Model *'),
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
@@ -4264,99 +5308,134 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
-            TextField(
-              controller: _manufacturer,
-              decoration: const InputDecoration(labelText: 'Manufacturer (optional)'),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _model,
-              decoration: const InputDecoration(labelText: 'Model (optional)'),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _serialNumber,
-              decoration: const InputDecoration(labelText: 'Serial number (optional)'),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            Row(
+
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              title: const Text('Other details'),
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: _barrelLength,
-                    decoration: const InputDecoration(labelText: 'Barrel length (optional)'),
-                    textInputAction: TextInputAction.next,
-                  ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _serialNumber,
+                  decoration: const InputDecoration(labelText: 'Serial number (optional)'),
+                  textInputAction: TextInputAction.next,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextField(
-                    controller: _twistRate,
-                    decoration: const InputDecoration(labelText: 'Twist rate (optional)'),
-                    textInputAction: TextInputAction.next,
-                  ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _barrelLength,
+                        decoration: const InputDecoration(labelText: 'Barrel length (optional)'),
+                        textInputAction: TextInputAction.next,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextField(
+                        controller: _twistRate,
+                        decoration: const InputDecoration(labelText: 'Twist rate (optional)'),
+                        textInputAction: TextInputAction.next,
+                      ),
+                    ),
+                  ],
                 ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(_purchaseDate == null
+                          ? 'Purchase date (optional)'
+                          : 'Purchase date: ${_purchaseDate!.month}/${_purchaseDate!.day}/${_purchaseDate!.year}'),
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate: DateTime.now(),
+                          firstDate: DateTime(1970),
+                          lastDate: DateTime.now(),
+                        );
+                        if (picked != null) {
+                          setState(() => _purchaseDate = picked);
+                        }
+                      },
+                      child: const Text('Pick'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _purchasePrice,
+                  decoration: const InputDecoration(labelText: 'Purchase price (optional)'),
+                  keyboardType: TextInputType.numberWithOptions(decimal: true),
+                  textInputAction: TextInputAction.next,
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _purchaseLocation,
+                  decoration: const InputDecoration(labelText: 'Purchase location (optional)'),
+                  textInputAction: TextInputAction.next,
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _notes,
+                  decoration: const InputDecoration(labelText: 'Notes (optional)'),
+                  maxLines: 2,
+                ),
+                const SizedBox(height: 8),
               ],
             ),
+
             const SizedBox(height: 12),
-            Row(
+
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              title: const Text('Scope'),
+              subtitle: Text('Adjustment unit: ${_scopeUnit.name.toUpperCase()}'),
               children: [
-                Expanded(
-                  child: Text(
-                    _purchaseDate == null
-                        ? 'Purchase date (optional)'
-                        : 'Purchase date: ${_fmtDate(_purchaseDate!)}',
-                  ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<ScopeUnit>(
+                  value: _scopeUnit,
+                  decoration: const InputDecoration(labelText: 'Adjustment unit'),
+                  items: ScopeUnit.values
+                      .map((u) => DropdownMenuItem(value: u, child: Text(u.name.toUpperCase())))
+                      .toList(),
+                  onChanged: (v) => setState(() => _scopeUnit = v ?? ScopeUnit.mil),
                 ),
-                TextButton(
-                  onPressed: () async {
-                    final now = DateTime.now();
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate: _purchaseDate ?? DateTime(now.year, now.month, now.day),
-                      firstDate: DateTime(1990),
-                      lastDate: DateTime(now.year + 2),
-                    );
-                    if (picked != null) setState(() => _purchaseDate = picked);
-                  },
-                  child: const Text('Pick'),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _scopeMake,
+                  decoration: const InputDecoration(labelText: 'Scope make (optional)'),
+                  textInputAction: TextInputAction.next,
                 ),
-                if (_purchaseDate != null)
-                  IconButton(
-                    tooltip: 'Clear',
-                    onPressed: () => setState(() => _purchaseDate = null),
-                    icon: const Icon(Icons.clear),
-                  ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _scopeModel,
+                  decoration: const InputDecoration(labelText: 'Scope model (optional)'),
+                  textInputAction: TextInputAction.next,
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _scopeSerial,
+                  decoration: const InputDecoration(labelText: 'Scope serial (optional)'),
+                  textInputAction: TextInputAction.next,
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _scopeMount,
+                  decoration: const InputDecoration(labelText: 'Mount/rings (optional)'),
+                  textInputAction: TextInputAction.next,
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _scopeNotes,
+                  decoration: const InputDecoration(labelText: 'Scope notes (optional)'),
+                  maxLines: 2,
+                ),
+                const SizedBox(height: 8),
               ],
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _purchasePrice,
-              decoration: const InputDecoration(labelText: 'Purchase price (optional)'),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _purchaseLocation,
-              decoration: const InputDecoration(labelText: 'Purchase location (optional)'),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _dope,
-              decoration: const InputDecoration(labelText: 'DOPE notes (optional)'),
-              maxLines: 3,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _notes,
-              decoration: const InputDecoration(labelText: 'Notes (optional)'),
-              maxLines: 3,
-            ),
-          ],
+],
         ),
       ),
       actions: [
@@ -4368,7 +5447,16 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
 }
 
 class _NewRifleResult {
-  final String? name;
+  final ScopeUnit scopeUnit;
+  final int manualRoundCount;
+
+  final String? scopeMake;
+  final String? scopeModel;
+  final String? scopeSerial;
+  final String? scopeMount;
+  final String? scopeNotes;
+
+final String? name;
   final String caliber;
   final String notes;
   final String dope;
@@ -4384,9 +5472,16 @@ class _NewRifleResult {
   final String? purchaseLocation;
 
   _NewRifleResult({
+    this.scopeUnit = ScopeUnit.mil,
+    this.manualRoundCount = 0,
+    this.scopeMake,
+    this.scopeModel,
+    this.scopeSerial,
+    this.scopeMount,
+    this.scopeNotes,
     this.name,
     required this.caliber,
-    required this.notes,
+required this.notes,
     required this.dope,
     this.dopeEntries = const [],
     this.manufacturer,
@@ -4406,7 +5501,7 @@ class _NewAmmoResult {
   _NewAmmoResult({
     this.name,
     required this.caliber,
-    required this.grain,
+required this.grain,
     required this.bullet,
     this.ballisticCoefficient,
     this.manufacturer,
@@ -4446,6 +5541,7 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
   final _lot = TextEditingController();
   final _notes = TextEditingController();
   DateTime? _purchaseDate;
+  ScopeUnit _scopeUnit = ScopeUnit.mil;
   final _purchasePrice = TextEditingController();
 
 
@@ -4517,7 +5613,7 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
             const SizedBox(height: 12),
             TextField(
               controller: _manufacturer,
-              decoration: const InputDecoration(labelText: 'Manufacturer (optional)'),
+              decoration: const InputDecoration(labelText: 'Manufacturer *'),
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
@@ -4853,5 +5949,263 @@ class _RifleDopeEntryDialogState extends State<_RifleDopeEntryDialog> {
       ],
     );
 
+  }
+}
+
+class _BackupScreen extends StatelessWidget {
+  final AppState state;
+  const _BackupScreen({required this.state});
+
+  
+  void _showExportText(BuildContext context, String title, String text) {
+  showDialog(
+    context: context,
+    builder: (_) => AlertDialog(
+      title: Text(title),
+      content: SizedBox(
+        width: 520,
+        child: SingleChildScrollView(
+          child: SelectableText(text),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            Clipboard.setData(ClipboardData(text: text));
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Copied to clipboard')),
+            );
+          },
+          child: const Text('Copy'),
+        ),
+        if (kIsWeb)
+          TextButton(
+            onPressed: () {
+              final safe = title
+                  .toLowerCase()
+                  .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+                  .replaceAll(RegExp(r'_+'), '_')
+                  .replaceAll(RegExp(r'^_|_$'), '');
+              final ext = title.toLowerCase().contains('csv') ? 'csv' : 'txt';
+              _downloadTextFileWeb('cold_bore_${safe.isEmpty ? 'export' : safe}.$ext', text,
+                  mimeType: ext == 'csv' ? 'text/csv' : 'text/plain');
+            },
+            child: const Text('Download'),
+          ),
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close')),
+      ],
+    ),
+  );
+}
+
+
+  Future<void> _exportBackupFile(BuildContext context) async {
+    try {
+      final ts = DateTime.now();
+      final fname = 'cold_bore_backup_${ts.year.toString().padLeft(4,'0')}-${ts.month.toString().padLeft(2,'0')}-${ts.day.toString().padLeft(2,'0')}.json';
+      final json = state.exportBackupJson();
+
+      // Web: download directly (no sandboxed filesystem)
+      if (kIsWeb) {
+        _downloadTextFileWeb(fname, json, mimeType: 'application/json');
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Backup downloaded.')),
+        );
+        return;
+      }
+
+      // Mobile/Desktop: write file then share
+      final dir = await getApplicationDocumentsDirectory();
+      final file = File('${dir.path}/$fname');
+      await file.writeAsString(json, flush: true);
+      await Share.shareXFiles([XFile(file.path)], text: 'Cold Bore backup');
+} catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Export failed.')),
+      );
+    }
+  }
+
+@override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Backup & Restore')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.save_alt_outlined),
+              title: const Text('Backup (JSON)'),
+              subtitle: const Text('Copy a backup of rifles & ammo'),
+              onTap: () => _exportBackupFile(context),
+            ),
+          ),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.download_outlined),
+              title: const Text('Restore (JSON)'),
+              subtitle: const Text('Import a backup file (web) or paste JSON'),
+              onTap: () async {
+                // On web: pick a .json file and merge (preserving history).
+                if (kIsWeb) {
+                  final choice = await showModalBottomSheet<String>(
+                    context: context,
+                    builder: (_) => SafeArea(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ListTile(
+                            leading: const Icon(Icons.merge_type),
+                            title: const Text('Merge (recommended)'),
+                            subtitle: const Text('Overwrite scope fields; keep IDs & history'),
+                            onTap: () => Navigator.of(context).pop('merge'),
+                          ),
+                          ListTile(
+                            leading: const Icon(Icons.warning_amber_outlined),
+                            title: const Text('Replace equipment'),
+                            subtitle: const Text('Replace rifles & ammo lists (history stays)'),
+                            onTap: () => Navigator.of(context).pop('replace'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                  if (choice == null) return;
+
+                  final jsonText = await _pickWebJsonFile();
+                  if (jsonText == null) return;
+
+                  try {
+                    if (choice == 'merge') {
+                      state.mergeBackupJson(jsonText, overwriteScope: true);
+                    } else {
+                      state.importBackupJson(jsonText, replaceExisting: true);
+                    }
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Import complete.')),
+                    );
+                  } catch (_) {
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Import failed. Invalid JSON.')),
+                    );
+                  }
+                  return;
+                }
+
+                // Non-web: paste JSON (and choose merge/replace)
+                final res = await showDialog<_ImportBackupResult>(
+                  context: context,
+                  builder: (_) => const _ImportBackupDialog(),
+                );
+                if (res == null) return;
+                try {
+                  if (res.mode == _ImportMode.merge) {
+                    state.mergeBackupJson(res.jsonText, overwriteScope: true);
+                  } else {
+                    state.importBackupJson(res.jsonText, replaceExisting: true);
+                  }
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Import complete.')),
+                  );
+                } catch (_) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Import failed. Invalid JSON.')),
+                  );
+                }
+              },
+            ),
+          ),
+
+        ],
+      ),
+    );
+  }
+}
+
+enum _ImportMode { merge, replace }
+
+class _ImportBackupResult {
+  final String jsonText;
+  final _ImportMode mode;
+  const _ImportBackupResult({required this.jsonText, required this.mode});
+}
+class _ImportBackupDialog extends StatefulWidget {
+  const _ImportBackupDialog();
+
+  @override
+  State<_ImportBackupDialog> createState() => _ImportBackupDialogState();
+}
+
+class _ImportBackupDialogState extends State<_ImportBackupDialog> {
+  final _ctrl = TextEditingController();
+  _ImportMode _mode = _ImportMode.merge;
+@override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Restore backup (JSON)'),
+      content: SizedBox(
+        width: 520,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Import mode'),
+              const SizedBox(height: 8),
+              RadioListTile<_ImportMode>(
+                value: _ImportMode.merge,
+                groupValue: _mode,
+                onChanged: (v) => setState(() => _mode = v ?? _ImportMode.merge),
+                title: const Text('Merge (recommended)'),
+                subtitle: const Text('Overwrite scope fields; keep equipment IDs & all history'),
+              ),
+              RadioListTile<_ImportMode>(
+                value: _ImportMode.replace,
+                groupValue: _mode,
+                onChanged: (v) => setState(() => _mode = v ?? _ImportMode.merge),
+                title: const Text('Replace equipment'),
+                subtitle: const Text('Replace rifles & ammo lists (history stays)'),
+              ),
+            ],
+          ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _ctrl,
+              decoration: const InputDecoration(
+                labelText: 'Paste backup JSON',
+                border: OutlineInputBorder(),
+              ),
+              minLines: 6,
+              maxLines: 12,
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        FilledButton(
+          onPressed: () {
+            final t = _ctrl.text.trim();
+            if (t.isEmpty) return;
+            Navigator.of(context).pop(_ImportBackupResult(jsonText: t, mode: _mode));
+          },
+          child: const Text('Import'),
+        ),
+      ],
+    );
   }
 }
