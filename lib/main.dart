@@ -605,7 +605,41 @@ void main() {
 /// - Sessions: assign rifle/ammo + add Cold Bore entries + photos + training DOPE
 ///
 /// NOTE: Still "no database yet". We'll swap AppState storage to a real DB later.
-///
+class RifleServiceEntry {
+  final String id;
+  final String service;
+  final DateTime date;
+  final int roundsAtService;
+  final String notes;
+
+  const RifleServiceEntry({
+    required this.id,
+    required this.service,
+    required this.date,
+    required this.roundsAtService,
+    this.notes = '',
+  });
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'service': service,
+        'date': date.toIso8601String(),
+        'roundsAtService': roundsAtService,
+        'notes': notes,
+      };
+
+  static RifleServiceEntry fromMap(Map<String, dynamic> m) => RifleServiceEntry(
+        id: (m['id'] ?? '').toString(),
+        service: (m['service'] ?? '').toString(),
+        date: DateTime.tryParse((m['date'] ?? '').toString()) ?? DateTime.now(),
+        roundsAtService: (m['roundsAtService'] is num)
+            ? (m['roundsAtService'] as num).round()
+            : int.tryParse((m['roundsAtService'] ?? '0').toString()) ?? 0,
+        notes: (m['notes'] ?? '').toString(),
+      );
+}
+
+
 class ColdBoreApp extends StatelessWidget {
   final bool firebaseReady;
   final String? firebaseError;
@@ -1125,7 +1159,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  void updateSessionLoadout({
+    void updateSessionLoadout({
     required String sessionId,
     String? rifleId,
     String? ammoLotId,
@@ -1135,33 +1169,59 @@ class AppState extends ChangeNotifier {
     if (idx < 0) return;
     final s = _sessions[idx];
 
-    String? nextRifleId = rifleId;
-    String? nextAmmoId = ammoLotId;
+    String? nextRifleId = rifleId ?? s.rifleId;
+    String? nextAmmoId = ammoLotId ?? s.ammoLotId;
 
     // If rifle changes, clear ammo when incompatible with the new rifle.
-    if (nextRifleId != null) {
+    if (nextRifleId != null && nextAmmoId != null) {
       final newRifle = rifleById(nextRifleId);
-      if (newRifle != null && nextAmmoId != null) {
-        final a = ammoById(nextAmmoId);
-        if (a == null || a.caliber != newRifle.caliber) {
-          nextAmmoId = null;
-        }
+      final a = ammoById(nextAmmoId);
+      if (newRifle != null && (a == null || a.caliber != newRifle.caliber)) {
+        nextAmmoId = null;
       }
     }
 
     final loadoutChanged = (nextRifleId != s.rifleId) || (nextAmmoId != s.ammoLotId);
+    if (!loadoutChanged) return;
 
-    if (!loadoutChanged) {
+    final now = DateTime.now();
+    final currentStrings = [...s.strings];
+    final activeIndex = currentStrings.indexWhere((x) => x.id == s.activeStringId);
+
+    SessionStringMeta? activeMeta = activeIndex == -1 ? null : currentStrings[activeIndex];
+    final activeHasLoadout = (activeMeta?.rifleId != null) && (activeMeta?.ammoLotId != null);
+    final activeIsEmpty = (activeMeta?.rifleId == null) && (activeMeta?.ammoLotId == null);
+
+    // If the active string has no loadout yet, just bind the initial selection to it (no prompt/new string).
+    if (activeIndex != -1 && (activeIsEmpty || !activeHasLoadout)) {
+      currentStrings[activeIndex] = activeMeta!.copyWith(
+        rifleId: nextRifleId,
+        ammoLotId: nextAmmoId,
+      );
+      _sessions[idx] = s.copyWith(
+        rifleId: nextRifleId,
+        ammoLotId: nextAmmoId,
+        strings: currentStrings,
+      );
+      notifyListeners();
+      return;
+    }
+
+    // If user is still selecting (missing either rifle or ammo), never create a new string yet.
+    if (nextRifleId == null || nextAmmoId == null) {
       _sessions[idx] = s.copyWith(rifleId: nextRifleId, ammoLotId: nextAmmoId);
       notifyListeners();
       return;
     }
 
-    final now = DateTime.now();
-    final currentStrings = [...s.strings];
+    // If we aren't starting a new string (user cancelled prompt), only update session-level display.
+    if (!startNewString) {
+      _sessions[idx] = s.copyWith(rifleId: nextRifleId, ammoLotId: nextAmmoId);
+      notifyListeners();
+      return;
+    }
 
     // Close the active string (if any).
-    final activeIndex = currentStrings.indexWhere((x) => x.id == s.activeStringId);
     if (activeIndex != -1 && currentStrings[activeIndex].endedAt == null) {
       currentStrings[activeIndex] = currentStrings[activeIndex].copyWith(endedAt: now);
     }
@@ -1495,6 +1555,49 @@ class AppState extends ChangeNotifier {
   // Public helper used by widgets that need a fresh id without accessing a static private method.
   String newIdForChild() => _newId();
 
+
+  int roundsFiredForRifle(String rifleId) {
+    int total = 0;
+    for (final s in _sessions) {
+      for (final st in s.strings) {
+        if (st.rifleId != rifleId) continue;
+        final shots = s.shotsByString[st.id] ?? const <ShotEntry>[];
+        total += shots.length;
+      }
+    }
+    return total;
+  }
+
+  int totalRoundsForRifle(String rifleId) {
+    final r = rifleById(rifleId);
+    if (r == null) return 0;
+    return r.manualRoundCount + roundsFiredForRifle(rifleId);
+  }
+
+  void addRifleService({
+    required String rifleId,
+    required RifleServiceEntry entry,
+  }) {
+    final idx = _rifles.indexWhere((r) => r.id == rifleId);
+    if (idx < 0) return;
+    final r = _rifles[idx];
+    final next = [...r.services, entry]..sort((a, b) => b.date.compareTo(a.date));
+    _rifles[idx] = r.copyWith(services: next);
+    notifyListeners();
+  }
+
+  void deleteRifleService({
+    required String rifleId,
+    required String serviceId,
+  }) {
+    final idx = _rifles.indexWhere((r) => r.id == rifleId);
+    if (idx < 0) return;
+    final r = _rifles[idx];
+    final next = r.services.where((e) => e.id != serviceId).toList();
+    _rifles[idx] = r.copyWith(services: next);
+    notifyListeners();
+  }
+
   String exportBackupJson() {
     final payload = <String, dynamic>{
       'schema': kBackupSchemaVersion,
@@ -1512,6 +1615,7 @@ class AppState extends ChangeNotifier {
         'notes': r.notes,
         'dope': r.dope,
         'manualRoundCount': r.manualRoundCount,
+        'services': r.services.map((s) => s.toMap()).toList(),
         'purchaseDate': r.purchaseDate?.toIso8601String(),
         'purchasePrice': r.purchasePrice,
         'purchaseLocation': r.purchaseLocation,
@@ -1853,6 +1957,8 @@ class Rifle {
 
   final int manualRoundCount;
 
+  final List<RifleServiceEntry> services;
+
   final String? scopeMake;
   final String? scopeModel;
   final String? scopeSerial;
@@ -1878,6 +1984,7 @@ class Rifle {
     this.preferredUnit = ElevationUnit.mil,
     this.scopeUnit = ScopeUnit.mil,
     this.manualRoundCount = 0,
+    this.services = const [],
     this.scopeMake,
     this.scopeModel,
     this.scopeSerial,
@@ -1903,6 +2010,7 @@ class Rifle {
     ElevationUnit? preferredUnit,
     ScopeUnit? scopeUnit,
     int? manualRoundCount,
+    List<RifleServiceEntry>? services,
     String? scopeMake,
     String? scopeModel,
     String? scopeSerial,
@@ -1927,6 +2035,7 @@ class Rifle {
       preferredUnit: preferredUnit ?? this.preferredUnit,
       scopeUnit: scopeUnit ?? this.scopeUnit,
       manualRoundCount: manualRoundCount ?? this.manualRoundCount,
+      services: services ?? this.services,
       scopeMake: scopeMake ?? this.scopeMake,
       scopeModel: scopeModel ?? this.scopeModel,
       scopeSerial: scopeSerial ?? this.scopeSerial,
@@ -2526,22 +2635,45 @@ class _UsersScreenState extends State<UsersScreen> {
         icon: const Icon(Icons.add),
         label: const Text('Add user'),
       ),
-      body: ListView.separated(
-        itemCount: users.length,
-        separatorBuilder: (_, __) => const Divider(height: 1),
-        itemBuilder: (context, index) {
-          final u = users[index];
-          final isActive = active?.id == u.id;
-          return ListTile(
-            title: Text(u.name ?? ''),
-            subtitle: Text(u.identifier),
-            trailing: isActive ? const Icon(Icons.check_circle_outline) : null,
-            onTap: () {
-              widget.state.switchUser(u);
-              Navigator.of(context).pop();
-            },
-          );
-        },
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Card(
+              child: ListTile(
+                leading: const Icon(Icons.build_outlined),
+                title: const Text('Maintenance'),
+                subtitle: const Text('View round counts and service history'),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => MaintenanceHubScreen(state: widget.state),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+          Expanded(
+            child: ListView.separated(
+              itemCount: users.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (context, index) {
+                final u = users[index];
+                final isActive = active?.id == u.id;
+                return ListTile(
+                  title: Text(u.name ?? ''),
+                  subtitle: Text(u.identifier),
+                  trailing: isActive ? const Icon(Icons.check_circle_outline) : null,
+                  onTap: () {
+                    widget.state.switchUser(u);
+                    Navigator.of(context).pop();
+                  },
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2612,8 +2744,35 @@ class SessionsScreen extends StatelessWidget {
             itemBuilder: (context, index) {
               final s = sessions[index];
               final rifle = state.rifleById(s.rifleId);
-              final ammo = state.ammoById(s.ammoLotId);
-              final subtitleBits = <String>[
+        final ammo = state.ammoById(s.ammoLotId);
+
+        String _joinNonEmpty(List<String?> parts) {
+          final out = <String>[];
+          for (final p in parts) {
+            final v = (p ?? '').trim();
+            if (v.isNotEmpty) out.add(v);
+          }
+          return out.join(' • ');
+        }
+
+        final rifleDesc = (rifle == null)
+            ? (s.rifleId == null ? '-' : 'Deleted (${s.rifleId})')
+            : _joinNonEmpty([
+                rifle.caliber,
+                rifle.manufacturer,
+                rifle.model,
+                (rifle.name ?? '').trim().isEmpty ? null : rifle.name,
+              ]);
+
+        final ammoDesc = (ammo == null)
+            ? (s.ammoLotId == null ? '-' : 'Deleted (${s.ammoLotId})')
+            : _joinNonEmpty([
+                ammo.caliber,
+                ammo.manufacturer,
+                (ammo.bullet.isNotEmpty ? ammo.bullet : (ammo.name ?? 'Ammo')),
+                ammo.grain > 0 ? '${ammo.grain}gr' : null,
+              ]);
+        final subtitleBits = <String>[
                 _fmtDateTime(s.dateTime),
                 if (rifle != null) rifle.name ?? '',
                 if (ammo != null) ammo.name ?? '',
@@ -3151,6 +3310,33 @@ Future<void> _addDope(BuildContext context, TrainingSession s) async {
 
         final rifle = state.rifleById(s.rifleId);
         final ammo = state.ammoById(s.ammoLotId);
+
+        String _joinNonEmptyParts(List<String?> parts) {
+          final out = <String>[];
+          for (final p in parts) {
+            final v = (p ?? '').trim();
+            if (v.isNotEmpty) out.add(v);
+          }
+          return out.join(' • ');
+        }
+
+        final rifleDesc = (rifle == null)
+            ? (s.rifleId == null ? '-' : 'Deleted (${s.rifleId})')
+            : _joinNonEmptyParts([
+                rifle.caliber,
+                rifle.manufacturer,
+                rifle.model,
+                (rifle.name ?? '').trim().isEmpty ? null : rifle.name,
+              ]);
+
+        final ammoDesc = (ammo == null)
+            ? (s.ammoLotId == null ? '-' : 'Deleted (${s.ammoLotId})')
+            : _joinNonEmptyParts([
+                ammo.caliber,
+                ammo.manufacturer,
+                (ammo.bullet.isNotEmpty ? ammo.bullet : (ammo.name ?? 'Ammo')),
+                ammo.grain > 0 ? '${ammo.grain}gr' : null,
+              ]);
         final compatibleAmmo = (rifle == null)
             ? <AmmoLot>[]
             : state.ammoLots.where((a) => a.caliber == rifle.caliber).toList();
@@ -3223,14 +3409,12 @@ Card(
         const SizedBox(height: 8),
         Align(
           alignment: Alignment.centerLeft,
-          child: Text(
-            'Rifle: ${rifle == null ? (s.rifleId == null ? '-' : 'Deleted (${s.rifleId})') : '${(rifle.name ?? 'Rifle').trim()} (${rifle.caliber})'}',
+          child: Text('Rifle: $rifleDesc'
           ),
         ),
         Align(
           alignment: Alignment.centerLeft,
-          child: Text(
-            'Ammo: ${ammo == null ? (s.ammoLotId == null ? '-' : 'Deleted (${s.ammoLotId})') : '${(ammo.name ?? 'Ammo').trim()} (${ammo.caliber})'}',
+          child: Text('Ammo: $ammoDesc'
           ),
         ),
       ],
@@ -3291,16 +3475,33 @@ _SectionTitle('Loadout'),
                         ),
                       ],
                       onChanged: (v) async {
-                        if (v == null || v == s.rifleId) return;
-                        final startNew = await _promptStartNewStringDialog(context);
+                        if (v == s.rifleId) return;
+
+                        final current = s.strings.firstWhere(
+                          (x) => x.id == s.activeStringId,
+                          orElse: () => s.strings.isNotEmpty ? s.strings.last : SessionStringMeta(id: s.activeStringId, startedAt: DateTime.now(), endedAt: null),
+                        );
+
+                        // If we haven't completed a loadout yet, just set it (no prompt).
+                        if (current.rifleId == null || current.ammoLotId == null) {
+                          state.updateSessionLoadout(
+                            sessionId: s.id,
+                            rifleId: v,
+                            ammoLotId: s.ammoLotId,
+                            startNewString: false,
+                          );
+                          return;
+                        }
+
+                        // User is changing rifle; clear ammo for now (force re-select). No prompt until BOTH are selected.
                         state.updateSessionLoadout(
                           sessionId: s.id,
                           rifleId: v,
                           ammoLotId: null,
-                          startNewString: startNew,
+                          startNewString: false,
                         );
                       },
-                    ),
+                  ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -3324,13 +3525,51 @@ _SectionTitle('Loadout'),
                       onChanged: (rifle == null)
                           ? null
                           : (v) async {
-                              final startNew = await _promptStartNewStringDialog(context);
-                              state.updateSessionLoadout(
-                                sessionId: s.id,
-                                rifleId: s.rifleId,
-                                ammoLotId: v,
-                                startNewString: startNew,
+                              if (v == s.ammoLotId) return;
+
+                              final current = s.strings.firstWhere(
+                                (x) => x.id == s.activeStringId,
+                                orElse: () => s.strings.isNotEmpty ? s.strings.last : SessionStringMeta(id: s.activeStringId, startedAt: DateTime.now(), endedAt: null),
                               );
+
+                              // If we haven't completed a loadout yet, just set it (no prompt).
+                              if (current.rifleId == null || current.ammoLotId == null) {
+                                state.updateSessionLoadout(
+                                  sessionId: s.id,
+                                  rifleId: s.rifleId,
+                                  ammoLotId: v,
+                                  startNewString: false,
+                                );
+                                return;
+                              }
+
+                              // Only prompt when BOTH rifle + ammo are selected (i.e., loadout is complete).
+                              if (s.rifleId != null && v != null) {
+                                final nextRifle = s.rifleId;
+                                final nextAmmo = v;
+
+                                final changed = (nextRifle != current.rifleId) || (nextAmmo != current.ammoLotId);
+                                if (!changed) return;
+
+                                final startNew = await _promptStartNewStringDialog(context);
+                                if (!startNew) {
+                                  // Revert to current active string loadout.
+                                  state.updateSessionLoadout(
+                                    sessionId: s.id,
+                                    rifleId: current.rifleId,
+                                    ammoLotId: current.ammoLotId,
+                                    startNewString: false,
+                                  );
+                                  return;
+                                }
+
+                                state.updateSessionLoadout(
+                                  sessionId: s.id,
+                                  rifleId: nextRifle,
+                                  ammoLotId: nextAmmo,
+                                  startNewString: true,
+                                );
+                              }
                             },
                     ),
                   ),
@@ -4096,6 +4335,18 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                                         widget.state.updateRifleDope(rifleId: r.id, dope: updated);
                                         return;
                                       }
+                                      if (v == 'service') {
+                                        await Navigator.of(context).push(
+                                          MaterialPageRoute(
+                                            builder: (_) => RifleServiceLogScreen(
+                                              state: widget.state,
+                                              rifleId: r.id,
+                                            ),
+                                          ),
+                                        );
+                                        return;
+                                      }
+
                                       if (v == 'delete') {
                                         await _deleteRifle(r);
                                       }
@@ -4103,6 +4354,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                                     itemBuilder: (context) => const [
                                       PopupMenuItem(value: 'edit', child: Text('Edit rifle')),
                                       PopupMenuItem(value: 'dope', child: Text('Edit DOPE')),
+                                      PopupMenuItem(value: 'service', child: Text('Service log')),
                                       PopupMenuDivider(),
                                       PopupMenuItem(value: 'delete', child: Text('Delete')),
                                     ],
@@ -5951,6 +6203,255 @@ class _RifleDopeEntryDialogState extends State<_RifleDopeEntryDialog> {
 
   }
 }
+
+
+class MaintenanceHubScreen extends StatelessWidget {
+  final AppState state;
+  const MaintenanceHubScreen({super.key, required this.state});
+
+  String _rifleLabel(Rifle r) {
+    final m = (r.manufacturer ?? '').trim();
+    final model = (r.model ?? '').trim();
+    final name = (r.name ?? '').trim();
+    final parts = <String>[
+      r.caliber.trim(),
+      if (m.isNotEmpty) m,
+      if (model.isNotEmpty) model,
+      if (name.isNotEmpty) name,
+    ];
+    return parts.join(' • ');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: state,
+      builder: (context, _) {
+        final rifles = state.rifles;
+        return Scaffold(
+          appBar: AppBar(title: const Text('Maintenance')),
+          body: ListView.separated(
+            itemCount: rifles.length,
+            separatorBuilder: (_, __) => const Divider(height: 1),
+            itemBuilder: (context, i) {
+              final r = rifles[i];
+              final total = state.totalRoundsForRifle(r.id);
+              return ListTile(
+                leading: const Icon(Icons.build_outlined),
+                title: Text(_rifleLabel(r)),
+                subtitle: Text('Total rounds: $total'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => RifleServiceLogScreen(state: state, rifleId: r.id),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+}
+
+class RifleServiceLogScreen extends StatefulWidget {
+  final AppState state;
+  final String rifleId;
+  const RifleServiceLogScreen({super.key, required this.state, required this.rifleId});
+
+  @override
+  State<RifleServiceLogScreen> createState() => _RifleServiceLogScreenState();
+}
+
+class _RifleServiceLogScreenState extends State<RifleServiceLogScreen> {
+  String _fmtDate(DateTime d) {
+    final mm = d.month.toString().padLeft(2, '0');
+    final dd = d.day.toString().padLeft(2, '0');
+    final yyyy = d.year.toString();
+    return '$mm/$dd/$yyyy';
+  }
+
+  Future<void> _addService() async {
+    final res = await showDialog<RifleServiceEntry>(
+      context: context,
+      builder: (_) => _AddRifleServiceDialog(state: widget.state, rifleId: widget.rifleId),
+    );
+    if (res == null) return;
+    widget.state.addRifleService(rifleId: widget.rifleId, entry: res);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Service log')),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _addService,
+        child: const Icon(Icons.add),
+      ),
+      body: AnimatedBuilder(
+        animation: widget.state,
+        builder: (context, _) {
+          final rifle = widget.state.rifleById(widget.rifleId);
+          final services = rifle?.services ?? const <RifleServiceEntry>[];
+
+          if (rifle == null) return const Center(child: Text('Rifle not found.'));
+          if (services.isEmpty) return const Center(child: Text('No services logged yet.'));
+
+          return ListView.separated(
+            padding: const EdgeInsets.all(12),
+            itemCount: services.length,
+            separatorBuilder: (_, __) => const Divider(height: 1),
+            itemBuilder: (context, i) {
+              final s = services[i];
+              return ListTile(
+                title: Text(s.service),
+                subtitle: Text('${_fmtDate(s.date)} • ${s.roundsAtService} rds' +
+                    (s.notes.trim().isEmpty ? '' : ' • ${s.notes.trim()}')),
+                trailing: IconButton(
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: () async {
+                    final ok = await showDialog<bool>(
+                      context: context,
+                      builder: (_) => AlertDialog(
+                        title: const Text('Delete service entry?'),
+                        content: const Text('This cannot be undone.'),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+                        ],
+                      ),
+                    );
+                    if (ok == true) {
+                      widget.state.deleteRifleService(rifleId: widget.rifleId, serviceId: s.id);
+                    }
+                  },
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _AddRifleServiceDialog extends StatefulWidget {
+  final AppState state;
+  final String rifleId;
+  const _AddRifleServiceDialog({required this.state, required this.rifleId});
+
+  @override
+  State<_AddRifleServiceDialog> createState() => _AddRifleServiceDialogState();
+}
+
+class _AddRifleServiceDialogState extends State<_AddRifleServiceDialog> {
+  final _serviceCtrl = TextEditingController();
+  final _notesCtrl = TextEditingController();
+  DateTime _date = DateTime.now();
+  bool _useCurrentRounds = true;
+  final _roundsCtrl = TextEditingController();
+
+  String _fmtDate(DateTime d) {
+    final mm = d.month.toString().padLeft(2, '0');
+    final dd = d.day.toString().padLeft(2, '0');
+    final yyyy = d.year.toString();
+    return '$mm/$dd/$yyyy';
+  }
+
+  @override
+  void dispose() {
+    _serviceCtrl.dispose();
+    _notesCtrl.dispose();
+    _roundsCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final currentRounds = widget.state.totalRoundsForRifle(widget.rifleId);
+
+    return AlertDialog(
+      title: const Text('Log service'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _serviceCtrl,
+              decoration: const InputDecoration(labelText: 'Service'),
+              textInputAction: TextInputAction.next,
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _notesCtrl,
+              decoration: const InputDecoration(labelText: 'Notes (optional)'),
+              textInputAction: TextInputAction.next,
+            ),
+            const SizedBox(height: 12),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Date'),
+              subtitle: Text(_fmtDate(_date)),
+              trailing: const Icon(Icons.calendar_today_outlined),
+              onTap: () async {
+                final picked = await showDatePicker(
+                  context: context,
+                  initialDate: _date,
+                  firstDate: DateTime(2000),
+                  lastDate: DateTime(2100),
+                );
+                if (picked != null) setState(() => _date = picked);
+              },
+            ),
+            const Divider(),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Use current total rounds'),
+              subtitle: Text(_useCurrentRounds ? '$currentRounds rds' : 'Enter manually'),
+              value: _useCurrentRounds,
+              onChanged: (v) => setState(() => _useCurrentRounds = v),
+            ),
+            if (!_useCurrentRounds)
+              TextField(
+                controller: _roundsCtrl,
+                decoration: const InputDecoration(labelText: 'Rounds at service'),
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        TextButton(
+          onPressed: () {
+            final service = _serviceCtrl.text.trim();
+            if (service.isEmpty) return;
+
+            final rounds = _useCurrentRounds
+                ? currentRounds
+                : (int.tryParse(_roundsCtrl.text.trim()) ?? currentRounds);
+
+            final entry = RifleServiceEntry(
+              id: widget.state.newIdForChild(),
+              service: service,
+              date: _date,
+              roundsAtService: rounds,
+              notes: _notesCtrl.text.trim(),
+            );
+
+            Navigator.pop(context, entry);
+          },
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
 
 class _BackupScreen extends StatelessWidget {
   final AppState state;
