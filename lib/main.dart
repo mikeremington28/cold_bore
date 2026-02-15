@@ -566,7 +566,7 @@ void main() {
 
     try {
       await Firebase.initializeApp();
-firebaseReady = true;
+      firebaseReady = true;
     } catch (e, st) {
       firebaseReady = false;
       firebaseError = '$e';
@@ -2971,7 +2971,7 @@ const SizedBox(height: 12),
                       onPressed: () {
                         final step = _elevationUnit == ElevationUnit.mil
                             ? 0.1
-                            : (_elevationUnit == ElevationUnit.moa ? 0.25 : 0.5);
+                            : (_elevationUnit == ElevationUnit.moa ? 0.25 : 0.25);
                         setState(() => _elevation = (_elevation - step).clamp(0.0, 999.0));
                       },
                       icon: const Icon(Icons.remove_circle_outline),
@@ -2982,7 +2982,7 @@ const SizedBox(height: 12),
                       onPressed: () {
                         final step = _elevationUnit == ElevationUnit.mil
                             ? 0.1
-                            : (_elevationUnit == ElevationUnit.moa ? 0.25 : 0.5);
+                            : (_elevationUnit == ElevationUnit.moa ? 0.25 : 0.25);
                         setState(() => _elevation = (_elevation + step).clamp(0.0, 999.0));
                       },
                       icon: const Icon(Icons.add_circle_outline),
@@ -3008,7 +3008,7 @@ const SizedBox(height: 12),
                 final val = isLeft ? _windageLeft : _windageRight;
                 final step = _elevationUnit == ElevationUnit.mil
                     ? 0.1
-                    : (_elevationUnit == ElevationUnit.moa ? 0.25 : 0.5);
+                    : (_elevationUnit == ElevationUnit.moa ? 0.25 : 0.25);
 
                 void setWind(bool left, double v) {
                   final nv = v.clamp(0.0, 999.0);
@@ -5572,7 +5572,7 @@ late DateTime _time;
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('Impact Offset', style: TextStyle(fontWeight: FontWeight.w600)),
-            subtitle: const Text('Optional: use a dial for Left/Right and Up/Down'),
+            subtitle: const Text('Optional: use +/- for Left/Right and Up/Down'),
             value: _hasOffset,
             onChanged: (v) => setState(() => _hasOffset = v),
           ),
@@ -5593,28 +5593,86 @@ late DateTime _time;
               decoration: const InputDecoration(labelText: 'Units'),
             ),
             const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text('Horizontal: ${_dirLabel(_hOffset, "Right", "Left")}'),
-            ),
-            Slider(
-              value: _hOffset.clamp(-_maxForUnit(_offsetUnit), _maxForUnit(_offsetUnit)),
-              min: -_maxForUnit(_offsetUnit),
-              max: _maxForUnit(_offsetUnit),
-              divisions: _divisionsForUnit(_offsetUnit),
-              onChanged: (v) => setState(() => _hOffset = _snap(v)),
-            ),
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text('Vertical: ${_dirLabel(_vOffset, "Up", "Down")}'),
-            ),
-            Slider(
-              value: _vOffset.clamp(-_maxForUnit(_offsetUnit), _maxForUnit(_offsetUnit)),
-              min: -_maxForUnit(_offsetUnit),
-              max: _maxForUnit(_offsetUnit),
-              divisions: _divisionsForUnit(_offsetUnit),
-              onChanged: (v) => setState(() => _vOffset = _snap(v)),
+            Builder(
+              builder: (context) {
+                final maxV = _maxForUnit(_offsetUnit);
+                final step = _stepForUnit(_offsetUnit);
+
+                final isRight = _hOffset >= 0;
+                final hAbs = _hOffset.abs();
+
+                void setH(bool right, double absVal) {
+                  final nv = _snap(absVal.clamp(0.0, maxV));
+                  setState(() => _hOffset = right ? nv : -nv);
+                }
+
+                final isUp = _vOffset >= 0;
+                final vAbs = _vOffset.abs();
+
+                void setV(bool up, double absVal) {
+                  final nv = _snap(absVal.clamp(0.0, maxV));
+                  setState(() => _vOffset = up ? nv : -nv);
+                }
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Horizontal: ${_dirLabel(_hOffset, "Right", "Left")}'),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        ToggleButtons(
+                          isSelected: [!isRight, isRight],
+                          onPressed: (i) => setH(i == 1, hAbs),
+                          children: const [
+                            Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('L')),
+                            Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('R')),
+                          ],
+                        ),
+                        const SizedBox(width: 12),
+                        IconButton(
+                          tooltip: 'Down',
+                          onPressed: () => setH(isRight, hAbs - step),
+                          icon: const Icon(Icons.remove_circle_outline),
+                        ),
+                        Text(hAbs.toStringAsFixed(2), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                        IconButton(
+                          tooltip: 'Up',
+                          onPressed: () => setH(isRight, hAbs + step),
+                          icon: const Icon(Icons.add_circle_outline),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Text('Vertical: ${_dirLabel(_vOffset, "Up", "Down")}'),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        ToggleButtons(
+                          isSelected: [!isUp, isUp],
+                          onPressed: (i) => setV(i == 1, vAbs),
+                          children: const [
+                            Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('D')),
+                            Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('U')),
+                          ],
+                        ),
+                        const SizedBox(width: 12),
+                        IconButton(
+                          tooltip: 'Down',
+                          onPressed: () => setV(isUp, vAbs - step),
+                          icon: const Icon(Icons.remove_circle_outline),
+                        ),
+                        Text(vAbs.toStringAsFixed(2), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                        IconButton(
+                          tooltip: 'Up',
+                          onPressed: () => setV(isUp, vAbs + step),
+                          icon: const Icon(Icons.add_circle_outline),
+                        ),
+                      ],
+                    ),
+                  ],
+                );
+              },
             ),
           ],
             ],
