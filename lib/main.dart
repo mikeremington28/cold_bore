@@ -5,10 +5,10 @@ import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
 import 'dart:typed_data';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:image_picker/image_picker.dart';
 import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
-import 'firebase_options.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:universal_html/html.dart' as html;
@@ -565,10 +565,8 @@ void main() {
     String? firebaseError;
 
     try {
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
-      firebaseReady = true;
+      await Firebase.initializeApp();
+firebaseReady = true;
     } catch (e, st) {
       firebaseReady = false;
       firebaseError = '$e';
@@ -1289,6 +1287,10 @@ class AppState extends ChangeNotifier {
     required String distance,
     required String result,
     String notes = '',
+    double? offsetX,
+    double? offsetY,
+    String offsetUnit = 'in',
+    Uint8List? photoBytes,
   }) {
     final idx = _sessions.indexWhere((s) => s.id == sessionId);
     if (idx < 0) return;
@@ -1302,7 +1304,19 @@ class AppState extends ChangeNotifier {
       distance: distance.trim(),
       result: result.trim(),
       notes: notes.trim(),
-      photos: const [],
+      offsetX: offsetX,
+      offsetY: offsetY,
+      offsetUnit: offsetUnit,
+      photos: (photoBytes == null)
+          ? const []
+          : [
+              ColdBorePhoto(
+                id: _newId(),
+                time: time,
+                bytes: photoBytes,
+                caption: '',
+              ),
+            ],
     );
 
         final sid = (s.activeStringId.isEmpty && s.strings.isNotEmpty) ? s.strings.last.id : s.activeStringId;
@@ -1438,14 +1452,34 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Sets one cold bore entry as the baseline for the active user (and unsets any prior baseline).
+  /// Sets one cold bore entry as the baseline for the active user for the *current rifle+ammo combo*.
+  /// Other combos keep their own baseline.
   void setBaselineColdBore({required String sessionId, required String shotId}) {
     final user = _activeUser;
     if (user == null) return;
 
+    TrainingSession? targetSession;
+    for (final s in _sessions) {
+      if (s.id == sessionId && s.userId == user.id) {
+        targetSession = s;
+        break;
+      }
+    }
+    if (targetSession == null) return;
+
+    final keyRifle = targetSession.rifleId;
+    final keyAmmo = targetSession.ammoLotId;
+
+    bool sameCombo(TrainingSession s) {
+      // If either id is missing, keep baseline changes within that single session only.
+      if (keyRifle == null || keyAmmo == null) return s.id == targetSession!.id;
+      return s.rifleId == keyRifle && s.ammoLotId == keyAmmo;
+    }
+
     for (var i = 0; i < _sessions.length; i++) {
       final s = _sessions[i];
       if (s.userId != user.id) continue;
+      if (!sameCombo(s)) continue;
 
       final updatedShots = <ShotEntry>[];
       for (final sh in s.shots) {
@@ -1453,7 +1487,6 @@ class AppState extends ChangeNotifier {
           updatedShots.add(sh);
           continue;
         }
-
         final shouldBeBaseline = (s.id == sessionId && sh.id == shotId);
         updatedShots.add(sh.copyWith(isBaseline: shouldBeBaseline));
       }
@@ -1464,12 +1497,17 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Returns the current baseline cold bore shot (if any) for the active user.
-  ShotEntry? baselineColdBoreShot() {
+  /// Returns the current baseline cold bore shot (if any) for the active user, scoped to rifle+ammo when provided.
+  ShotEntry? baselineColdBoreShot({String? rifleId, String? ammoLotId}) {
     final user = _activeUser;
     if (user == null) return null;
 
+    final scoped = (rifleId != null && ammoLotId != null);
+
     for (final s in _sessions.where((x) => x.userId == user.id)) {
+      if (scoped) {
+        if (s.rifleId != rifleId || s.ammoLotId != ammoLotId) continue;
+      }
       for (final sh in s.shots.where((x) => x.isColdBore && x.isBaseline)) {
         return sh;
       }
@@ -2238,6 +2276,15 @@ class ShotEntry {
   final String result;
   final String notes;
 
+  /// Impact offset (Right + / Left -) in the selected unit.
+  final double? offsetX;
+
+  /// Impact offset (Up + / Down -) in the selected unit.
+  final double? offsetY;
+
+  /// Unit for offsetX/offsetY: 'in', 'moa', or 'mil'.
+  final String offsetUnit;
+
   /// Cold-bore-only photos (stored in-memory as bytes for MVP).
   final List<ColdBorePhoto> photos;
 
@@ -2249,6 +2296,9 @@ class ShotEntry {
     required this.distance,
     required this.result,
     required this.notes,
+    this.offsetX,
+    this.offsetY,
+    this.offsetUnit = 'in',
     required this.photos,
   });
 
@@ -2259,6 +2309,9 @@ class ShotEntry {
     String? distance,
     String? result,
     String? notes,
+    double? offsetX,
+    double? offsetY,
+    String? offsetUnit,
     List<ColdBorePhoto>? photos,
   }) {
     return ShotEntry(
@@ -2269,6 +2322,9 @@ class ShotEntry {
       distance: distance ?? this.distance,
       result: result ?? this.result,
       notes: notes ?? this.notes,
+      offsetX: offsetX ?? this.offsetX,
+      offsetY: offsetY ?? this.offsetY,
+      offsetUnit: offsetUnit ?? this.offsetUnit,
       photos: photos ?? this.photos,
     );
   }
@@ -2854,7 +2910,6 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
 
   @override
   void dispose() {
-    _distanceCtrl.dispose();
     _elevationNotesCtrl.dispose();
     _windValueCtrl.dispose();
     _windNotesCtrl.dispose();
@@ -3122,7 +3177,11 @@ class SessionDetailScreen extends StatelessWidget {
       time: res.time,
       distance: res.distance,
       result: res.result,
-      notes: res.notes ?? '',
+      notes: res.notes,
+      offsetX: res.offsetX,
+      offsetY: res.offsetY,
+      offsetUnit: res.offsetUnit,
+      photoBytes: res.photoBytes,
     );
   }
 
@@ -3871,40 +3930,144 @@ class ColdBoreScreen extends StatelessWidget {
           );
         }
 
-        return ListView.separated(
-          itemCount: rows.length,
-          separatorBuilder: (_, __) => const Divider(height: 1),
+        return ListView.builder(
+          itemCount: rows.length + 1,
           itemBuilder: (context, i) {
-            final r = rows[i];
-            final rifle = r.rifle;
-            final ammo = r.ammo;
-            return ListTile(
-              leading: Icon(r.shot.isBaseline ? Icons.star : Icons.ac_unit_outlined),
-              title: Text('${r.shot.distance} • ${r.shot.result}' + (r.shot.photos.isEmpty ? '' : ' • ${r.shot.photos.length} photo(s)')),
-              subtitle: Text(
-                [
-                  _fmtDateTime(r.shot.time),
-                  r.session.locationName,
-                  if (rifle != null) rifle.name ?? '',
-                  if (ammo != null) ammo.name ?? '',
-                ].join(' • '),
-              ),
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => ColdBoreEntryScreen(
-                      state: state,
-                      sessionId: r.session.id,
-                      shotId: r.shot.id,
+            if (i == 0) {
+              // Build a simple drift summary from existing rows + baseline per rifle+ammo
+              final Map<String, List<_ColdBoreRow>> groups = {};
+              for (final r in rows) {
+                final rid = r.session.rifleId;
+                final aid = r.session.ammoLotId;
+                if (rid == null || aid == null) continue;
+                final key = '$rid|$aid';
+                (groups[key] ??= []).add(r);
+              }
+
+              double toMoa(ShotEntry sh, double v) {
+                final u = sh.offsetUnit;
+                if (u == 'moa') return v;
+                if (u == 'mil') return v * 3.43774677;
+                final dist = sh.distance <= 0 ? 100.0 : sh.distance;
+                final moaPerInch = 100.0 / (dist * 1.047);
+                return v * moaPerInch;
+              }
+
+              String dir(double v, String pos, String neg) =>
+                  v == 0 ? '0' : (v > 0 ? '$pos ${v.abs().toStringAsFixed(2)}' : '$neg ${v.abs().toStringAsFixed(2)}');
+
+              final items = <Map<String, dynamic>>[];
+              groups.forEach((key, list) {
+                final first = list.first;
+                final rifleId = first.session.rifleId!;
+                final ammoLotId = first.session.ammoLotId!;
+                final baseline = state.baselineColdBoreShot(rifleId: rifleId, ammoLotId: ammoLotId);
+                if (baseline == null) return;
+                if (baseline.offsetX == null || baseline.offsetY == null) return;
+
+                final bdx = toMoa(baseline, baseline.offsetX!);
+                final bdy = toMoa(baseline, baseline.offsetY!);
+
+                double? latestDx, latestDy;
+                final radials = <double>[];
+
+                for (final r in list) {
+                  final sh = r.shot;
+                  if (sh.isBaseline) continue;
+                  if (sh.offsetX == null || sh.offsetY == null) continue;
+
+                  final dx = toMoa(sh, sh.offsetX!) - bdx;
+                  final dy = toMoa(sh, sh.offsetY!) - bdy;
+                  radials.add(math.sqrt(dx * dx + dy * dy));
+
+                  latestDx ??= dx;
+                  latestDy ??= dy;
+
+                  if (radials.length >= 10) break;
+                }
+
+                if (radials.isEmpty) return;
+                final avg = radials.reduce((a, b) => a + b) / radials.length;
+
+                items.add({
+                  'rifle': first.rifle?.name ?? 'Rifle',
+                  'ammo': first.ammo?.name ?? 'Ammo',
+                  'avg': avg,
+                  'dx': latestDx ?? 0.0,
+                  'dy': latestDy ?? 0.0,
+                });
+              });
+
+              items.sort((a, b) => (b['avg'] as double).compareTo(a['avg'] as double));
+              final top = items.take(3).toList();
+
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
+                child: Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Baseline drift summary', style: TextStyle(fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 8),
+                        if (top.isEmpty) ...[
+                          const Text('No baseline drift data yet.', style: TextStyle(color: Colors.black54)),
+                          const SizedBox(height: 6),
+                          const Text(
+                            'Tip: Mark a cold bore entry as Baseline for a specific Rifle + Ammo, and enter an Impact Offset (or use Impact OK).',
+                            style: TextStyle(color: Colors.black54),
+                          ),
+                        ] else ...[
+                          for (final s in top) ...[
+                            Text('${s['rifle']} • ${s['ammo']}'),
+                            Text(
+                              'Avg drift: ${(s['avg'] as double).toStringAsFixed(2)} MOA • Latest: ${dir(s['dx'] as double, 'Right', 'Left')} • ${dir(s['dy'] as double, 'Up', 'Down')}',
+                              style: const TextStyle(color: Colors.black54),
+                            ),
+                            const SizedBox(height: 8),
+                          ],
+                        ],
+                      ],
                     ),
                   ),
-                );
-              },
+                ),
+              );
+            }
+
+            final r = rows[i - 1];
+            final rifle = r.rifle;
+            final ammo = r.ammo;
+            return Column(
+              children: [
+                ListTile(
+                  leading: Icon(r.shot.isBaseline ? Icons.star : Icons.ac_unit_outlined),
+                  title: Text('${r.shot.distance} • ${r.shot.result}' + (r.shot.photos.isEmpty ? '' : ' • ${r.shot.photos.length} photo(s)')),
+                  subtitle: Text(
+                    [
+                      _fmtDateTime(r.shot.time),
+                      r.session.locationName,
+                      if (rifle != null) rifle.name ?? '',
+                      if (ammo != null) ammo.name ?? '',
+                    ].join(' • '),
+                  ),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => ColdBoreEntryScreen(
+                          state: state,
+                          sessionId: r.session.id,
+                          shotId: r.shot.id,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                const Divider(height: 1),
+              ],
             );
           },
         );
-      },
-    );
   }
 }
 
@@ -3957,21 +4120,39 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
   }
 
   void _compare() {
-    final baseline = widget.state.baselineColdBoreShot();
+    final s = widget.state.getSessionById(widget.sessionId);
+    if (s == null) return;
+
+    final current = widget.state.shotById(sessionId: widget.sessionId, shotId: widget.shotId);
+    if (current == null) return;
+
+    final baseline = widget.state.baselineColdBoreShot(rifleId: s.rifleId, ammoLotId: s.ammoLotId);
     if (baseline == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No baseline set yet. Tap "Mark as Baseline" first.')),
+        const SnackBar(content: Text('No baseline set for this rifle + ammo yet. Tap "Mark as Baseline" first.')),
       );
       return;
     }
-    final current = widget.state.shotById(sessionId: widget.sessionId, shotId: widget.shotId);
-    if (current == null) return;
 
     if (baseline.id == current.id) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('This entry is already the baseline.')),
       );
       return;
+    }
+
+    final dx = (current.offsetX ?? 0) - (baseline.offsetX ?? 0);
+    final dy = (current.offsetY ?? 0) - (baseline.offsetY ?? 0);
+
+    String unitLabel(String u) {
+      switch (u) {
+        case 'moa':
+          return 'MOA';
+        case 'mil':
+          return 'mil';
+        default:
+          return 'in';
+      }
     }
 
     showDialog<void>(
@@ -3988,6 +4169,8 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text('Baseline: ${baseline.distance} • ${baseline.result}'),
+                  if (baseline.offsetX != null || baseline.offsetY != null)
+                    Text('Offset: X ${baseline.offsetX ?? 0}  Y ${baseline.offsetY ?? 0} (${unitLabel(baseline.offsetUnit)})'),
                   const SizedBox(height: 8),
                   if (baseImg != null)
                     ClipRRect(
@@ -3998,6 +4181,8 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
                     const Text('No baseline photo yet.'),
                   const SizedBox(height: 16),
                   Text('Selected: ${current.distance} • ${current.result}'),
+                  if (current.offsetX != null || current.offsetY != null)
+                    Text('Offset: X ${current.offsetX ?? 0}  Y ${current.offsetY ?? 0} (${unitLabel(current.offsetUnit)})'),
                   const SizedBox(height: 8),
                   if (curImg != null)
                     ClipRRect(
@@ -4006,6 +4191,24 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
                     )
                   else
                     const Text('No photo on this entry yet.'),
+                  const SizedBox(height: 16),
+                  Builder(
+  builder: (_) {
+    String horiz = dx == 0
+        ? '0'
+        : dx > 0
+            ? 'Right ${dx.abs().toStringAsFixed(2)}'
+            : 'Left ${dx.abs().toStringAsFixed(2)}';
+
+    String vert = dy == 0
+        ? '0'
+        : dy > 0
+            ? 'Up ${dy.abs().toStringAsFixed(2)}'
+            : 'Down ${dy.abs().toStringAsFixed(2)}';
+
+    return Text('$horiz  •  $vert (${unitLabel(current.offsetUnit)})');
+  },
+),
                 ],
               ),
             ),
@@ -4058,7 +4261,29 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
                 Text(shot.notes),
               ],
               const SizedBox(height: 16),
-              _SectionTitle('Cold Bore Photos'),
+                            if (shot.offsetX != null || shot.offsetY != null) ...[
+                _SectionTitle('Impact Offset'),
+                const SizedBox(height: 8),
+                Builder(
+                builder: (_) {
+                  final x = shot.offsetX ?? 0.0;
+                  final y = shot.offsetY ?? 0.0;
+                  final horiz = x == 0
+                      ? '0'
+                      : x > 0
+                          ? 'Right ${x.abs().toStringAsFixed(2)}'
+                          : 'Left ${x.abs().toStringAsFixed(2)}';
+                  final vert = y == 0
+                      ? '0'
+                      : y > 0
+                          ? 'Up ${y.abs().toStringAsFixed(2)}'
+                          : 'Down ${y.abs().toStringAsFixed(2)}';
+                  return Text('$horiz  •  $vert (${shot.offsetUnit})');
+                },
+              ),
+                const SizedBox(height: 16),
+              ],
+_SectionTitle('Cold Bore Photos'),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
@@ -5023,6 +5248,7 @@ Future<void> _pickDateTime() async {
             decoration: const InputDecoration(labelText: 'Notes (optional)'),
             maxLines: 2,
           ),
+          
           const SizedBox(height: 12),
           Row(
             children: [
@@ -5107,7 +5333,21 @@ class _ColdBoreResult {
   final String distance;
   final String result;
   final String notes;
-  _ColdBoreResult({required this.time, required this.distance, required this.result, required this.notes});
+  final double? offsetX;
+  final double? offsetY;
+  final String offsetUnit;
+  final Uint8List? photoBytes;
+
+  _ColdBoreResult({
+    required this.time,
+    required this.distance,
+    required this.result,
+    required this.notes,
+    required this.offsetX,
+    required this.offsetY,
+    required this.offsetUnit,
+    required this.photoBytes,
+  });
 }
 
 class _ColdBoreDialog extends StatefulWidget {
@@ -5123,7 +5363,66 @@ class _ColdBoreDialogState extends State<_ColdBoreDialog> {
   final _distance = TextEditingController(text: '100 yd');
   final _result = TextEditingController(text: 'Impact OK');
   final _notes = TextEditingController();
-  late DateTime _time;
+
+  // Impact offset (dial)
+  bool _hasOffset = false;
+  double _hOffset = 0.0; // Right + / Left -
+  double _vOffset = 0.0; // Up + / Down -
+  String _offsetUnit = 'in';
+
+  Uint8List? _photoBytes;
+
+  double _maxForUnit(String u) {
+    switch (u) {
+      case 'mil':
+        return 10.0;
+      case 'moa':
+        return 30.0;
+      case 'in':
+      default:
+        return 12.0;
+    }
+  }
+
+  String _dirLabel(double v, String pos, String neg) {
+    if (v == 0) return '0';
+    return v > 0 ? '$pos ${v.abs().toStringAsFixed(2)}' : '$neg ${v.abs().toStringAsFixed(2)}';
+  }
+
+    double? _parseLeadingDouble(String s) {
+    final m = RegExp(r'[-+]?(?:\d+\.?\d*|\.\d+)').firstMatch(s);
+    if (m == null) return null;
+    return double.tryParse(m.group(0)!);
+  }
+
+  double _distanceYds() {
+    // Accept "100", "100 yd", "100 yards"
+    final v = _parseLeadingDouble(_distance.text) ?? 100.0;
+    return v <= 0 ? 100.0 : v;
+  }
+
+  double _stepForUnit(String u) {
+    if (u == 'moa') return 0.25; // 1/4 MOA clicks
+    if (u == 'mil') return 0.1;  // 0.1 mil clicks
+
+    // inches: snap to quarter-inch increments
+    return 0.25;
+  }
+
+  int _divisionsForUnit(String u) {
+    final maxV = _maxForUnit(u);
+    final step = _stepForUnit(u);
+    final div = ((2 * maxV) / step).round();
+    return div.clamp(1, 2000);
+  }
+
+  double _snap(double value) {
+    final step = _stepForUnit(_offsetUnit);
+    if (step <= 0) return value;
+    return (value / step).round() * step;
+  }
+
+late DateTime _time;
 
   @override
   void initState() {
@@ -5137,9 +5436,7 @@ class _ColdBoreDialogState extends State<_ColdBoreDialog> {
     _result.dispose();
     _notes.dispose();
     super.dispose();
-  }
-
-  Future<void> _pickTime() async {
+  }  Future<void> _pickTime() async {
     final t = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(_time),
@@ -5150,13 +5447,61 @@ class _ColdBoreDialogState extends State<_ColdBoreDialog> {
     });
   }
 
+
+  Future<void> _pickPhoto(ImageSource source) async {
+    try {
+      final picker = ImagePicker();
+      final x = await picker.pickImage(source: source, imageQuality: 90);
+      if (x == null) return;
+      final bytes = await x.readAsBytes();
+      if (!mounted) return;
+      setState(() => _photoBytes = bytes);
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  Future<void> _choosePhoto() async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Take photo'),
+              onTap: () => Navigator.of(context).pop('camera'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Choose from gallery'),
+              onTap: () => Navigator.of(context).pop('gallery'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (choice == null) return;
+    if (choice == 'camera') {
+      await _pickPhoto(ImageSource.camera);
+    } else {
+      await _pickPhoto(ImageSource.gallery);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('Cold bore entry'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
+      content: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.70,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
           Row(
             children: [
               Expanded(child: Text('Time: ${_fmtDateTime(_time)}')),
@@ -5166,6 +5511,14 @@ class _ColdBoreDialogState extends State<_ColdBoreDialog> {
           TextField(
             controller: _distance,
             decoration: const InputDecoration(labelText: 'Distance'),
+            onChanged: (_) {
+              if (_hasOffset && _offsetUnit == 'in') {
+                setState(() {
+                  _hOffset = _snap(_hOffset);
+                  _vOffset = _snap(_vOffset);
+                });
+              }
+            },
             textInputAction: TextInputAction.next,
           ),
           TextField(
@@ -5178,7 +5531,95 @@ class _ColdBoreDialogState extends State<_ColdBoreDialog> {
             decoration: const InputDecoration(labelText: 'Notes (optional)'),
             maxLines: 2,
           ),
-        ],
+          const SizedBox(height: 12),
+
+          // Photo
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _photoBytes == null ? 'Photo: none' : 'Photo: attached',
+                ),
+              ),
+              TextButton(
+                onPressed: _choosePhoto,
+                child: Text(_photoBytes == null ? 'Add photo' : 'Replace'),
+              ),
+              if (_photoBytes != null)
+                IconButton(
+                  tooltip: 'Remove photo',
+                  onPressed: () => setState(() => _photoBytes = null),
+                  icon: const Icon(Icons.delete_outline),
+                ),
+            ],
+          ),
+          if (_photoBytes != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.memory(_photoBytes!, height: 120, fit: BoxFit.cover),
+              ),
+            ),
+          const Text(
+            'Tip: For best results, use a 1-inch grid target and take the photo straight-on.',
+            style: TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 12),
+
+          
+          // Impact Offset (dial)
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Impact Offset', style: TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: const Text('Optional: use a dial for Left/Right and Up/Down'),
+            value: _hasOffset,
+            onChanged: (v) => setState(() => _hasOffset = v),
+          ),
+          if (_hasOffset) ...[
+            const SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              value: _offsetUnit,
+              items: const [
+                DropdownMenuItem(value: 'in', child: Text('Inches')),
+                DropdownMenuItem(value: 'moa', child: Text('MOA')),
+                DropdownMenuItem(value: 'mil', child: Text('Mil')),
+              ],
+              onChanged: (v) => setState(() {
+                _offsetUnit = v ?? 'in';
+                _hOffset = _snap(_hOffset);
+                _vOffset = _snap(_vOffset);
+              }),
+              decoration: const InputDecoration(labelText: 'Units'),
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text('Horizontal: ${_dirLabel(_hOffset, "Right", "Left")}'),
+            ),
+            Slider(
+              value: _hOffset.clamp(-_maxForUnit(_offsetUnit), _maxForUnit(_offsetUnit)),
+              min: -_maxForUnit(_offsetUnit),
+              max: _maxForUnit(_offsetUnit),
+              divisions: _divisionsForUnit(_offsetUnit),
+              onChanged: (v) => setState(() => _hOffset = _snap(v)),
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text('Vertical: ${_dirLabel(_vOffset, "Up", "Down")}'),
+            ),
+            Slider(
+              value: _vOffset.clamp(-_maxForUnit(_offsetUnit), _maxForUnit(_offsetUnit)),
+              min: -_maxForUnit(_offsetUnit),
+              max: _maxForUnit(_offsetUnit),
+              divisions: _divisionsForUnit(_offsetUnit),
+              onChanged: (v) => setState(() => _vOffset = _snap(v)),
+            ),
+          ],
+            ],
+          ),
+        ),
       ),
       actions: [
         TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
@@ -5187,8 +5628,35 @@ class _ColdBoreDialogState extends State<_ColdBoreDialog> {
             final distance = _distance.text.trim();
             final result = _result.text.trim();
             if (distance.isEmpty || result.isEmpty) return;
+
+            double? ox;
+            double? oy;
+
+            if (_hasOffset) {
+              ox = _snap(_hOffset);
+              oy = _snap(_vOffset);
+            } else {
+              ox = null;
+              oy = null;
+            }
+
+            // If Result is Impact OK and offsets were left blank, treat as 0/0.
+            if (result.toLowerCase() == 'impact ok' && !_hasOffset) {
+              ox = 0;
+              oy = 0;
+            }
+
             Navigator.of(context).pop(
-              _ColdBoreResult(time: _time, distance: distance, result: result, notes: _notes.text),
+              _ColdBoreResult(
+                time: _time,
+                distance: distance,
+                result: result,
+                notes: _notes.text,
+                offsetX: ox,
+                offsetY: oy,
+                offsetUnit: _offsetUnit,
+                photoBytes: _photoBytes,
+              ),
             );
           },
           child: const Text('Save'),
