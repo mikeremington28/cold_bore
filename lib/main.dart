@@ -2031,6 +2031,56 @@ class Rifle {
   }
 }
 
+class RifleServiceEntry {
+  final String id;
+  final String service;
+  final DateTime date;
+  final int roundsAtService;
+  final String notes;
+
+  const RifleServiceEntry({
+    required this.id,
+    required this.service,
+    required this.date,
+    required this.roundsAtService,
+    required this.notes,
+  });
+
+  Map<String, dynamic> toMap() => <String, dynamic>{
+        'id': id,
+        'service': service,
+        'date': date.toIso8601String(),
+        'roundsAtService': roundsAtService,
+        'notes': notes,
+      };
+
+  factory RifleServiceEntry.fromMap(Map<String, dynamic> map) {
+    final rawDate = map['date'];
+    DateTime parsedDate;
+    if (rawDate is String) {
+      parsedDate = DateTime.tryParse(rawDate) ?? DateTime.now();
+    } else if (rawDate is int) {
+      parsedDate = DateTime.fromMillisecondsSinceEpoch(rawDate);
+    } else if (rawDate is DateTime) {
+      parsedDate = rawDate;
+    } else {
+      parsedDate = DateTime.now();
+    }
+
+    final rawRounds = map['roundsAtService'];
+    final rounds = (rawRounds is num) ? rawRounds.toInt() : int.tryParse('$rawRounds') ?? 0;
+
+    return RifleServiceEntry(
+      id: (map['id'] ?? '').toString(),
+      service: (map['service'] ?? '').toString(),
+      date: parsedDate,
+      roundsAtService: rounds,
+      notes: (map['notes'] ?? '').toString(),
+    );
+  }
+}
+
+
 class AmmoLot {
   final String id;
   final String? name;
