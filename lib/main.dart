@@ -5075,7 +5075,7 @@ class _NewUserDialogState extends State<_NewUserDialog> {
                   final bytes = res.files.single.bytes;
                   if (bytes == null) return;
                   setState(() {
-                    _ctrl.text = utf8.decode(bytes);
+                    _id.text = utf8.decode(bytes);
                   });
                 },
                 icon: const Icon(Icons.folder_open),
