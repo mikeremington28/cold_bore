@@ -14,6 +14,8 @@ import 'package:share_plus/share_plus.dart';
 import 'package:universal_html/html.dart' as html;
 import 'dart:io';
 
+import 'firebase_options.dart';
+
 const String kBackupSchemaVersion = '2026-02-05';
 
 
@@ -551,34 +553,19 @@ class RifleDopeEntry {
     );
   }
 }
+Future<void> main() async {
+WidgetsFlutterBinding.ensureInitialized();
 
-void main() {
-  WidgetsFlutterBinding.ensureInitialized();
+try {
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+} catch (e) {
+  // Firebase init failed; app may still run in limited mode.
+}
 
-  FlutterError.onError = (FlutterErrorDetails details) {
-    FlutterError.presentError(details);
-    debugPrint(details.toString());
-  };
-
-  runZonedGuarded(() async {
-    bool firebaseReady = false;
-    String? firebaseError;
-
-    try {
-      if (kIsWeb) {
-        // Web builds require explicit FirebaseOptions. For local UI preview, we skip Firebase init.
-        // (iOS/Android still initialize normally via their platform config files.)
-        firebaseReady = true;
-      } else {
-        await Firebase.initializeApp();
-        firebaseReady = true;
-      }
-    } catch (e, st) {
-      firebaseReady = false;
-      firebaseError = '$e';
-      debugPrint('Firebase init failed: $e');
-      debugPrint('$st');
-    }
+runApp(const MyApp());
+}
 
     runApp(ColdBoreApp(firebaseReady: firebaseReady, firebaseError: firebaseError));
   }, (error, stack) {
