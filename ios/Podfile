@@ -1,0 +1,53 @@
+# CocoaPods configuration for Flutter.
+# Added to ensure Firebase iOS pods can be installed correctly.
+
+platform :ios, '12.0'
+
+# Disable CocoaPods analytics to improve flutter build latency.
+ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+
+project 'Runner', {
+  'Debug' => :debug,
+  'Profile' => :release,
+  'Release' => :release,
+}
+
+def flutter_root
+  generated_xcconfig_path = File.expand_path(File.join('Flutter', 'Generated.xcconfig'), __dir__)
+  unless File.exist?(generated_xcconfig_path)
+    raise "#{generated_xcconfig_path} must exist. Run 'flutter pub get' first."
+  end
+
+  File.foreach(generated_xcconfig_path) do |line|
+    matches = line.match(/FLUTTER_ROOT\=(.*)/)
+    return matches[1].strip if matches
+  end
+  raise "FLUTTER_ROOT not found in #{generated_xcconfig_path}. Try deleting Generated.xcconfig and running 'flutter pub get'."
+end
+
+require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
+
+flutter_ios_podfile_setup
+
+target 'Runner' do
+  use_frameworks!
+  use_modular_headers!
+
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+
+  # If you ever see symbol conflicts or static linkage issues with Firebase,
+  # you can enable this:
+  # $FirebaseSDKVersion = '10.25.0'
+end
+
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    flutter_additional_ios_build_settings(target)
+
+    # Some pods still declare older deployment targets (9.0/11.0) in their podspecs.
+    # Force everything up to 12.0 to match Flutter + current Xcode supported range.
+    target.build_configurations.each do |config|
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '12.0'
+    end
+  end
+end

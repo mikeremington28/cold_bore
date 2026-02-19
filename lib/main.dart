@@ -565,8 +565,14 @@ void main() {
     String? firebaseError;
 
     try {
-      await Firebase.initializeApp();
-      firebaseReady = true;
+      if (kIsWeb) {
+        // Web builds require explicit FirebaseOptions. For local UI preview, we skip Firebase init.
+        // (iOS/Android still initialize normally via their platform config files.)
+        firebaseReady = true;
+      } else {
+        await Firebase.initializeApp();
+        firebaseReady = true;
+      }
     } catch (e, st) {
       firebaseReady = false;
       firebaseError = '$e';
