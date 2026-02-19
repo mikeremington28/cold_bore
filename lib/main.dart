@@ -554,82 +554,29 @@ class RifleDopeEntry {
   }
 }
 Future<void> main() async {
-WidgetsFlutterBinding.ensureInitialized();
+  WidgetsFlutterBinding.ensureInitialized();
 
-try {
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-} catch (e) {
-  // Firebase init failed; app may still run in limited mode.
+  bool firebaseReady = false;
+  String? firebaseError;
+
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    firebaseReady = true;
+  } catch (e, st) {
+    // Keep the app running even if Firebase fails (shows an in-app error banner).
+    firebaseReady = false;
+    firebaseError = e.toString();
+    // Optional: log for debugging
+    // ignore: avoid_print
+    print('Firebase init failed: $e');
+    // ignore: avoid_print
+    print(st);
+  }
+
+  runApp(ColdBoreApp(firebaseReady: firebaseReady, firebaseError: firebaseError));
 }
-
-runApp(const MyApp());
-}
-
-    runApp(ColdBoreApp(firebaseReady: firebaseReady, firebaseError: firebaseError));
-  }, (error, stack) {
-    debugPrint('Uncaught zone error: $error');
-    debugPrint('$stack');
-    runApp(MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: Scaffold(
-        backgroundColor: Colors.black,
-        body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: SingleChildScrollView(
-              child: Text('Startup error:\n\n$error\n\n$stack'),
-            ),
-          ),
-        ),
-      ),
-    ));
-  });
-}
-
-///
-/// Cold Bore (MVP Shell + First Feature Set)
-/// - Unlock (biometrics attempt; falls back to allow unlock during MVP)
-/// - Users (in-memory)
-/// - Equipment: Rifles + Ammo Lots (in-memory)
-/// - Sessions: assign rifle/ammo + add Cold Bore entries + photos + training DOPE
-///
-/// NOTE: Still "no database yet". We'll swap AppState storage to a real DB later.
-class RifleServiceEntry {
-  final String id;
-  final String service;
-  final DateTime date;
-  final int roundsAtService;
-  final String notes;
-
-  const RifleServiceEntry({
-    required this.id,
-    required this.service,
-    required this.date,
-    required this.roundsAtService,
-    this.notes = '',
-  });
-
-  Map<String, dynamic> toMap() => {
-        'id': id,
-        'service': service,
-        'date': date.toIso8601String(),
-        'roundsAtService': roundsAtService,
-        'notes': notes,
-      };
-
-  static RifleServiceEntry fromMap(Map<String, dynamic> m) => RifleServiceEntry(
-        id: (m['id'] ?? '').toString(),
-        service: (m['service'] ?? '').toString(),
-        date: DateTime.tryParse((m['date'] ?? '').toString()) ?? DateTime.now(),
-        roundsAtService: (m['roundsAtService'] is num)
-            ? (m['roundsAtService'] as num).round()
-            : int.tryParse((m['roundsAtService'] ?? '0').toString()) ?? 0,
-        notes: (m['notes'] ?? '').toString(),
-      );
-}
-
 
 class ColdBoreApp extends StatelessWidget {
   final bool firebaseReady;
