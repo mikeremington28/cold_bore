@@ -16,6 +16,7 @@ import 'dart:io';
 
 import 'firebase_options.dart';
 
+import 'package:file_picker/file_picker.dart';
 const String kBackupSchemaVersion = '2026-02-05';
 
 
@@ -5058,6 +5059,31 @@ class _NewUserDialogState extends State<_NewUserDialog> {
             textInputAction: TextInputAction.next,
           ),
           const SizedBox(height: 8),
+          Row(
+            children: [
+              const Expanded(
+                child: Text('Load from Files'),
+              ),
+              TextButton.icon(
+                onPressed: () async {
+                  final res = await FilePicker.platform.pickFiles(
+                    type: FileType.custom,
+                    allowedExtensions: const ['json'],
+                    withData: true,
+                  );
+                  if (res == null || res.files.isEmpty) return;
+                  final bytes = res.files.single.bytes;
+                  if (bytes == null) return;
+                  setState(() {
+                    _ctrl.text = utf8.decode(bytes);
+                  });
+                },
+                icon: const Icon(Icons.folder_open),
+                label: const Text('Browse'),
+              ),
+            ],
+          ),
+
           TextField(
             controller: _name,
             decoration: const InputDecoration(labelText: 'Name (optional)'),
@@ -5233,12 +5259,15 @@ Future<void> _pickDateTime() async {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('New session'),
-      content: Column(
+      content: ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 320, maxWidth: 520),
+          child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           TextField(
             controller: _location,
             decoration: const InputDecoration(labelText: 'Location *'),
+            maxLines: 1,
             textInputAction: TextInputAction.next,
           ),
           const SizedBox(height: 8),
@@ -5310,6 +5339,7 @@ Future<void> _pickDateTime() async {
           ),
         ],
       ),
+        ),
       actions: [
         TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
         ElevatedButton(
