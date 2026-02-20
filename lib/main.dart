@@ -9,12 +9,11 @@ import 'dart:math' as math;
 import 'package:image_picker/image_picker.dart';
 import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:universal_html/html.dart' as html;
 import 'dart:io';
-
-import 'firebase_options.dart';
 
 import 'package:file_picker/file_picker.dart';
 const String kBackupSchemaVersion = '2026-02-05';
@@ -554,30 +553,94 @@ class RifleDopeEntry {
     );
   }
 }
-Future<void> main() async {
+
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
-  bool firebaseReady = false;
-  String? firebaseError;
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    debugPrint(details.toString());
+  };
 
-  try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-    firebaseReady = true;
-  } catch (e, st) {
-    // Keep the app running even if Firebase fails (shows an in-app error banner).
-    firebaseReady = false;
-    firebaseError = e.toString();
-    // Optional: log for debugging
-    // ignore: avoid_print
-    print('Firebase init failed: $e');
-    // ignore: avoid_print
-    print(st);
-  }
+  runZonedGuarded(() async {
+    bool firebaseReady = false;
+    String? firebaseError;
 
-  runApp(ColdBoreApp(firebaseReady: firebaseReady, firebaseError: firebaseError));
+    try {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+      firebaseReady = true;
+    } catch (e, st) {
+      firebaseReady = false;
+      firebaseError = '$e';
+      debugPrint('Firebase init failed: $e');
+      debugPrint('$st');
+    }
+
+    runApp(ColdBoreApp(firebaseReady: firebaseReady, firebaseError: firebaseError));
+  }, (error, stack) {
+    debugPrint('Uncaught zone error: $error');
+    debugPrint('$stack');
+    runApp(MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        backgroundColor: Colors.black,
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: SingleChildScrollView(
+              child: Text('Startup error:\n\n$error\n\n$stack'),
+            ),
+          ),
+        ),
+      ),
+    ));
+  });
 }
+
+///
+/// Cold Bore (MVP Shell + First Feature Set)
+/// - Unlock (biometrics attempt; falls back to allow unlock during MVP)
+/// - Users (in-memory)
+/// - Equipment: Rifles + Ammo Lots (in-memory)
+/// - Sessions: assign rifle/ammo + add Cold Bore entries + photos + training DOPE
+///
+/// NOTE: Still "no database yet". We'll swap AppState storage to a real DB later.
+class RifleServiceEntry {
+  final String id;
+  final String service;
+  final DateTime date;
+  final int roundsAtService;
+  final String notes;
+
+  const RifleServiceEntry({
+    required this.id,
+    required this.service,
+    required this.date,
+    required this.roundsAtService,
+    this.notes = '',
+  });
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'service': service,
+        'date': date.toIso8601String(),
+        'roundsAtService': roundsAtService,
+        'notes': notes,
+      };
+
+  static RifleServiceEntry fromMap(Map<String, dynamic> m) => RifleServiceEntry(
+        id: (m['id'] ?? '').toString(),
+        service: (m['service'] ?? '').toString(),
+        date: DateTime.tryParse((m['date'] ?? '').toString()) ?? DateTime.now(),
+        roundsAtService: (m['roundsAtService'] is num)
+            ? (m['roundsAtService'] as num).round()
+            : int.tryParse((m['roundsAtService'] ?? '0').toString()) ?? 0,
+        notes: (m['notes'] ?? '').toString(),
+      );
+}
+
 
 class ColdBoreApp extends StatelessWidget {
   final bool firebaseReady;
@@ -2031,56 +2094,6 @@ class Rifle {
     );
   }
 }
-
-class RifleServiceEntry {
-  final String id;
-  final String service;
-  final DateTime date;
-  final int roundsAtService;
-  final String notes;
-
-  const RifleServiceEntry({
-    required this.id,
-    required this.service,
-    required this.date,
-    required this.roundsAtService,
-    required this.notes,
-  });
-
-  Map<String, dynamic> toMap() => <String, dynamic>{
-        'id': id,
-        'service': service,
-        'date': date.toIso8601String(),
-        'roundsAtService': roundsAtService,
-        'notes': notes,
-      };
-
-  factory RifleServiceEntry.fromMap(Map<String, dynamic> map) {
-    final rawDate = map['date'];
-    DateTime parsedDate;
-    if (rawDate is String) {
-      parsedDate = DateTime.tryParse(rawDate) ?? DateTime.now();
-    } else if (rawDate is int) {
-      parsedDate = DateTime.fromMillisecondsSinceEpoch(rawDate);
-    } else if (rawDate is DateTime) {
-      parsedDate = rawDate;
-    } else {
-      parsedDate = DateTime.now();
-    }
-
-    final rawRounds = map['roundsAtService'];
-    final rounds = (rawRounds is num) ? rawRounds.toInt() : int.tryParse('$rawRounds') ?? 0;
-
-    return RifleServiceEntry(
-      id: (map['id'] ?? '').toString(),
-      service: (map['service'] ?? '').toString(),
-      date: parsedDate,
-      roundsAtService: rounds,
-      notes: (map['notes'] ?? '').toString(),
-    );
-  }
-}
-
 
 class AmmoLot {
   final String id;
@@ -3939,14 +3952,7 @@ class ColdBoreScreen extends StatelessWidget {
                 final u = sh.offsetUnit;
                 if (u == 'moa') return v;
                 if (u == 'mil') return v * 3.43774677;
-
-                // Distance is often stored as a string (e.g. "100 yd").
-                // Extract the first number safely; default to 100 yards if missing/invalid.
-                final ds = sh.distance.toString();
-                final m = RegExp(r'(\d+(?:\.\d+)?)').firstMatch(ds);
-                final distVal = (m == null) ? 0.0 : (double.tryParse(m.group(1)!) ?? 0.0);
-                final dist = distVal <= 0 ? 100.0 : distVal;
-
+                final dist = sh.distance <= 0 ? 100.0 : sh.distance;
                 final moaPerInch = 100.0 / (dist * 1.047);
                 return v * moaPerInch;
               }
@@ -4066,8 +4072,6 @@ class ColdBoreScreen extends StatelessWidget {
             );
           },
         );
-      },
-    );
   }
 }
 
@@ -5059,34 +5063,6 @@ class _NewUserDialogState extends State<_NewUserDialog> {
             textInputAction: TextInputAction.next,
           ),
           const SizedBox(height: 8),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                _lat == null || _lon == null
-                    ? (_gpsError ?? 'GPS: not set')
-                    : 'GPS: ${_lat!.toStringAsFixed(5)}, ${_lon!.toStringAsFixed(5)}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  FilledButton.tonal(
-                    onPressed: _busy ? null : _fillGps,
-                    child: Text(_busy ? '...' : 'Use GPS'),
-                  ),
-                  FilledButton.tonal(
-                    onPressed: _busy ? null : _grabWeather,
-                    child: Text(_busy ? '...' : 'Grab Weather'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-
           TextField(
             controller: _name,
             decoration: const InputDecoration(labelText: 'Name (optional)'),
@@ -5262,43 +5238,15 @@ Future<void> _pickDateTime() async {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('New session'),
-      content: ConstrainedBox(
-          constraints: const BoxConstraints(minWidth: 320, maxWidth: 520),
-          child: Column(
+      content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           TextField(
             controller: _location,
             decoration: const InputDecoration(labelText: 'Location *'),
-            maxLines: 1,
             textInputAction: TextInputAction.next,
           ),
-          
-Row(
-  children: [
-    const Expanded(child: Text('Load from Files')),
-    TextButton.icon(
-      onPressed: () async {
-        final res = await FilePicker.platform.pickFiles(
-          type: FileType.custom,
-          allowedExtensions: const ['json'],
-          withData: true,
-        );
-        if (res == null || res.files.isEmpty) return;
-        final bytes = res.files.single.bytes;
-        if (bytes == null) return;
-        setState(() {
-          _ctrl.text = utf8.decode(bytes);
-        });
-      },
-      icon: const Icon(Icons.folder_open),
-      label: const Text('Browse'),
-    ),
-  ],
-),
-const SizedBox(height: 8),
-
-const SizedBox(height: 8),
+          const SizedBox(height: 8),
           TextField(
             controller: _notes,
             decoration: const InputDecoration(labelText: 'Notes (optional)'),
@@ -5317,25 +5265,32 @@ const SizedBox(height: 8),
             ],
           ),
           const SizedBox(height: 8),
-          Row(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Text(
-                  _lat == null || _lon == null
-                      ? (_gpsError ?? 'GPS: not set')
-                      : 'GPS: ${_lat!.toStringAsFixed(5)}, ${_lon!.toStringAsFixed(5)}',
-                ),
+              Text(
+                _lat == null || _lon == null
+                    ? (_gpsError ?? 'GPS: not set')
+                    : 'GPS: ${_lat!.toStringAsFixed(5)}, ${_lon!.toStringAsFixed(5)}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-              FilledButton.tonal(
-                onPressed: _busy ? null : _fillGps,
-                child: Text(_busy ? '...' : 'Use GPS'),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  FilledButton.tonal(
+                    onPressed: _busy ? null : _fillGps,
+                    child: Text(_busy ? '...' : 'Use GPS'),
+                  ),
+                  FilledButton.tonal(
+                    onPressed: _busy ? null : _grabWeather,
+                    child: Text(_busy ? '...' : 'Grab Weather'),
+                  ),
+                ],
               ),
-            const SizedBox(width: 8),
-              FilledButton.tonal(
-                onPressed: _busy ? null : _grabWeather,
-                child: Text(_busy ? '...' : 'Grab Weather'),
-              ),
-],
+            ],
           ),
           const SizedBox(height: 8),
           Row(
@@ -5367,7 +5322,6 @@ const SizedBox(height: 8),
           ),
         ],
       ),
-        ),
       actions: [
         TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
         ElevatedButton(
@@ -7208,6 +7162,34 @@ class _ImportBackupDialogState extends State<_ImportBackupDialog> {
               ),
             ],
           ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.folder_open),
+                label: const Text('Browse'),
+                onPressed: () async {
+                  try {
+                    final res = await FilePicker.platform.pickFiles(
+                      type: FileType.custom,
+                      allowedExtensions: const ['json', 'txt'],
+                      withData: true,
+                    );
+                    if (res == null || res.files.isEmpty) return;
+                    final f = res.files.single;
+                    Uint8List? bytes = f.bytes;
+                    if (bytes == null && f.path != null) {
+                      bytes = await File(f.path!).readAsBytes();
+                    }
+                    if (bytes == null) return;
+                    final txt = utf8.decode(bytes);
+                    setState(() => _ctrl.text = txt);
+                  } catch (_) {
+                    // ignore
+                  }
+                },
+              ),
+            ),
             const SizedBox(height: 8),
             TextField(
               controller: _ctrl,
