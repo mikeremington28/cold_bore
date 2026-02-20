@@ -5059,27 +5059,30 @@ class _NewUserDialogState extends State<_NewUserDialog> {
             textInputAction: TextInputAction.next,
           ),
           const SizedBox(height: 8),
-          Row(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Expanded(
-                child: Text('Load from Files'),
+              Text(
+                _lat == null || _lon == null
+                    ? (_gpsError ?? 'GPS: not set')
+                    : 'GPS: ${_lat!.toStringAsFixed(5)}, ${_lon!.toStringAsFixed(5)}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-              TextButton.icon(
-                onPressed: () async {
-                  final res = await FilePicker.platform.pickFiles(
-                    type: FileType.custom,
-                    allowedExtensions: const ['json'],
-                    withData: true,
-                  );
-                  if (res == null || res.files.isEmpty) return;
-                  final bytes = res.files.single.bytes;
-                  if (bytes == null) return;
-                  setState(() {
-                    _id.text = utf8.decode(bytes);
-});
-                },
-                icon: const Icon(Icons.folder_open),
-                label: const Text('Browse'),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  FilledButton.tonal(
+                    onPressed: _busy ? null : _fillGps,
+                    child: Text(_busy ? '...' : 'Use GPS'),
+                  ),
+                  FilledButton.tonal(
+                    onPressed: _busy ? null : _grabWeather,
+                    child: Text(_busy ? '...' : 'Grab Weather'),
+                  ),
+                ],
               ),
             ],
           ),
@@ -5270,7 +5273,32 @@ Future<void> _pickDateTime() async {
             maxLines: 1,
             textInputAction: TextInputAction.next,
           ),
-          const SizedBox(height: 8),
+          
+Row(
+  children: [
+    const Expanded(child: Text('Load from Files')),
+    TextButton.icon(
+      onPressed: () async {
+        final res = await FilePicker.platform.pickFiles(
+          type: FileType.custom,
+          allowedExtensions: const ['json'],
+          withData: true,
+        );
+        if (res == null || res.files.isEmpty) return;
+        final bytes = res.files.single.bytes;
+        if (bytes == null) return;
+        setState(() {
+          _ctrl.text = utf8.decode(bytes);
+        });
+      },
+      icon: const Icon(Icons.folder_open),
+      label: const Text('Browse'),
+    ),
+  ],
+),
+const SizedBox(height: 8),
+
+const SizedBox(height: 8),
           TextField(
             controller: _notes,
             decoration: const InputDecoration(labelText: 'Notes (optional)'),
