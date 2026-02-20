@@ -5076,7 +5076,7 @@ class _NewUserDialogState extends State<_NewUserDialog> {
                   if (bytes == null) return;
                   setState(() {
                     _id.text = utf8.decode(bytes);
-                  });
+});
                 },
                 icon: const Icon(Icons.folder_open),
                 label: const Text('Browse'),
