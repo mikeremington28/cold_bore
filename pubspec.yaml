@@ -1,7 +1,7 @@
-name: cold_bore
+﻿name: cold_bore
 description: A new Flutter project.
 publish_to: none
-version: 1.0.0+57
+version: 1.0.0+58
 environment:
   sdk: ^3.10.4
 dependencies:
@@ -34,3 +34,4 @@ flutter:
   uses-material-design: true
   assets:
   - assets/icon/app_icon.png
+
