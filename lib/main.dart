@@ -2882,7 +2882,6 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
   late ElevationUnit _elevationUnit;
   String? _ammoLotId;
   final _elevationNotesCtrl = TextEditingController();
-  final _elevValueCtrl = TextEditingController();
   WindType _windType = WindType.fullValue;
 
   @override
@@ -2890,9 +2889,7 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
     super.initState();
     _elevationUnit = widget.lockedUnit;
     _ammoLotId = widget.defaultAmmoId ?? (widget.ammoOptions.isNotEmpty ? widget.ammoOptions.first.id : null);
-  
-    _elevValueCtrl.text = _elevation.toStringAsFixed(2);
-    _windValueCtrl.text = '0.00';}
+  }
 
   final _windValueCtrl = TextEditingController();
   final _windNotesCtrl = TextEditingController();
@@ -2905,7 +2902,6 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
   @override
   void dispose() {
     _elevationNotesCtrl.dispose();
-    _elevValueCtrl.dispose();
     _windValueCtrl.dispose();
     _windNotesCtrl.dispose();
     super.dispose();
@@ -2968,24 +2964,10 @@ const SizedBox(height: 12),
                             ? 0.1
                             : (_elevationUnit == ElevationUnit.moa ? 0.25 : 0.5);
                         setState(() => _elevation = (_elevation - step).clamp(0.0, 999.0));
-                        _elevValueCtrl.text = _elevation.toStringAsFixed(2);
                       },
                       icon: const Icon(Icons.remove_circle_outline),
                     ),
-                    SizedBox(
-                      width: 96,
-                      child: TextField(
-                        controller: _elevValueCtrl,
-                        textAlign: TextAlign.center,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: false),
-                        decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(vertical: 8)),
-                        onChanged: (s) {
-                          final v = double.tryParse(s.trim());
-                          if (v == null) return;
-                          setState(() => _elevation = v.clamp(0.0, 999.0));
-                        },
-                      ),
-                    ),
+                    Text(_elevation.toStringAsFixed(2), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
                     IconButton(
                       tooltip: 'Up',
                       onPressed: () {
@@ -2993,7 +2975,6 @@ const SizedBox(height: 12),
                             ? 0.1
                             : (_elevationUnit == ElevationUnit.moa ? 0.25 : 0.5);
                         setState(() => _elevation = (_elevation + step).clamp(0.0, 999.0));
-                        _elevValueCtrl.text = _elevation.toStringAsFixed(2);
                       },
                       icon: const Icon(Icons.add_circle_outline),
                     ),
@@ -3016,7 +2997,6 @@ const SizedBox(height: 12),
               builder: (context) {
                 final isLeft = _windageLeft > 0 || (_windageRight == 0);
                 final val = isLeft ? _windageLeft : _windageRight;
-                _windValueCtrl.text = val.toStringAsFixed(2);
                 final step = _elevationUnit == ElevationUnit.mil
                     ? 0.1
                     : (_elevationUnit == ElevationUnit.moa ? 0.25 : 0.5);
@@ -3055,20 +3035,7 @@ const SizedBox(height: 12),
                           onPressed: () => setWind(isLeft, val - step),
                           icon: const Icon(Icons.remove_circle_outline),
                         ),
-                        SizedBox(
-                          width: 96,
-                          child: TextField(
-                            controller: _windValueCtrl,
-                            textAlign: TextAlign.center,
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: false),
-                            decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(vertical: 8)),
-                            onChanged: (s) {
-                              final v = double.tryParse(s.trim());
-                              if (v == null) return;
-                              setWind(isLeft, v);
-                            },
-                          ),
-                        ),
+                        Text(val.toStringAsFixed(2), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
                         IconButton(
                           tooltip: 'Up',
                           onPressed: () => setWind(isLeft, val + step),
@@ -3537,7 +3504,7 @@ Card(
               const SizedBox(height: 16),
 _SectionTitle('Loadout'),
               const SizedBox(height: 8),
-              Row(
+              Column(
                 children: [
                   Expanded(
                     child: DropdownButtonFormField<String?>(
@@ -3586,7 +3553,7 @@ _SectionTitle('Loadout'),
                       },
                   ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(height: 12),
                   Expanded(
                     child: DropdownButtonFormField<String?>(
                       value: safeAmmoLotId,
@@ -5280,7 +5247,6 @@ Future<void> _pickDateTime() async {
     final t = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(_dateTime),
-      initialEntryMode: TimePickerEntryMode.inputOnly,
     );
     if (t == null) return;
 
@@ -5323,57 +5289,54 @@ Future<void> _pickDateTime() async {
             ],
           ),
           const SizedBox(height: 8),
-Column(
-  crossAxisAlignment: CrossAxisAlignment.start,
-  children: [
-    Text(
-      _lat == null || _lon == null
-          ? (_gpsError ?? 'GPS: not set')
-          : 'GPS: ${_lat!.toStringAsFixed(5)}, ${_lon!.toStringAsFixed(5)}',
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-    ),
-    const SizedBox(height: 8),
-    Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        FilledButton.tonal(
-          onPressed: _busy ? null : _fillGps,
-          child: Text(_busy ? '...' : 'Use GPS'),
-        ),
-        FilledButton.tonal(
-          onPressed: _busy ? null : _grabWeather,
-          child: Text(_busy ? '...' : 'Grab Weather'),
-        ),
-      ],
-    ),
-  ],
-),
-
-const SizedBox(height: 8),
-          Column(
+          Row(
             children: [
-              TextField(
-                controller: _tempF,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: 'Temp (°F)'),
+              Expanded(
+                child: Text(
+                  _lat == null || _lon == null
+                      ? (_gpsError ?? 'GPS: not set')
+                      : 'GPS: ${_lat!.toStringAsFixed(5)}, ${_lon!.toStringAsFixed(5)}',
+                ),
               ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _windMph,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: 'Wind (mph)'),
+              FilledButton.tonal(
+                onPressed: _busy ? null : _fillGps,
+                child: Text(_busy ? '...' : 'Use GPS'),
               ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _windDir,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Wind dir (°)'),
+            const SizedBox(width: 8),
+              FilledButton.tonal(
+                onPressed: _busy ? null : _grabWeather,
+                child: Text(_busy ? '...' : 'Grab Weather'),
+              ),
+],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _tempF,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'Temp (°F)'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: _windMph,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'Wind (mph)'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: _windDir,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Wind dir (°)'),
+                ),
               ),
             ],
           ),
-
         ],
       ),
         ),
@@ -6519,10 +6482,7 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
 }
 
 String _fmtDate(DateTime dt) {
-  final y = dt.year.toString().padLeft(4, '0');
-  final m = dt.month.toString().padLeft(2, '0');
-  final d = dt.day.toString().padLeft(2, '0');
-  return '$y-$m-$d';
+  return '${dt.month}/${dt.day}/${dt.year}';
 }
 
 String _fmtDateTime(DateTime dt) {
@@ -7181,23 +7141,6 @@ class _ImportBackupDialog extends StatefulWidget {
 class _ImportBackupDialogState extends State<_ImportBackupDialog> {
   final _ctrl = TextEditingController();
   _ImportMode _mode = _ImportMode.merge;
-
-Future<void> _browseJson() async {
-  final res = await FilePicker.platform.pickFiles(
-    type: FileType.custom,
-    allowedExtensions: const ['json'],
-    withData: true,
-  );
-  if (res == null || res.files.isEmpty) return;
-
-  final bytes = res.files.single.bytes;
-  if (bytes == null) return;
-
-  setState(() {
-    _ctrl.text = utf8.decode(bytes);
-  });
-}
-
 @override
   void dispose() {
     _ctrl.dispose();
@@ -7235,15 +7178,6 @@ Future<void> _browseJson() async {
             ],
           ),
             const SizedBox(height: 8),
-Align(
-  alignment: Alignment.centerRight,
-  child: OutlinedButton.icon(
-    onPressed: _browseJson,
-    icon: const Icon(Icons.folder_open),
-    label: const Text('Browse'),
-  ),
-),
-const SizedBox(height: 8),
             TextField(
               controller: _ctrl,
               decoration: const InputDecoration(
