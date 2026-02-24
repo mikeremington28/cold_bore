@@ -2882,6 +2882,7 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
   late ElevationUnit _elevationUnit;
   String? _ammoLotId;
   final _elevationNotesCtrl = TextEditingController();
+  final _elevValueCtrl = TextEditingController();
   WindType _windType = WindType.fullValue;
 
   @override
@@ -2889,7 +2890,9 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
     super.initState();
     _elevationUnit = widget.lockedUnit;
     _ammoLotId = widget.defaultAmmoId ?? (widget.ammoOptions.isNotEmpty ? widget.ammoOptions.first.id : null);
-  }
+  
+    _elevValueCtrl.text = _elevation.toStringAsFixed(2);
+    _windValueCtrl.text = '0.00';}
 
   final _windValueCtrl = TextEditingController();
   final _windNotesCtrl = TextEditingController();
@@ -2902,6 +2905,7 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
   @override
   void dispose() {
     _elevationNotesCtrl.dispose();
+    _elevValueCtrl.dispose();
     _windValueCtrl.dispose();
     _windNotesCtrl.dispose();
     super.dispose();
@@ -2964,10 +2968,24 @@ const SizedBox(height: 12),
                             ? 0.1
                             : (_elevationUnit == ElevationUnit.moa ? 0.25 : 0.5);
                         setState(() => _elevation = (_elevation - step).clamp(0.0, 999.0));
+                        _elevValueCtrl.text = _elevation.toStringAsFixed(2);
                       },
                       icon: const Icon(Icons.remove_circle_outline),
                     ),
-                    Text(_elevation.toStringAsFixed(2), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                    SizedBox(
+                      width: 96,
+                      child: TextField(
+                        controller: _elevValueCtrl,
+                        textAlign: TextAlign.center,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: false),
+                        decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(vertical: 8)),
+                        onChanged: (s) {
+                          final v = double.tryParse(s.trim());
+                          if (v == null) return;
+                          setState(() => _elevation = v.clamp(0.0, 999.0));
+                        },
+                      ),
+                    ),
                     IconButton(
                       tooltip: 'Up',
                       onPressed: () {
@@ -2975,6 +2993,7 @@ const SizedBox(height: 12),
                             ? 0.1
                             : (_elevationUnit == ElevationUnit.moa ? 0.25 : 0.5);
                         setState(() => _elevation = (_elevation + step).clamp(0.0, 999.0));
+                        _elevValueCtrl.text = _elevation.toStringAsFixed(2);
                       },
                       icon: const Icon(Icons.add_circle_outline),
                     ),
@@ -2997,6 +3016,7 @@ const SizedBox(height: 12),
               builder: (context) {
                 final isLeft = _windageLeft > 0 || (_windageRight == 0);
                 final val = isLeft ? _windageLeft : _windageRight;
+                _windValueCtrl.text = val.toStringAsFixed(2);
                 final step = _elevationUnit == ElevationUnit.mil
                     ? 0.1
                     : (_elevationUnit == ElevationUnit.moa ? 0.25 : 0.5);
@@ -3035,7 +3055,20 @@ const SizedBox(height: 12),
                           onPressed: () => setWind(isLeft, val - step),
                           icon: const Icon(Icons.remove_circle_outline),
                         ),
-                        Text(val.toStringAsFixed(2), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                        SizedBox(
+                          width: 96,
+                          child: TextField(
+                            controller: _windValueCtrl,
+                            textAlign: TextAlign.center,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: false),
+                            decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(vertical: 8)),
+                            onChanged: (s) {
+                              final v = double.tryParse(s.trim());
+                              if (v == null) return;
+                              setWind(isLeft, v);
+                            },
+                          ),
+                        ),
                         IconButton(
                           tooltip: 'Up',
                           onPressed: () => setWind(isLeft, val + step),
@@ -5319,33 +5352,28 @@ Column(
 ),
 
 const SizedBox(height: 8),
-          Row(
+          Column(
             children: [
-              Expanded(
-                child: TextField(
-                  controller: _tempF,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Temp (°F)'),
-                ),
+              TextField(
+                controller: _tempF,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Temp (°F)'),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TextField(
-                  controller: _windMph,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Wind (mph)'),
-                ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _windMph,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Wind (mph)'),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TextField(
-                  controller: _windDir,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Wind dir (°)'),
-                ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _windDir,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Wind dir (°)'),
               ),
             ],
           ),
+
         ],
       ),
         ),
