@@ -3062,7 +3062,6 @@ const SizedBox(height: 12),
           ],
           ),
         ),
-      ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
         ElevatedButton(
