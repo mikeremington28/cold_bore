@@ -17,6 +17,7 @@ import 'dart:io';
 import 'firebase_options.dart';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 const String kBackupSchemaVersion = '2026-02-05';
 
 
@@ -3059,6 +3060,7 @@ const SizedBox(height: 12),
                 onChanged: (v) => setState(() => _rifleOnly = v!),
               ),
           ],
+          ),
         ),
       ),
       actions: [
@@ -3505,7 +3507,8 @@ Card(
 _SectionTitle('Loadout'),
               const SizedBox(height: 8),
               Column(
-                children: [
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
                   Expanded(
                     child: DropdownButtonFormField<String?>(
                       value: s.rifleId,
@@ -4947,6 +4950,7 @@ class _StringsDialog extends StatelessWidget {
               ),
             );
           },
+          ),
         ),
       ),
       actions: [
@@ -5247,6 +5251,7 @@ Future<void> _pickDateTime() async {
     final t = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(_dateTime),
+      initialEntryMode: TimePickerEntryMode.inputOnly,
     );
     if (t == null) return;
 
@@ -5648,6 +5653,7 @@ late DateTime _time;
           ],
             ],
           ),
+          ),
         ),
       ),
       actions: [
@@ -5724,7 +5730,8 @@ class _EditNotesDialogState extends State<_EditNotesDialog> {
       title: const Text('Notes'),
       content: SizedBox(
         width: 520,
-        child: Column(
+        child: SingleChildScrollView(
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
@@ -5737,6 +5744,7 @@ class _EditNotesDialogState extends State<_EditNotesDialog> {
               'Tip: Keep this in whatever format you prefer (e.g., come-ups, holds, or a quick reference table).',
             ),
           ],
+          ),
         ),
       ),
       actions: [
@@ -5779,6 +5787,7 @@ class _PhotoNoteDialogState extends State<_PhotoNoteDialog> {
           controller: _c,
           decoration: const InputDecoration(labelText: 'Caption (optional)'),
           textInputAction: TextInputAction.done,
+          ),
         ),
       ),
       actions: [
@@ -5825,6 +5834,7 @@ class _EditDopeDialogState extends State<_EditDopeDialog> {
           controller: _c,
           decoration: const InputDecoration(labelText: 'DOPE notes'),
           maxLines: 6,
+          ),
         ),
       ),
       actions: [
@@ -5888,6 +5898,7 @@ class _ShareSessionDialogState extends State<_ShareSessionDialog> {
               },
             );
           }).toList(),
+          ),
         ),
       ),
       actions: [
@@ -6185,6 +6196,7 @@ name: _name.text.trim().isEmpty ? null : _name.text.trim(),
               ],
             ),
 ],
+          ),
         ),
       ),
       actions: [
@@ -6423,6 +6435,7 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
               maxLines: 5,
             ),
           ],
+          ),
         ),
       ),
       actions: [
@@ -6482,7 +6495,10 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
 }
 
 String _fmtDate(DateTime dt) {
-  return '${dt.month}/${dt.day}/${dt.year}';
+  final y = dt.year.toString().padLeft(4, '0');
+  final m = dt.month.toString().padLeft(2, '0');
+  final d = dt.day.toString().padLeft(2, '0');
+  return '$y-$m-$d';
 }
 
 String _fmtDateTime(DateTime dt) {
@@ -6670,6 +6686,7 @@ class _RifleDopeEntryDialogState extends State<_RifleDopeEntryDialog> {
               decoration: const InputDecoration(labelText: 'Notes (optional)'),
             ),
           ],
+          ),
         ),
       ),
       actions: [
@@ -6916,6 +6933,7 @@ class _AddRifleServiceDialogState extends State<_AddRifleServiceDialog> {
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               ),
           ],
+          ),
         ),
       ),
       actions: [
@@ -6961,6 +6979,7 @@ class _BackupScreen extends StatelessWidget {
         width: 520,
         child: SingleChildScrollView(
           child: SelectableText(text),
+          ),
         ),
       ),
       actions: [
@@ -7024,7 +7043,25 @@ class _BackupScreen extends StatelessWidget {
   }
 
 @override
-  Widget build(BuildContext context) {
+  
+Widget _versionFooter() {
+  return FutureBuilder<PackageInfo>(
+    future: PackageInfo.fromPlatform(),
+    builder: (context, snap) {
+      if (!snap.hasData) return const SizedBox.shrink();
+      final p = snap.data!;
+      return Padding(
+        padding: const EdgeInsets.only(top: 12),
+        child: Text(
+          'Build: ${p.version}+${p.buildNumber}',
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+        ),
+      );
+    },
+  );
+}
+
+Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Backup & Restore')),
       body: ListView(
@@ -7098,6 +7135,29 @@ class _BackupScreen extends StatelessWidget {
                   builder: (_) => const _ImportBackupDialog(),
                 );
                 if (res == null) return;
+                final t = res.jsonText.trim();
+                // Validate JSON before applying
+                try {
+                  jsonDecode(t);
+                } catch (e) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Invalid JSON: $e')),
+                  );
+                  return;
+                }
+                final ok = await showDialog<bool>(
+                  context: context,
+                  builder: (_) => AlertDialog(
+                    title: const Text('Import backup?'),
+                    content: const Text('This will modify your current data. Continue?'),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+                      FilledButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Continue')),
+                    ],
+                  ),
+                );
+                if (ok != true) return;
                 try {
                   if (res.mode == _ImportMode.merge) {
                     state.mergeBackupJson(res.jsonText, overwriteScope: true);
@@ -7117,6 +7177,8 @@ class _BackupScreen extends StatelessWidget {
               },
             ),
           ),
+
+          _versionFooter(),
 
         ],
       ),
@@ -7153,7 +7215,8 @@ class _ImportBackupDialogState extends State<_ImportBackupDialog> {
       title: const Text('Restore backup (JSON)'),
       content: SizedBox(
         width: 520,
-        child: Column(
+        child: SingleChildScrollView(
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Column(
@@ -7178,7 +7241,36 @@ class _ImportBackupDialogState extends State<_ImportBackupDialog> {
             ],
           ),
             const SizedBox(height: 8),
-            TextField(
+            Row(
+  children: [
+    Expanded(
+      child: Text(
+        'Choose a backup JSON from Files, or paste below.',
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+      ),
+    ),
+    const SizedBox(width: 12),
+    OutlinedButton.icon(
+      onPressed: () async {
+        try {
+          final res = await FilePicker.platform.pickFiles(
+            type: FileType.custom,
+            allowedExtensions: ['json'],
+            withData: true,
+          );
+          final f = res?.files.single;
+          final bytes = f?.bytes;
+          if (bytes == null) return;
+          _ctrl.text = utf8.decode(bytes);
+        } catch (_) {}
+      },
+      icon: const Icon(Icons.folder_open),
+      label: const Text('Browse'),
+    ),
+  ],
+),
+const SizedBox(height: 8),
+TextField(
               controller: _ctrl,
               decoration: const InputDecoration(
                 labelText: 'Paste backup JSON',
@@ -7188,6 +7280,7 @@ class _ImportBackupDialogState extends State<_ImportBackupDialog> {
               maxLines: 12,
             ),
           ],
+          ),
         ),
       ),
       actions: [
