@@ -6979,7 +6979,6 @@ class _BackupScreen extends StatelessWidget {
         width: 520,
         child: SingleChildScrollView(
           child: SelectableText(text),
-          ),
         ),
       ),
       actions: [
@@ -7001,16 +7000,23 @@ class _BackupScreen extends StatelessWidget {
                   .replaceAll(RegExp(r'_+'), '_')
                   .replaceAll(RegExp(r'^_|_$'), '');
               final ext = title.toLowerCase().contains('csv') ? 'csv' : 'txt';
-              _downloadTextFileWeb('cold_bore_${safe.isEmpty ? 'export' : safe}.$ext', text,
-                  mimeType: ext == 'csv' ? 'text/csv' : 'text/plain');
+              _downloadTextFileWeb(
+                'cold_bore_${safe.isEmpty ? 'export' : safe}.$ext',
+                text,
+                mimeType: ext == 'csv' ? 'text/csv' : 'text/plain',
+              );
             },
             child: const Text('Download'),
           ),
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close')),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Close'),
+        ),
       ],
     ),
   );
 }
+
 
 
   Future<void> _exportBackupFile(BuildContext context) async {
