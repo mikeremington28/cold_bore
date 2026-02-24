@@ -6885,82 +6885,82 @@ class _AddRifleServiceDialogState extends State<_AddRifleServiceDialog> {
     final currentRounds = widget.state.totalRoundsForRifle(widget.rifleId);
 
     return AlertDialog(
-      title: const Text('Log service'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _serviceCtrl,
-              decoration: const InputDecoration(labelText: 'Service'),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _notesCtrl,
-              decoration: const InputDecoration(labelText: 'Notes (optional)'),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Date'),
-              subtitle: Text(_fmtDate(_date)),
-              trailing: const Icon(Icons.calendar_today_outlined),
-              onTap: () async {
-                final picked = await showDatePicker(
-                  context: context,
-                  initialDate: _date,
-                  firstDate: DateTime(2000),
-                  lastDate: DateTime(2100),
-                );
-                if (picked != null) setState(() => _date = picked);
-              },
-            ),
-            const Divider(),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Use current total rounds'),
-              subtitle: Text(_useCurrentRounds ? '$currentRounds rds' : 'Enter manually'),
-              value: _useCurrentRounds,
-              onChanged: (v) => setState(() => _useCurrentRounds = v),
-            ),
-            if (!_useCurrentRounds)
-              TextField(
-                controller: _roundsCtrl,
-                decoration: const InputDecoration(labelText: 'Rounds at service'),
-                keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              ),
-          ],
-          ),
+  title: const Text('Log service'),
+  content: SingleChildScrollView(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        TextField(
+          controller: _serviceCtrl,
+          decoration: const InputDecoration(labelText: 'Service'),
+          textInputAction: TextInputAction.next,
         ),
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-        TextButton(
-          onPressed: () {
-            final service = _serviceCtrl.text.trim();
-            if (service.isEmpty) return;
-
-            final rounds = _useCurrentRounds
-                ? currentRounds
-                : (int.tryParse(_roundsCtrl.text.trim()) ?? currentRounds);
-
-            final entry = RifleServiceEntry(
-              id: widget.state.newIdForChild(),
-              service: service,
-              date: _date,
-              roundsAtService: rounds,
-              notes: _notesCtrl.text.trim(),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _notesCtrl,
+          decoration: const InputDecoration(labelText: 'Notes (optional)'),
+          textInputAction: TextInputAction.next,
+        ),
+        const SizedBox(height: 12),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Date'),
+          subtitle: Text(_fmtDate(_date)),
+          trailing: const Icon(Icons.calendar_today_outlined),
+          onTap: () async {
+            final picked = await showDatePicker(
+              context: context,
+              initialDate: _date,
+              firstDate: DateTime(2000),
+              lastDate: DateTime(2100),
             );
-
-            Navigator.pop(context, entry);
+            if (picked != null) setState(() => _date = picked);
           },
-          child: const Text('Save'),
         ),
+        const Divider(),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Use current total rounds'),
+          subtitle: Text(_useCurrentRounds ? '$currentRounds rds' : 'Enter manually'),
+          value: _useCurrentRounds,
+          onChanged: (v) => setState(() => _useCurrentRounds = v),
+        ),
+        if (!_useCurrentRounds)
+          TextField(
+            controller: _roundsCtrl,
+            decoration: const InputDecoration(labelText: 'Rounds at service'),
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          ),
       ],
-    );
+    ),
+  ),
+  actions: [
+    TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+    TextButton(
+      onPressed: () {
+        final service = _serviceCtrl.text.trim();
+        if (service.isEmpty) return;
+
+        final rounds = _useCurrentRounds
+            ? currentRounds
+            : (int.tryParse(_roundsCtrl.text.trim()) ?? currentRounds);
+
+        final entry = RifleServiceEntry(
+          id: widget.state.newIdForChild(),
+          service: service,
+          date: _date,
+          roundsAtService: rounds,
+          notes: _notesCtrl.text.trim(),
+        );
+
+        Navigator.pop(context, entry);
+      },
+      child: const Text('Save'),
+    ),
+  ],
+);
+
   }
 }
 
