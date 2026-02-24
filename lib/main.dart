@@ -2559,7 +2559,8 @@ class _DataScreenState extends State<DataScreen> {
                       Row(
                         children: [
                           const Icon(Icons.my_location_outlined),
-Text('DOPE (Quick Reference)', style: Theme.of(context).textTheme.titleMedium),
+                          const SizedBox(width: 8),
+                          Text('DOPE (Quick Reference)', style: Theme.of(context).textTheme.titleMedium),
                         ],
                       ),
                       const SizedBox(height: 8),
@@ -2599,7 +2600,8 @@ Text('DOPE (Quick Reference)', style: Theme.of(context).textTheme.titleMedium),
                       Row(
                         children: [
                           const Icon(Icons.table_chart_outlined),
-Text('Working DOPE Chart', style: Theme.of(context).textTheme.titleMedium),
+                          const SizedBox(width: 8),
+                          Text('Working DOPE Chart', style: Theme.of(context).textTheme.titleMedium),
                           const Spacer(),
                           const Text('Rifle only'),
                           Switch(
@@ -2629,7 +2631,8 @@ Text('Working DOPE Chart', style: Theme.of(context).textTheme.titleMedium),
                       Row(
                         children: [
                           const Icon(Icons.notifications_none),
-Text('Maintenance reminders', style: Theme.of(context).textTheme.titleMedium),
+                          const SizedBox(width: 8),
+                          Text('Maintenance reminders', style: Theme.of(context).textTheme.titleMedium),
                         ],
                       ),
                       const SizedBox(height: 8),
@@ -2937,7 +2940,8 @@ const SizedBox(height: 12),
                     keyboardType: TextInputType.number,
                   ),
                 ),
-DropdownButton<DistanceUnit>(
+                const SizedBox(width: 8),
+                DropdownButton<DistanceUnit>(
                   value: _distanceUnit,
                   items: DistanceUnit.values
                       .map((u) => DropdownMenuItem(value: u, child: Text(u.name)))
@@ -4245,7 +4249,8 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
               Row(
                 children: [
                   Expanded(child: Text('${shot.distance} • ${shot.result}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700))),
-if (shot.isBaseline)
+                  const SizedBox(width: 8),
+                  if (shot.isBaseline)
                     const Chip(label: Text('Baseline'), avatar: Icon(Icons.star, size: 18)),
                 ],
               ),
@@ -5242,6 +5247,7 @@ Future<void> _pickDateTime() async {
     final t = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(_dateTime),
+      initialEntryMode: TimePickerEntryMode.inputOnly,
     );
     if (t == null) return;
 
@@ -5284,19 +5290,35 @@ Future<void> _pickDateTime() async {
             ],
           ),
           const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  _lat == null || _lon == null
-                      ? (_gpsError ?? 'GPS: not set')
-                      : 'GPS: ${_lat!.toStringAsFixed(5)}, ${_lon!.toStringAsFixed(5)}',
-                ),
-              ),
+Column(
+  crossAxisAlignment: CrossAxisAlignment.start,
+  children: [
+    Text(
+      _lat == null || _lon == null
+          ? (_gpsError ?? 'GPS: not set')
+          : 'GPS: ${_lat!.toStringAsFixed(5)}, ${_lon!.toStringAsFixed(5)}',
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    ),
+    const SizedBox(height: 8),
+    Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        FilledButton.tonal(
+          onPressed: _busy ? null : _fillGps,
+          child: Text(_busy ? '...' : 'Use GPS'),
+        ),
+        FilledButton.tonal(
+          onPressed: _busy ? null : _grabWeather,
+          child: Text(_busy ? '...' : 'Grab Weather'),
+        ),
+      ],
+    ),
+  ],
+),
 
-],
-          ),
-          const SizedBox(height: 8),
+const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
@@ -5306,14 +5328,16 @@ Future<void> _pickDateTime() async {
                   decoration: const InputDecoration(labelText: 'Temp (°F)'),
                 ),
               ),
-Expanded(
+              const SizedBox(width: 8),
+              Expanded(
                 child: TextField(
                   controller: _windMph,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   decoration: const InputDecoration(labelText: 'Wind (mph)'),
                 ),
               ),
-Expanded(
+              const SizedBox(width: 8),
+              Expanded(
                 child: TextField(
                   controller: _windDir,
                   keyboardType: TextInputType.number,
@@ -7129,6 +7153,23 @@ class _ImportBackupDialog extends StatefulWidget {
 class _ImportBackupDialogState extends State<_ImportBackupDialog> {
   final _ctrl = TextEditingController();
   _ImportMode _mode = _ImportMode.merge;
+
+Future<void> _browseJson() async {
+  final res = await FilePicker.platform.pickFiles(
+    type: FileType.custom,
+    allowedExtensions: const ['json'],
+    withData: true,
+  );
+  if (res == null || res.files.isEmpty) return;
+
+  final bytes = res.files.single.bytes;
+  if (bytes == null) return;
+
+  setState(() {
+    _ctrl.text = utf8.decode(bytes);
+  });
+}
+
 @override
   void dispose() {
     _ctrl.dispose();
@@ -7166,6 +7207,15 @@ class _ImportBackupDialogState extends State<_ImportBackupDialog> {
             ],
           ),
             const SizedBox(height: 8),
+Align(
+  alignment: Alignment.centerRight,
+  child: OutlinedButton.icon(
+    onPressed: _browseJson,
+    icon: const Icon(Icons.folder_open),
+    label: const Text('Browse'),
+  ),
+),
+const SizedBox(height: 8),
             TextField(
               controller: _ctrl,
               decoration: const InputDecoration(
