@@ -10,6 +10,7 @@ import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:universal_html/html.dart' as html;
 import 'dart:io';
 
@@ -17,6 +18,7 @@ import 'firebase_options.dart';
 
 import 'package:file_picker/file_picker.dart';
 const String kBackupSchemaVersion = '2026-02-05';
+const String kLocalStatePrefsKey = 'cold_bore.local_state.v1';
 
 
 
@@ -633,15 +635,27 @@ class _AppRoot extends StatefulWidget {
 
 class _AppRootState extends State<_AppRoot> {
   final AppState _state = AppState();
+  bool _ready = false;
 
   @override
   void initState() {
     super.initState();
-    _state.ensureSeedData();
+    unawaited(_loadState());
+  }
+
+  Future<void> _loadState() async {
+    await _state.loadPersistedState();
+    if (!mounted) return;
+    setState(() => _ready = true);
   }
 
   @override
   Widget build(BuildContext context) {
+    if (!_ready) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
     // Usable-now mode: skip biometrics/unlock screen (local_auth removed for iOS 26 stability).
     return HomeShell(state: _state);
   }
@@ -656,6 +670,9 @@ class AppState extends ChangeNotifier {
   final List<TrainingSession> _sessions = [];
   final Map<String, Map<DistanceKey, DopeEntry>> _workingDopeRifleOnly = {};
   final Map<String, Map<DistanceKey, DopeEntry>> _workingDopeRifleAmmo = {};
+  Timer? _persistTimer;
+  bool _didHydrate = false;
+  bool _isRestoring = false;
 
   UserProfile? _activeUser;
 
@@ -672,6 +689,67 @@ class AppState extends ChangeNotifier {
   double? get temperatureF => _temperatureF;
   double? get windSpeedMph => _windSpeedMph;
   int? get windDirectionDeg => _windDirectionDeg;
+
+  @override
+  void dispose() {
+    _persistTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void notifyListeners() {
+    super.notifyListeners();
+    if (_didHydrate && !_isRestoring) {
+      _schedulePersist();
+    }
+  }
+
+  Future<void> loadPersistedState() async {
+    if (_didHydrate) return;
+
+    _isRestoring = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(kLocalStatePrefsKey);
+      if (raw != null && raw.trim().isNotEmpty) {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map) {
+          _restoreFromMap(Map<String, dynamic>.from(decoded));
+        }
+      }
+      if (_users.isEmpty) {
+        _seedData();
+      }
+      _didHydrate = true;
+    } catch (_) {
+      if (_users.isEmpty) {
+        _seedData();
+      }
+      _didHydrate = true;
+    } finally {
+      _isRestoring = false;
+    }
+
+    super.notifyListeners();
+    _schedulePersist();
+  }
+
+  Future<void> saveNow() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      kLocalStatePrefsKey,
+      const JsonEncoder().convert(_toMap()),
+    );
+  }
+
+  void _schedulePersist() {
+    _persistTimer?.cancel();
+    _persistTimer = Timer(const Duration(milliseconds: 250), () async {
+      try {
+        await saveNow();
+      } catch (_) {}
+    });
+  }
 
   void setEnvironment({
     double? latitude,
@@ -723,7 +801,11 @@ class AppState extends ChangeNotifier {
 
   void ensureSeedData() {
     if (_users.isNotEmpty) return;
+    _seedData();
+    notifyListeners();
+  }
 
+  void _seedData() {
     final u = UserProfile(
       id: _newId(),
       name: 'Demo User',
@@ -767,8 +849,104 @@ class AppState extends ChangeNotifier {
         activeStringId: sid,
       ),
     );
+  }
 
-    notifyListeners();
+  Map<String, dynamic> _toMap() {
+    return <String, dynamic>{
+      'activeUserId': _activeUser?.id,
+      'environment': <String, dynamic>{
+        'latitude': _latitude,
+        'longitude': _longitude,
+        'temperatureF': _temperatureF,
+        'windSpeedMph': _windSpeedMph,
+        'windDirectionDeg': _windDirectionDeg,
+      },
+      'users': _users.map(_userToMap).toList(),
+      'rifles': _rifles.map(_rifleToMap).toList(),
+      'ammoLots': _ammoLots.map(_ammoLotToMap).toList(),
+      'sessions': _sessions.map(_trainingSessionToMap).toList(),
+      'workingDopeRifleOnly': _workingDopeRifleOnly.map(
+        (key, value) => MapEntry(
+          key,
+          value.values.map(_dopeEntryToMap).toList(),
+        ),
+      ),
+      'workingDopeRifleAmmo': _workingDopeRifleAmmo.map(
+        (key, value) => MapEntry(
+          key,
+          value.values.map(_dopeEntryToMap).toList(),
+        ),
+      ),
+    };
+  }
+
+  void _restoreFromMap(Map<String, dynamic> map) {
+    _users
+      ..clear()
+      ..addAll(
+        ((map['users'] as List?) ?? const [])
+            .map((x) => _userFromMap(Map<String, dynamic>.from(x as Map))),
+      );
+    _rifles
+      ..clear()
+      ..addAll(
+        ((map['rifles'] as List?) ?? const [])
+            .map((x) => _rifleFromMap(Map<String, dynamic>.from(x as Map))),
+      );
+    _ammoLots
+      ..clear()
+      ..addAll(
+        ((map['ammoLots'] as List?) ?? const [])
+            .map((x) => _ammoLotFromMap(Map<String, dynamic>.from(x as Map))),
+      );
+    _sessions
+      ..clear()
+      ..addAll(
+        ((map['sessions'] as List?) ?? const [])
+            .map((x) => _trainingSessionFromMap(Map<String, dynamic>.from(x as Map))),
+      );
+
+    _workingDopeRifleOnly
+      ..clear()
+      ..addAll(_decodeWorkingDopeMap(map['workingDopeRifleOnly']));
+    _workingDopeRifleAmmo
+      ..clear()
+      ..addAll(_decodeWorkingDopeMap(map['workingDopeRifleAmmo']));
+
+    final env = map['environment'];
+    if (env is Map) {
+      final envMap = Map<String, dynamic>.from(env);
+      _latitude = _toNullableDouble(envMap['latitude']);
+      _longitude = _toNullableDouble(envMap['longitude']);
+      _temperatureF = _toNullableDouble(envMap['temperatureF']);
+      _windSpeedMph = _toNullableDouble(envMap['windSpeedMph']);
+      _windDirectionDeg = _toNullableInt(envMap['windDirectionDeg']);
+    }
+
+    final activeUserId = map['activeUserId']?.toString();
+    UserProfile? active;
+    for (final user in _users) {
+      if (user.id == activeUserId) {
+        active = user;
+        break;
+      }
+    }
+    _activeUser = active ?? (_users.isNotEmpty ? _users.first : null);
+  }
+
+  Map<String, Map<DistanceKey, DopeEntry>> _decodeWorkingDopeMap(dynamic raw) {
+    if (raw is! Map) return <String, Map<DistanceKey, DopeEntry>>{};
+    final out = <String, Map<DistanceKey, DopeEntry>>{};
+    for (final entry in raw.entries) {
+      final items = (entry.value as List?) ?? const [];
+      final inner = <DistanceKey, DopeEntry>{};
+      for (final item in items) {
+        final dope = _dopeEntryFromMap(Map<String, dynamic>.from(item as Map));
+        inner[DistanceKey(dope.distance, dope.distanceUnit)] = dope;
+      }
+      out[entry.key.toString()] = inner;
+    }
+    return out;
   }
 
   void addUser({required String name, required String identifier}) {
@@ -1143,8 +1321,9 @@ class AppState extends ChangeNotifier {
       return;
     }
 
-    // If user is still selecting (missing either rifle or ammo), never create a new string yet.
-    if (nextRifleId == null || nextAmmoId == null) {
+    // If user is still selecting (missing either rifle or ammo), only keep editing
+    // the current session unless they explicitly chose to start a new string.
+    if ((nextRifleId == null || nextAmmoId == null) && !startNewString) {
       _sessions[idx] = s.copyWith(rifleId: nextRifleId, ammoLotId: nextAmmoId);
       notifyListeners();
       return;
@@ -1935,6 +2114,333 @@ double? preferExistingDouble(double? existing, double? incoming) => existing ?? 
   }
 
 }
+
+int? _toNullableInt(dynamic value) {
+  if (value == null) return null;
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return int.tryParse(value.toString());
+}
+
+double? _toNullableDouble(dynamic value) {
+  if (value == null) return null;
+  if (value is double) return value;
+  if (value is num) return value.toDouble();
+  return double.tryParse(value.toString());
+}
+
+DateTime _parseDateTime(dynamic value) {
+  if (value is DateTime) return value;
+  if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
+  return DateTime.tryParse(value?.toString() ?? '') ?? DateTime.now();
+}
+
+Map<String, dynamic> _userToMap(UserProfile user) => <String, dynamic>{
+      'id': user.id,
+      'name': user.name,
+      'identifier': user.identifier,
+    };
+
+UserProfile _userFromMap(Map<String, dynamic> map) => UserProfile(
+      id: (map['id'] ?? '').toString(),
+      name: map['name']?.toString(),
+      identifier: (map['identifier'] ?? '').toString(),
+    );
+
+Map<String, dynamic> _rifleToMap(Rifle rifle) => <String, dynamic>{
+      'id': rifle.id,
+      'name': rifle.name,
+      'caliber': rifle.caliber,
+      'notes': rifle.notes,
+      'dope': rifle.dope,
+      'dopeEntries': rifle.dopeEntries.map((e) => e.toMap()).toList(),
+      'preferredUnit': rifle.preferredUnit.name,
+      'scopeUnit': rifle.scopeUnit.name,
+      'manualRoundCount': rifle.manualRoundCount,
+      'services': rifle.services.map((s) => s.toMap()).toList(),
+      'scopeMake': rifle.scopeMake,
+      'scopeModel': rifle.scopeModel,
+      'scopeSerial': rifle.scopeSerial,
+      'scopeMount': rifle.scopeMount,
+      'scopeNotes': rifle.scopeNotes,
+      'manufacturer': rifle.manufacturer,
+      'model': rifle.model,
+      'serialNumber': rifle.serialNumber,
+      'barrelLength': rifle.barrelLength,
+      'twistRate': rifle.twistRate,
+      'purchaseDate': rifle.purchaseDate?.toIso8601String(),
+      'purchasePrice': rifle.purchasePrice,
+      'purchaseLocation': rifle.purchaseLocation,
+    };
+
+Rifle _rifleFromMap(Map<String, dynamic> map) => Rifle(
+      id: (map['id'] ?? '').toString(),
+      name: map['name']?.toString(),
+      caliber: (map['caliber'] ?? '').toString(),
+      notes: (map['notes'] ?? '').toString(),
+      dope: (map['dope'] ?? '').toString(),
+      dopeEntries: ((map['dopeEntries'] as List?) ?? const [])
+          .map((e) => RifleDopeEntry.fromMap(Map<String, dynamic>.from(e as Map)))
+          .toList(),
+      preferredUnit: ElevationUnit.values.firstWhere(
+        (u) => u.name == (map['preferredUnit'] ?? ElevationUnit.mil.name).toString(),
+        orElse: () => ElevationUnit.mil,
+      ),
+      scopeUnit: ScopeUnit.values.firstWhere(
+        (u) => u.name == (map['scopeUnit'] ?? ScopeUnit.mil.name).toString(),
+        orElse: () => ScopeUnit.mil,
+      ),
+      manualRoundCount: _toNullableInt(map['manualRoundCount']) ?? 0,
+      services: ((map['services'] as List?) ?? const [])
+          .map((e) => RifleServiceEntry.fromMap(Map<String, dynamic>.from(e as Map)))
+          .toList(),
+      scopeMake: map['scopeMake']?.toString(),
+      scopeModel: map['scopeModel']?.toString(),
+      scopeSerial: map['scopeSerial']?.toString(),
+      scopeMount: map['scopeMount']?.toString(),
+      scopeNotes: map['scopeNotes']?.toString(),
+      manufacturer: map['manufacturer']?.toString(),
+      model: map['model']?.toString(),
+      serialNumber: map['serialNumber']?.toString(),
+      barrelLength: map['barrelLength']?.toString(),
+      twistRate: map['twistRate']?.toString(),
+      purchaseDate: map['purchaseDate'] == null ? null : _parseDateTime(map['purchaseDate']),
+      purchasePrice: map['purchasePrice']?.toString(),
+      purchaseLocation: map['purchaseLocation']?.toString(),
+    );
+
+Map<String, dynamic> _ammoLotToMap(AmmoLot ammo) => <String, dynamic>{
+      'id': ammo.id,
+      'name': ammo.name,
+      'caliber': ammo.caliber,
+      'grain': ammo.grain,
+      'bullet': ammo.bullet,
+      'notes': ammo.notes,
+      'manufacturer': ammo.manufacturer,
+      'lotNumber': ammo.lotNumber,
+      'purchaseDate': ammo.purchaseDate?.toIso8601String(),
+      'purchasePrice': ammo.purchasePrice,
+      'ballisticCoefficient': ammo.ballisticCoefficient,
+    };
+
+AmmoLot _ammoLotFromMap(Map<String, dynamic> map) => AmmoLot(
+      id: (map['id'] ?? '').toString(),
+      name: map['name']?.toString(),
+      caliber: (map['caliber'] ?? '').toString(),
+      grain: _toNullableInt(map['grain']) ?? 0,
+      bullet: (map['bullet'] ?? '').toString(),
+      notes: (map['notes'] ?? '').toString(),
+      manufacturer: map['manufacturer']?.toString(),
+      lotNumber: map['lotNumber']?.toString(),
+      purchaseDate: map['purchaseDate'] == null ? null : _parseDateTime(map['purchaseDate']),
+      purchasePrice: map['purchasePrice']?.toString(),
+      ballisticCoefficient: _toNullableDouble(map['ballisticCoefficient']),
+    );
+
+Map<String, dynamic> _sessionStringMetaToMap(SessionStringMeta meta) => <String, dynamic>{
+      'id': meta.id,
+      'startedAt': meta.startedAt.toIso8601String(),
+      'endedAt': meta.endedAt?.toIso8601String(),
+      'rifleId': meta.rifleId,
+      'ammoLotId': meta.ammoLotId,
+    };
+
+SessionStringMeta _sessionStringMetaFromMap(Map<String, dynamic> map) => SessionStringMeta(
+      id: (map['id'] ?? '').toString(),
+      startedAt: _parseDateTime(map['startedAt']),
+      endedAt: map['endedAt'] == null ? null : _parseDateTime(map['endedAt']),
+      rifleId: map['rifleId']?.toString(),
+      ammoLotId: map['ammoLotId']?.toString(),
+    );
+
+Map<String, dynamic> _dopeEntryToMap(DopeEntry entry) => <String, dynamic>{
+      'id': entry.id,
+      'time': entry.time.toIso8601String(),
+      'rifleId': entry.rifleId,
+      'ammoLotId': entry.ammoLotId,
+      'distance': entry.distance,
+      'distanceUnit': entry.distanceUnit.name,
+      'elevation': entry.elevation,
+      'elevationUnit': entry.elevationUnit.name,
+      'elevationNotes': entry.elevationNotes,
+      'windType': entry.windType.name,
+      'windValue': entry.windValue,
+      'windNotes': entry.windNotes,
+      'windageLeft': entry.windageLeft,
+      'windageRight': entry.windageRight,
+    };
+
+DopeEntry _dopeEntryFromMap(Map<String, dynamic> map) => DopeEntry(
+      id: (map['id'] ?? '').toString(),
+      time: _parseDateTime(map['time']),
+      rifleId: map['rifleId']?.toString(),
+      ammoLotId: map['ammoLotId']?.toString(),
+      distance: _toNullableDouble(map['distance']) ?? 0,
+      distanceUnit: DistanceUnit.values.firstWhere(
+        (u) => u.name == (map['distanceUnit'] ?? DistanceUnit.yards.name).toString(),
+        orElse: () => DistanceUnit.yards,
+      ),
+      elevation: _toNullableDouble(map['elevation']) ?? 0,
+      elevationUnit: ElevationUnit.values.firstWhere(
+        (u) => u.name == (map['elevationUnit'] ?? ElevationUnit.mil.name).toString(),
+        orElse: () => ElevationUnit.mil,
+      ),
+      elevationNotes: (map['elevationNotes'] ?? '').toString(),
+      windType: WindType.values.firstWhere(
+        (u) => u.name == (map['windType'] ?? WindType.fullValue.name).toString(),
+        orElse: () => WindType.fullValue,
+      ),
+      windValue: (map['windValue'] ?? '').toString(),
+      windNotes: (map['windNotes'] ?? '').toString(),
+      windageLeft: _toNullableDouble(map['windageLeft']) ?? 0,
+      windageRight: _toNullableDouble(map['windageRight']) ?? 0,
+    );
+
+Map<String, dynamic> _coldBorePhotoToMap(ColdBorePhoto photo) => <String, dynamic>{
+      'id': photo.id,
+      'time': photo.time.toIso8601String(),
+      'bytes': base64Encode(photo.bytes),
+      'caption': photo.caption,
+    };
+
+ColdBorePhoto _coldBorePhotoFromMap(Map<String, dynamic> map) => ColdBorePhoto(
+      id: (map['id'] ?? '').toString(),
+      time: _parseDateTime(map['time']),
+      bytes: base64Decode((map['bytes'] ?? '').toString()),
+      caption: (map['caption'] ?? '').toString(),
+    );
+
+Map<String, dynamic> _shotEntryToMap(ShotEntry shot) => <String, dynamic>{
+      'id': shot.id,
+      'time': shot.time.toIso8601String(),
+      'isColdBore': shot.isColdBore,
+      'isBaseline': shot.isBaseline,
+      'distance': shot.distance,
+      'result': shot.result,
+      'notes': shot.notes,
+      'offsetX': shot.offsetX,
+      'offsetY': shot.offsetY,
+      'offsetUnit': shot.offsetUnit,
+      'photos': shot.photos.map(_coldBorePhotoToMap).toList(),
+    };
+
+ShotEntry _shotEntryFromMap(Map<String, dynamic> map) => ShotEntry(
+      id: (map['id'] ?? '').toString(),
+      time: _parseDateTime(map['time']),
+      isColdBore: map['isColdBore'] == true,
+      isBaseline: map['isBaseline'] == true,
+      distance: (map['distance'] ?? '').toString(),
+      result: (map['result'] ?? '').toString(),
+      notes: (map['notes'] ?? '').toString(),
+      offsetX: _toNullableDouble(map['offsetX']),
+      offsetY: _toNullableDouble(map['offsetY']),
+      offsetUnit: (map['offsetUnit'] ?? 'in').toString(),
+      photos: ((map['photos'] as List?) ?? const [])
+          .map((e) => _coldBorePhotoFromMap(Map<String, dynamic>.from(e as Map)))
+          .toList(),
+    );
+
+Map<String, dynamic> _photoNoteToMap(PhotoNote photo) => <String, dynamic>{
+      'id': photo.id,
+      'time': photo.time.toIso8601String(),
+      'caption': photo.caption,
+    };
+
+PhotoNote _photoNoteFromMap(Map<String, dynamic> map) => PhotoNote(
+      id: (map['id'] ?? '').toString(),
+      time: _parseDateTime(map['time']),
+      caption: (map['caption'] ?? '').toString(),
+    );
+
+Map<String, dynamic> _sessionPhotoToMap(SessionPhoto photo) => <String, dynamic>{
+      'id': photo.id,
+      'time': photo.time.toIso8601String(),
+      'bytes': base64Encode(photo.bytes),
+      'caption': photo.caption,
+    };
+
+SessionPhoto _sessionPhotoFromMap(Map<String, dynamic> map) => SessionPhoto(
+      id: (map['id'] ?? '').toString(),
+      time: _parseDateTime(map['time']),
+      bytes: base64Decode((map['bytes'] ?? '').toString()),
+      caption: (map['caption'] ?? '').toString(),
+    );
+
+Map<String, dynamic> _trainingSessionToMap(TrainingSession session) => <String, dynamic>{
+      'id': session.id,
+      'userId': session.userId,
+      'memberUserIds': session.memberUserIds,
+      'dateTime': session.dateTime.toIso8601String(),
+      'locationName': session.locationName,
+      'notes': session.notes,
+      'latitude': session.latitude,
+      'longitude': session.longitude,
+      'temperatureF': session.temperatureF,
+      'windSpeedMph': session.windSpeedMph,
+      'windDirectionDeg': session.windDirectionDeg,
+      'rifleId': session.rifleId,
+      'ammoLotId': session.ammoLotId,
+      'strings': session.strings.map(_sessionStringMetaToMap).toList(),
+      'activeStringId': session.activeStringId,
+      'trainingDopeByString': session.trainingDopeByString.map(
+        (key, value) => MapEntry(key, value.map(_dopeEntryToMap).toList()),
+      ),
+      'shotsByString': session.shotsByString.map(
+        (key, value) => MapEntry(key, value.map(_shotEntryToMap).toList()),
+      ),
+      'shots': session.shots.map(_shotEntryToMap).toList(),
+      'photos': session.photos.map(_photoNoteToMap).toList(),
+      'sessionPhotos': session.sessionPhotos.map(_sessionPhotoToMap).toList(),
+      'trainingDope': session.trainingDope.map(_dopeEntryToMap).toList(),
+    };
+
+TrainingSession _trainingSessionFromMap(Map<String, dynamic> map) => TrainingSession(
+      id: (map['id'] ?? '').toString(),
+      userId: (map['userId'] ?? '').toString(),
+      memberUserIds: ((map['memberUserIds'] as List?) ?? const []).map((e) => e.toString()).toList(),
+      dateTime: _parseDateTime(map['dateTime']),
+      locationName: (map['locationName'] ?? '').toString(),
+      notes: (map['notes'] ?? '').toString(),
+      latitude: _toNullableDouble(map['latitude']),
+      longitude: _toNullableDouble(map['longitude']),
+      temperatureF: _toNullableDouble(map['temperatureF']),
+      windSpeedMph: _toNullableDouble(map['windSpeedMph']),
+      windDirectionDeg: _toNullableInt(map['windDirectionDeg']),
+      rifleId: map['rifleId']?.toString(),
+      ammoLotId: map['ammoLotId']?.toString(),
+      shots: ((map['shots'] as List?) ?? const [])
+          .map((e) => _shotEntryFromMap(Map<String, dynamic>.from(e as Map)))
+          .toList(),
+      photos: ((map['photos'] as List?) ?? const [])
+          .map((e) => _photoNoteFromMap(Map<String, dynamic>.from(e as Map)))
+          .toList(),
+      sessionPhotos: ((map['sessionPhotos'] as List?) ?? const [])
+          .map((e) => _sessionPhotoFromMap(Map<String, dynamic>.from(e as Map)))
+          .toList(),
+      trainingDope: ((map['trainingDope'] as List?) ?? const [])
+          .map((e) => _dopeEntryFromMap(Map<String, dynamic>.from(e as Map)))
+          .toList(),
+      trainingDopeByString: ((map['trainingDopeByString'] as Map?) ?? const <String, dynamic>{}).map(
+        (key, value) => MapEntry(
+          key.toString(),
+          ((value as List?) ?? const [])
+              .map((e) => _dopeEntryFromMap(Map<String, dynamic>.from(e as Map)))
+              .toList(),
+        ),
+      ),
+      shotsByString: ((map['shotsByString'] as Map?) ?? const <String, dynamic>{}).map(
+        (key, value) => MapEntry(
+          key.toString(),
+          ((value as List?) ?? const [])
+              .map((e) => _shotEntryFromMap(Map<String, dynamic>.from(e as Map)))
+              .toList(),
+        ),
+      ),
+      strings: ((map['strings'] as List?) ?? const [])
+          .map((e) => _sessionStringMetaFromMap(Map<String, dynamic>.from(e as Map)))
+          .toList(),
+      activeStringId: (map['activeStringId'] ?? '').toString(),
+    );
 
 class UserProfile {
   final String id;
@@ -3142,6 +3648,48 @@ class SessionDetailScreen extends StatelessWidget {
     return res ?? true;
   }
 
+  SessionStringMeta? _findMatchingString(
+    TrainingSession session, {
+    required String? rifleId,
+    required String? ammoLotId,
+    required String excludeStringId,
+  }) {
+    if (rifleId == null || ammoLotId == null) return null;
+    for (final st in session.strings) {
+      if (st.id == excludeStringId) continue;
+      if (st.rifleId == rifleId && st.ammoLotId == ammoLotId) {
+        return st;
+      }
+    }
+    return null;
+  }
+
+  Future<bool> _promptSwitchToExistingStringDialog(
+    BuildContext context,
+    SessionStringMeta existing,
+  ) async {
+    final res = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Switch to existing string?'),
+        content: Text(
+          'This rifle and ammo already exist in a string started on ${_fmtDateTime(existing.startedAt)}. Switch back to that string?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Stay here'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Switch'),
+          ),
+        ],
+      ),
+    );
+    return res == true;
+  }
+
 
 
   Future<void> _shareSession(BuildContext context, TrainingSession s) async {
@@ -3559,12 +4107,53 @@ _SectionTitle('Loadout'),
                           return;
                         }
 
-                        // User is changing rifle; clear ammo for now (force re-select). No prompt until BOTH are selected.
+                        if (v == null) {
+                          state.updateSessionLoadout(
+                            sessionId: s.id,
+                            rifleId: null,
+                            ammoLotId: null,
+                            startNewString: false,
+                          );
+                          return;
+                        }
+
+                        final nextAmmo = ((s.ammoLotId != null) &&
+                                (state.ammoById(s.ammoLotId)?.caliber == state.rifleById(v)?.caliber))
+                            ? s.ammoLotId
+                            : null;
+                        final existing = _findMatchingString(
+                          s,
+                          rifleId: v,
+                          ammoLotId: nextAmmo,
+                          excludeStringId: current.id,
+                        );
+                        if (existing != null) {
+                          final shouldSwitch = await _promptSwitchToExistingStringDialog(
+                            context,
+                            existing,
+                          );
+                          if (shouldSwitch) {
+                            state.setActiveString(sessionId: s.id, stringId: existing.id);
+                            return;
+                          }
+                        }
+
+                        final startNew = await _promptStartNewStringDialog(context);
+                        if (!startNew) {
+                          state.updateSessionLoadout(
+                            sessionId: s.id,
+                            rifleId: current.rifleId,
+                            ammoLotId: current.ammoLotId,
+                            startNewString: false,
+                          );
+                          return;
+                        }
+
                         state.updateSessionLoadout(
                           sessionId: s.id,
                           rifleId: v,
-                          ammoLotId: null,
-                          startNewString: false,
+                          ammoLotId: s.ammoLotId,
+                          startNewString: true,
                         );
                       },
                   ),
@@ -3616,6 +4205,23 @@ _SectionTitle('Loadout'),
 
                                 final changed = (nextRifle != current.rifleId) || (nextAmmo != current.ammoLotId);
                                 if (!changed) return;
+
+                                final existing = _findMatchingString(
+                                  s,
+                                  rifleId: nextRifle,
+                                  ammoLotId: nextAmmo,
+                                  excludeStringId: current.id,
+                                );
+                                if (existing != null) {
+                                  final shouldSwitch = await _promptSwitchToExistingStringDialog(
+                                    context,
+                                    existing,
+                                  );
+                                  if (shouldSwitch) {
+                                    state.setActiveString(sessionId: s.id, stringId: existing.id);
+                                    return;
+                                  }
+                                }
 
                                 final startNew = await _promptStartNewStringDialog(context);
                                 if (!startNew) {
