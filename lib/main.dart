@@ -3956,6 +3956,29 @@ Future<void> _addDope(BuildContext context, TrainingSession s) async {
             ? <AmmoLot>[]
             : state.ammoLots.where((a) => a.caliber == rifle.caliber).toList();
 
+        String rifleLoadoutLabel(Rifle? r, {String? deletedId}) {
+          if (r == null) return deletedId == null ? '- None -' : 'Deleted rifle ($deletedId)';
+          final parts = <String>[
+            if (r.caliber.trim().isNotEmpty) r.caliber.trim(),
+            if ((r.manufacturer ?? '').trim().isNotEmpty) (r.manufacturer ?? '').trim(),
+            if ((r.model ?? '').trim().isNotEmpty) (r.model ?? '').trim(),
+            if ((r.name ?? '').trim().isNotEmpty) (r.name ?? '').trim(),
+          ];
+          return parts.isEmpty ? 'Rifle' : parts.join(' • ');
+        }
+
+        String ammoLoadoutLabel(AmmoLot? a, {String? deletedId}) {
+          if (a == null) return deletedId == null ? '- None -' : 'Deleted ammo ($deletedId)';
+          final parts = <String>[
+            if (a.caliber.trim().isNotEmpty) a.caliber.trim(),
+            if ((a.manufacturer ?? '').trim().isNotEmpty) (a.manufacturer ?? '').trim(),
+            if (a.bullet.trim().isNotEmpty) a.bullet.trim(),
+            if (a.grain > 0) '${a.grain}gr',
+            if ((a.name ?? '').trim().isNotEmpty) (a.name ?? '').trim(),
+          ];
+          return parts.isEmpty ? 'Ammo' : parts.join(' • ');
+        }
+
         // Defensive: avoid DropdownButton value mismatch and duplicate IDs.
         final rifleById = <String, Rifle>{ for (final r in state.rifles) r.id: r };
         final compatibleAmmoById = <String, AmmoLot>{ for (final a in compatibleAmmo) a.id: a };
@@ -4073,6 +4096,7 @@ _SectionTitle('Loadout'),
                   Expanded(
                     child: DropdownButtonFormField<String?>(
                       initialValue: s.rifleId,
+                      isExpanded: true,
                       decoration: const InputDecoration(labelText: 'Rifle'),
                       items: [
                         const DropdownMenuItem<String?>(value: null, child: Text('- None -')),
@@ -4084,7 +4108,40 @@ _SectionTitle('Loadout'),
                         ...state.rifles.map(
                           (r) => DropdownMenuItem<String?>(
                             value: r.id,
-                            child: Text('${r.caliber} • ${r.manufacturer ?? ''}${(r.manufacturer ?? '').trim().isEmpty ? '' : ''} • ${r.model ?? ''}${(r.name ?? '').trim().isEmpty ? '' : ' • ${r.name}'}'),
+                            child: Text(
+                              rifleLoadoutLabel(r),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                          ),
+                        ),
+                      ],
+                      selectedItemBuilder: (context) => [
+                        const Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            '- None -',
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                        ),
+                        if (s.rifleId != null && rifle == null)
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              rifleLoadoutLabel(null, deletedId: s.rifleId),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                          ),
+                        ...state.rifles.map(
+                          (r) => Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              rifleLoadoutLabel(r),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
                           ),
                         ),
                       ],
@@ -4162,6 +4219,7 @@ _SectionTitle('Loadout'),
                   Expanded(
                     child: DropdownButtonFormField<String?>(
                       initialValue: safeAmmoLotId,
+                      isExpanded: true,
                       decoration: const InputDecoration(labelText: 'Ammo'),
                       items: [
                         const DropdownMenuItem<String?>(value: null, child: Text('- None -')),
@@ -4173,7 +4231,40 @@ _SectionTitle('Loadout'),
                         ...compatibleAmmo.map(
                           (a) => DropdownMenuItem<String?>(
                             value: a.id,
-                            child: Text('${a.caliber} • ${a.manufacturer ?? ''} • ${a.bullet ?? (a.name ?? 'Ammo')} • ${a.grain}gr'),
+                            child: Text(
+                              ammoLoadoutLabel(a),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                          ),
+                        ),
+                      ],
+                      selectedItemBuilder: (context) => [
+                        const Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            '- None -',
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                        ),
+                        if (s.ammoLotId != null && ammo == null)
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              ammoLoadoutLabel(null, deletedId: s.ammoLotId),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                          ),
+                        ...compatibleAmmo.map(
+                          (a) => Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              ammoLoadoutLabel(a),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
                           ),
                         ),
                       ],
