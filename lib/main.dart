@@ -20,6 +20,108 @@ import 'package:file_picker/file_picker.dart';
 const String kBackupSchemaVersion = '2026-02-05';
 const String kLocalStatePrefsKey = 'cold_bore.local_state.v1';
 
+ThemeData _buildTacticalTheme() {
+  const baseBg = Color(0xFFE3E0D2);
+  const surface = Color(0xFFF1EDDF);
+  const surfaceAlt = Color(0xFFE0D8C3);
+  const primary = Color(0xFF264653);
+  const secondary = Color(0xFF7B6A3C);
+  const outline = Color(0xFF8F8A78);
+  const onSurface = Color(0xFF1E2019);
+
+  const scheme = ColorScheme.light(
+    primary: primary,
+    onPrimary: Colors.white,
+    secondary: secondary,
+    onSecondary: Colors.white,
+    surface: surface,
+    onSurface: onSurface,
+    error: Color(0xFF9D2B2B),
+    onError: Colors.white,
+    outline: outline,
+  );
+
+  return ThemeData(
+    useMaterial3: true,
+    colorScheme: scheme,
+    scaffoldBackgroundColor: baseBg,
+    canvasColor: baseBg,
+    cardColor: surface,
+    dividerColor: outline.withValues(alpha: 0.35),
+    appBarTheme: const AppBarTheme(
+      backgroundColor: surfaceAlt,
+      foregroundColor: onSurface,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      centerTitle: false,
+    ),
+    cardTheme: CardThemeData(
+      color: surface,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: outline.withValues(alpha: 0.35)),
+      ),
+      margin: EdgeInsets.zero,
+    ),
+    navigationBarTheme: NavigationBarThemeData(
+      backgroundColor: surfaceAlt,
+      surfaceTintColor: Colors.transparent,
+      indicatorColor: primary.withValues(alpha: 0.16),
+      labelTextStyle: WidgetStateProperty.resolveWith(
+        (states) => TextStyle(
+          color: states.contains(WidgetState.selected) ? primary : onSurface.withValues(alpha: 0.78),
+          fontWeight: states.contains(WidgetState.selected) ? FontWeight.w700 : FontWeight.w500,
+        ),
+      ),
+      iconTheme: WidgetStateProperty.resolveWith(
+        (states) => IconThemeData(
+          color: states.contains(WidgetState.selected) ? primary : onSurface.withValues(alpha: 0.72),
+        ),
+      ),
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: Colors.white.withValues(alpha: 0.32),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: outline.withValues(alpha: 0.45)),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: outline.withValues(alpha: 0.45)),
+      ),
+      focusedBorder: const OutlineInputBorder(
+        borderRadius: BorderRadius.all(Radius.circular(14)),
+        borderSide: BorderSide(color: primary, width: 1.6),
+      ),
+      labelStyle: TextStyle(color: onSurface.withValues(alpha: 0.8)),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        backgroundColor: primary,
+        foregroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+    ),
+    floatingActionButtonTheme: const FloatingActionButtonThemeData(
+      backgroundColor: primary,
+      foregroundColor: Colors.white,
+    ),
+    chipTheme: ChipThemeData(
+      backgroundColor: surfaceAlt,
+      selectedColor: primary.withValues(alpha: 0.16),
+      secondarySelectedColor: primary.withValues(alpha: 0.16),
+      side: BorderSide(color: outline.withValues(alpha: 0.4)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      labelStyle: const TextStyle(color: onSurface),
+      secondaryLabelStyle: const TextStyle(color: onSurface),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+    ),
+  );
+}
+
 
 
 
@@ -592,10 +694,7 @@ class ColdBoreApp extends StatelessWidget {
       return MaterialApp(
         title: 'Cold Bore',
         debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueGrey),
-          useMaterial3: true,
-        ),
+        theme: _buildTacticalTheme(),
         home: Scaffold(
           backgroundColor: Colors.black,
           body: SafeArea(
@@ -617,10 +716,7 @@ class ColdBoreApp extends StatelessWidget {
     return MaterialApp(
       title: 'Cold Bore',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueGrey),
-        useMaterial3: true,
-      ),
+      theme: _buildTacticalTheme(),
       home: const _AppRoot(),
     );
   }
@@ -968,6 +1064,9 @@ class AppState extends ChangeNotifier {
   void addRifle({
     ScopeUnit? scopeUnit,
     int manualRoundCount = 0,
+    int? barrelRoundCount,
+    DateTime? barrelInstalledDate,
+    String barrelNotes = '',
     String? scopeMake,
     String? scopeModel,
     String? scopeSerial,
@@ -990,6 +1089,9 @@ class AppState extends ChangeNotifier {
       Rifle(id: _newId(),
       scopeUnit: scopeUnit ?? ScopeUnit.mil,
         manualRoundCount: manualRoundCount,
+        barrelRoundCount: barrelRoundCount ?? manualRoundCount,
+        barrelInstalledDate: barrelInstalledDate,
+        barrelNotes: barrelNotes.trim(),
         scopeMake: scopeMake?.trim().isEmpty == true ? null : scopeMake?.trim(),
         scopeModel: scopeModel?.trim().isEmpty == true ? null : scopeModel?.trim(),
         scopeSerial: scopeSerial?.trim().isEmpty == true ? null : scopeSerial?.trim(),
@@ -1019,6 +1121,10 @@ class AppState extends ChangeNotifier {
     required String caliber,
     String notes = '',
     String dope = '',
+    int? manualRoundCount,
+    int? barrelRoundCount,
+    DateTime? barrelInstalledDate,
+    String? barrelNotes,
     ElevationUnit? preferredUnit,
     ScopeUnit? scopeUnit,
     String? scopeMake,
@@ -1038,11 +1144,16 @@ class AppState extends ChangeNotifier {
     final idx = _rifles.indexWhere((r) => r.id == rifleId);
     if (idx < 0) return;
     final r = _rifles[idx];
+    final nextRoundCount = manualRoundCount ?? barrelRoundCount ?? r.manualRoundCount;
     _rifles[idx] = r.copyWith(
       name: (name == null || name.trim().isEmpty) ? null : name.trim(),
       caliber: caliber.trim(),
       notes: notes.trim(),
       dope: dope.trim(),
+      manualRoundCount: nextRoundCount,
+      barrelRoundCount: nextRoundCount,
+      barrelInstalledDate: barrelInstalledDate ?? r.barrelInstalledDate,
+      barrelNotes: barrelNotes ?? r.barrelNotes,
       preferredUnit: preferredUnit ?? r.preferredUnit,
       manufacturer: manufacturer?.trim().isEmpty == true ? null : manufacturer?.trim(),
       model: model?.trim().isEmpty == true ? null : model?.trim(),
@@ -1438,12 +1549,22 @@ class AppState extends ChangeNotifier {
 
         final sid = (s.activeStringId.isEmpty && s.strings.isNotEmpty) ? s.strings.last.id : s.activeStringId;
     final currentList = List<ShotEntry>.from(s.shotsByString[sid] ?? const <ShotEntry>[]);
+    final sessionPhoto = (photoBytes == null)
+        ? null
+        : SessionPhoto(
+            id: _newId(),
+            time: time,
+            bytes: photoBytes,
+            caption: 'Cold bore • ${distance.trim()}',
+          );
+
     _sessions[idx] = s.copyWith(
       shots: [...s.shots, entry],
       shotsByString: {
         ...s.shotsByString,
         sid: [...currentList, entry],
       },
+      sessionPhotos: sessionPhoto == null ? s.sessionPhotos : [...s.sessionPhotos, sessionPhoto],
     );
     notifyListeners();
   }
@@ -1560,6 +1681,12 @@ class AppState extends ChangeNotifier {
       bytes: bytes,
       caption: (caption ?? '').trim(),
     );
+    final sessionPhoto = SessionPhoto(
+      id: _newId(),
+      time: photo.time,
+      bytes: bytes,
+      caption: ((caption ?? '').trim().isEmpty ? 'Cold bore photo' : (caption ?? '').trim()),
+    );
 
     final updatedShot = shot.copyWith(photos: [...shot.photos, photo]);
     final updatedShots = [...s.shots];
@@ -1574,6 +1701,7 @@ class AppState extends ChangeNotifier {
     _sessions[sIdx] = s.copyWith(
       shots: updatedShots,
       shotsByString: updatedShotsByString,
+      sessionPhotos: [...s.sessionPhotos, sessionPhoto],
     );
     notifyListeners();
   }
@@ -1713,12 +1841,33 @@ class AppState extends ChangeNotifier {
     final rows = <_ColdBoreRow>[];
     for (final s in _sessions.where((x) => x.userId == user.id)) {
       for (final shot in s.shots.where((x) => x.isColdBore)) {
+        String? stringId;
+        for (final entry in s.shotsByString.entries) {
+          if (entry.value.any((x) => x.id == shot.id)) {
+            stringId = entry.key;
+            break;
+          }
+        }
+
+        SessionStringMeta? stringMeta;
+        if (stringId != null) {
+          for (final meta in s.strings) {
+            if (meta.id == stringId) {
+              stringMeta = meta;
+              break;
+            }
+          }
+        }
+
+        final rifleId = stringMeta?.rifleId ?? s.rifleId;
+        final ammoLotId = stringMeta?.ammoLotId ?? s.ammoLotId;
         rows.add(
           _ColdBoreRow(
             session: s,
             shot: shot,
-            rifle: rifleById(s.rifleId),
-            ammo: ammoById(s.ammoLotId),
+            rifle: rifleById(rifleId),
+            ammo: ammoById(ammoLotId),
+            stringId: stringId,
           ),
         );
       }
@@ -1733,22 +1882,14 @@ class AppState extends ChangeNotifier {
   String newChildId() => _newId();
 
 
-  int roundsFiredForRifle(String rifleId) {
-    int total = 0;
-    for (final s in _sessions) {
-      for (final st in s.strings) {
-        if (st.rifleId != rifleId) continue;
-        final shots = s.shotsByString[st.id] ?? const <ShotEntry>[];
-        total += shots.length;
-      }
-    }
-    return total;
-  }
-
   int totalRoundsForRifle(String rifleId) {
     final r = rifleById(rifleId);
     if (r == null) return 0;
-    return r.manualRoundCount + roundsFiredForRifle(rifleId);
+    return r.manualRoundCount;
+  }
+
+  int currentBarrelRoundsForRifle(String rifleId) {
+    return totalRoundsForRifle(rifleId);
   }
 
   void addRifleService({
@@ -1775,6 +1916,110 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void applySessionShotCountToRifle({
+    required String sessionId,
+    required int shotCount,
+  }) {
+    final sessionIdx = _sessions.indexWhere((s) => s.id == sessionId);
+    if (sessionIdx < 0) return;
+    final session = _sessions[sessionIdx];
+    final rifleId = session.rifleId;
+    if (rifleId == null) return;
+
+    final rifleIdx = _rifles.indexWhere((r) => r.id == rifleId);
+    if (rifleIdx < 0) return;
+
+    final rifle = _rifles[rifleIdx];
+    final nextRoundCount = rifle.manualRoundCount + shotCount;
+    _rifles[rifleIdx] = rifle.copyWith(
+      manualRoundCount: nextRoundCount,
+      barrelRoundCount: nextRoundCount,
+    );
+    _sessions[sessionIdx] = session.copyWith(
+      confirmedShotCount: shotCount,
+      shotCountAppliedToRifle: true,
+      endedAt: session.endedAt ?? DateTime.now(),
+    );
+    notifyListeners();
+  }
+
+  void saveSessionShotCount({
+    required String sessionId,
+    required int shotCount,
+    bool appliedToRifle = false,
+    bool endSession = false,
+  }) {
+    final idx = _sessions.indexWhere((s) => s.id == sessionId);
+    if (idx < 0) return;
+    final session = _sessions[idx];
+    _sessions[idx] = session.copyWith(
+      confirmedShotCount: shotCount,
+      shotCountAppliedToRifle: appliedToRifle,
+      endedAt: endSession ? (session.endedAt ?? DateTime.now()) : session.endedAt,
+    );
+    notifyListeners();
+  }
+
+  void endSession({
+    required String sessionId,
+    int? confirmedShotCount,
+    Map<String, int> appliedShotCounts = const {},
+  }) {
+    final idx = _sessions.indexWhere((s) => s.id == sessionId);
+    if (idx < 0) return;
+    final session = _sessions[idx];
+    final now = DateTime.now();
+    final updatedStrings = session.strings
+        .map((st) => st.id == session.activeStringId && st.endedAt == null ? st.copyWith(endedAt: now) : st)
+        .toList();
+
+    final validAppliedShotCounts = <String, int>{
+      for (final entry in appliedShotCounts.entries)
+        if (entry.value > 0) entry.key: entry.value,
+    };
+    final shouldApplyShotCount =
+        validAppliedShotCounts.isNotEmpty && !session.shotCountAppliedToRifle;
+
+    _sessions[idx] = session.copyWith(
+      confirmedShotCount: confirmedShotCount ?? session.confirmedShotCount,
+      shotCountAppliedToRifle: session.shotCountAppliedToRifle || shouldApplyShotCount,
+      endedAt: now,
+      strings: updatedStrings,
+    );
+
+    if (shouldApplyShotCount) {
+      for (final entry in validAppliedShotCounts.entries) {
+        final rifleIdx = _rifles.indexWhere((r) => r.id == entry.key);
+        if (rifleIdx >= 0) {
+          final rifle = _rifles[rifleIdx];
+          final nextRoundCount = rifle.manualRoundCount + entry.value;
+          _rifles[rifleIdx] = rifle.copyWith(
+            manualRoundCount: nextRoundCount,
+            barrelRoundCount: nextRoundCount,
+          );
+        }
+      }
+    }
+    notifyListeners();
+  }
+
+  void resetRifleBarrelCount({
+    required String rifleId,
+    DateTime? installedDate,
+    String notes = '',
+  }) {
+    final idx = _rifles.indexWhere((r) => r.id == rifleId);
+    if (idx < 0) return;
+    final rifle = _rifles[idx];
+    _rifles[idx] = rifle.copyWith(
+      manualRoundCount: 0,
+      barrelRoundCount: 0,
+      barrelInstalledDate: installedDate ?? DateTime.now(),
+      barrelNotes: notes.trim(),
+    );
+    notifyListeners();
+  }
+
   String exportBackupJson() {
     final payload = <String, dynamic>{
       'schema': kBackupSchemaVersion,
@@ -1792,6 +2037,9 @@ class AppState extends ChangeNotifier {
         'notes': r.notes,
         'dope': r.dope,
         'manualRoundCount': r.manualRoundCount,
+        'barrelRoundCount': r.barrelRoundCount,
+        'barrelInstalledDate': r.barrelInstalledDate?.toIso8601String(),
+        'barrelNotes': r.barrelNotes,
         'services': r.services.map((s) => s.toMap()).toList(),
         'purchaseDate': r.purchaseDate?.toIso8601String(),
         'purchasePrice': r.purchasePrice,
@@ -1949,11 +2197,16 @@ String toStr(dynamic v) => v == null ? '' : v.toString();
         scopeSerial: (m['scopeSerial'] as String?)?.toString(),
         scopeMount: (m['scopeMount'] as String?)?.toString(),
         scopeNotes: (m['scopeNotes'] as String?)?.toString(),
-      scopeUnit: ScopeUnit.values.firstWhere(
+        scopeUnit: ScopeUnit.values.firstWhere(
           (u) => u.name == (m['scopeUnit'] ?? ScopeUnit.mil.name).toString(),
           orElse: () => ScopeUnit.mil,
         ),
         manualRoundCount: (m['manualRoundCount'] as int?) ?? 0,
+        barrelRoundCount: (m['barrelRoundCount'] as int?) ?? ((m['manualRoundCount'] as int?) ?? 0),
+        barrelInstalledDate: (m['barrelInstalledDate'] as String?) != null
+            ? DateTime.tryParse((m['barrelInstalledDate'] as String))
+            : null,
+        barrelNotes: (m['barrelNotes'] as String?)?.toString() ?? '',
         dopeEntries: (m['dopeEntries'] as List?)
                 ?.map((e) => RifleDopeEntry.fromMap(Map<String, dynamic>.from(e as Map)))
                 .toList() ??
@@ -2157,6 +2410,9 @@ Map<String, dynamic> _rifleToMap(Rifle rifle) => <String, dynamic>{
       'preferredUnit': rifle.preferredUnit.name,
       'scopeUnit': rifle.scopeUnit.name,
       'manualRoundCount': rifle.manualRoundCount,
+      'barrelRoundCount': rifle.barrelRoundCount,
+      'barrelInstalledDate': rifle.barrelInstalledDate?.toIso8601String(),
+      'barrelNotes': rifle.barrelNotes,
       'services': rifle.services.map((s) => s.toMap()).toList(),
       'scopeMake': rifle.scopeMake,
       'scopeModel': rifle.scopeModel,
@@ -2191,6 +2447,9 @@ Rifle _rifleFromMap(Map<String, dynamic> map) => Rifle(
         orElse: () => ScopeUnit.mil,
       ),
       manualRoundCount: _toNullableInt(map['manualRoundCount']) ?? 0,
+      barrelRoundCount: _toNullableInt(map['barrelRoundCount']) ?? 0,
+      barrelInstalledDate: map['barrelInstalledDate'] == null ? null : _parseDateTime(map['barrelInstalledDate']),
+      barrelNotes: (map['barrelNotes'] ?? '').toString(),
       services: ((map['services'] as List?) ?? const [])
           .map((e) => RifleServiceEntry.fromMap(Map<String, dynamic>.from(e as Map)))
           .toList(),
@@ -2382,6 +2641,9 @@ Map<String, dynamic> _trainingSessionToMap(TrainingSession session) => <String, 
       'ammoLotId': session.ammoLotId,
       'strings': session.strings.map(_sessionStringMetaToMap).toList(),
       'activeStringId': session.activeStringId,
+      'confirmedShotCount': session.confirmedShotCount,
+      'shotCountAppliedToRifle': session.shotCountAppliedToRifle,
+      'endedAt': session.endedAt?.toIso8601String(),
       'trainingDopeByString': session.trainingDopeByString.map(
         (key, value) => MapEntry(key, value.map(_dopeEntryToMap).toList()),
       ),
@@ -2440,6 +2702,9 @@ TrainingSession _trainingSessionFromMap(Map<String, dynamic> map) => TrainingSes
           .map((e) => _sessionStringMetaFromMap(Map<String, dynamic>.from(e as Map)))
           .toList(),
       activeStringId: (map['activeStringId'] ?? '').toString(),
+      confirmedShotCount: _toNullableInt(map['confirmedShotCount']),
+      shotCountAppliedToRifle: map['shotCountAppliedToRifle'] == true,
+      endedAt: map['endedAt'] == null ? null : _parseDateTime(map['endedAt']),
     );
 
 class UserProfile {
@@ -2468,6 +2733,9 @@ class Rifle {
   final ScopeUnit scopeUnit;
 
   final int manualRoundCount;
+  final int barrelRoundCount;
+  final DateTime? barrelInstalledDate;
+  final String barrelNotes;
 
   final List<RifleServiceEntry> services;
 
@@ -2496,6 +2764,9 @@ class Rifle {
     this.preferredUnit = ElevationUnit.mil,
     this.scopeUnit = ScopeUnit.mil,
     this.manualRoundCount = 0,
+    this.barrelRoundCount = 0,
+    this.barrelInstalledDate,
+    this.barrelNotes = '',
     this.services = const [],
     this.scopeMake,
     this.scopeModel,
@@ -2522,6 +2793,9 @@ class Rifle {
     ElevationUnit? preferredUnit,
     ScopeUnit? scopeUnit,
     int? manualRoundCount,
+    int? barrelRoundCount,
+    DateTime? barrelInstalledDate,
+    String? barrelNotes,
     List<RifleServiceEntry>? services,
     String? scopeMake,
     String? scopeModel,
@@ -2547,6 +2821,9 @@ class Rifle {
       preferredUnit: preferredUnit ?? this.preferredUnit,
       scopeUnit: scopeUnit ?? this.scopeUnit,
       manualRoundCount: manualRoundCount ?? this.manualRoundCount,
+      barrelRoundCount: barrelRoundCount ?? this.barrelRoundCount,
+      barrelInstalledDate: barrelInstalledDate ?? this.barrelInstalledDate,
+      barrelNotes: barrelNotes ?? this.barrelNotes,
       services: services ?? this.services,
       scopeMake: scopeMake ?? this.scopeMake,
       scopeModel: scopeModel ?? this.scopeModel,
@@ -2712,6 +2989,9 @@ class TrainingSession {
   final List<PhotoNote> photos;
   final List<SessionPhoto> sessionPhotos;
   final List<DopeEntry> trainingDope;
+  final int? confirmedShotCount;
+  final bool shotCountAppliedToRifle;
+  final DateTime? endedAt;
 
   TrainingSession({
     required this.id,
@@ -2735,6 +3015,9 @@ class TrainingSession {
     required this.shotsByString,
     required this.strings,
     required this.activeStringId,
+    this.confirmedShotCount,
+    this.shotCountAppliedToRifle = false,
+    this.endedAt,
   });
 
 
@@ -2758,6 +3041,9 @@ class TrainingSession {
     Map<String, List<ShotEntry>>? shotsByString,
     List<SessionStringMeta>? strings,
     String? activeStringId,
+    int? confirmedShotCount,
+    bool? shotCountAppliedToRifle,
+    DateTime? endedAt,
   }) {
     return TrainingSession(
       id: id,
@@ -2781,6 +3067,9 @@ class TrainingSession {
       shotsByString: shotsByString ?? this.shotsByString,
       strings: strings ?? this.strings,
       activeStringId: activeStringId ?? this.activeStringId,
+      confirmedShotCount: confirmedShotCount ?? this.confirmedShotCount,
+      shotCountAppliedToRifle: shotCountAppliedToRifle ?? this.shotCountAppliedToRifle,
+      endedAt: endedAt ?? this.endedAt,
     );
   }
 
@@ -2901,11 +3190,13 @@ class _ColdBoreRow {
   final ShotEntry shot;
   final Rifle? rifle;
   final AmmoLot? ammo;
+  final String? stringId;
   _ColdBoreRow({
     required this.session,
     required this.shot,
     required this.rifle,
     required this.ammo,
+    required this.stringId,
   });
 }
 
@@ -3623,6 +3914,33 @@ class SessionDetailScreen extends StatelessWidget {
   final String sessionId;
   const SessionDetailScreen({super.key, required this.state, required this.sessionId});
 
+  Map<String, int> _shotCountsByRifle(TrainingSession session) {
+    final counts = <String, int>{};
+    for (final string in session.strings) {
+      final rifleId = string.rifleId;
+      if (rifleId == null) continue;
+      final shotCount = (session.shotsByString[string.id] ?? const <ShotEntry>[]).length;
+      counts.update(rifleId, (value) => value + shotCount, ifAbsent: () => shotCount);
+    }
+
+    if (session.rifleId != null) {
+      counts.putIfAbsent(session.rifleId!, () => session.confirmedShotCount ?? session.shots.length);
+    }
+    return counts;
+  }
+
+  String _sessionRifleLabel(String rifleId) {
+    final rifle = state.rifleById(rifleId);
+    if (rifle == null) return 'Deleted rifle ($rifleId)';
+    final parts = <String>[
+      if (rifle.caliber.trim().isNotEmpty) rifle.caliber.trim(),
+      if ((rifle.manufacturer ?? '').trim().isNotEmpty) (rifle.manufacturer ?? '').trim(),
+      if ((rifle.model ?? '').trim().isNotEmpty) (rifle.model ?? '').trim(),
+      if ((rifle.name ?? '').trim().isNotEmpty) (rifle.name ?? '').trim(),
+    ];
+    return parts.isEmpty ? 'Rifle' : parts.join(' • ');
+  }
+
 
   Future<bool> _promptStartNewStringDialog(BuildContext context) async {
     final res = await showDialog<bool>(
@@ -3758,6 +4076,41 @@ class SessionDetailScreen extends StatelessWidget {
     );
     if (res == null) return;
     state.updateSessionNotes(sessionId: s.id, notes: res);
+  }
+
+  Future<void> _endSession(BuildContext context, TrainingSession s) async {
+    final shotCountsByRifle = _shotCountsByRifle(s);
+    final res = await showDialog<_EndSessionResult>(
+      context: context,
+      builder: (_) => _EndSessionDialog(
+        rifleCounts: shotCountsByRifle.entries
+            .map(
+              (entry) => _EndSessionRifleCount(
+                rifleId: entry.key,
+                label: _sessionRifleLabel(entry.key),
+                initialShotCount: entry.value,
+              ),
+            )
+            .toList(),
+      ),
+    );
+    if (res == null) return;
+    state.endSession(
+      sessionId: s.id,
+      confirmedShotCount: res.totalShotCount,
+      appliedShotCounts: res.appliedShotCounts,
+    );
+    if (!context.mounted) return;
+    final appliedTotal = res.appliedShotCounts.values.fold<int>(0, (sum, value) => sum + value);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          appliedTotal > 0
+              ? 'Session ended. ${res.totalShotCount} shots saved, $appliedTotal applied to rifle rounds.'
+              : 'Session ended. Shot count saved: ${res.totalShotCount}.',
+        ),
+      ),
+    );
   }
 
   
@@ -4004,10 +4357,16 @@ Future<void> _addDope(BuildContext context, TrainingSession s) async {
               ),
               PopupMenuButton<String>(
                 tooltip: 'More',
-                itemBuilder: (context) => const [
-                  PopupMenuItem(value: 'case_packet', child: Text('Export case packet')),
+                itemBuilder: (context) => [
+                  if (s.endedAt == null)
+                    const PopupMenuItem(value: 'end_session', child: Text('End session')),
+                  const PopupMenuItem(value: 'case_packet', child: Text('Export case packet')),
                 ],
                 onSelected: (v) async {
+                  if (v == 'end_session') {
+                    await _endSession(context, s);
+                    return;
+                  }
                   if (v == 'case_packet') {
                     await _exportCasePacket(context, s);
                   }
@@ -4020,12 +4379,41 @@ Future<void> _addDope(BuildContext context, TrainingSession s) async {
             icon: const Icon(Icons.ac_unit_outlined),
             label: const Text('Add Cold Bore'),
           ),
+          bottomNavigationBar: s.endedAt != null
+              ? null
+              : SafeArea(
+                  minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                  child: FilledButton.icon(
+                    onPressed: () => _endSession(context, s),
+                    icon: const Icon(Icons.check_circle_outline),
+                    label: const Text('End Session'),
+                  ),
+                ),
           body: ListView(
             padding: const EdgeInsets.all(16),
             children: [
               Text(s.locationName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
               const SizedBox(height: 6),
               Text(_fmtDateTime(s.dateTime)),
+              if (s.endedAt != null) ...[
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    Chip(
+                      avatar: const Icon(Icons.check_circle_outline, size: 18),
+                      label: Text('Ended ${_fmtDateTime(s.endedAt!)}'),
+                    ),
+                    Chip(
+                      avatar: const Icon(Icons.pin_outlined, size: 18),
+                      label: Text(
+                        'Shot count ${s.confirmedShotCount ?? s.shots.length}${s.shotCountAppliedToRifle ? ' | applied to rifles' : ''}',
+                      ),
+                    ),
+                  ],
+                ),
+              ],
 
 const SizedBox(height: 8),
 Card(
@@ -4041,6 +4429,20 @@ Card(
         Align(alignment: Alignment.centerLeft, child: SelectableText('Date/Time: ${_fmtDateTime(s.dateTime)}')),
         const SizedBox(height: 4),
         Align(alignment: Alignment.centerLeft, child: SelectableText('Location: ${s.locationName.isEmpty ? '-' : s.locationName}')),
+        const SizedBox(height: 4),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: SelectableText(
+            'Status: ${s.endedAt == null ? 'Active' : 'Ended ${_fmtDateTime(s.endedAt!)}'}',
+          ),
+        ),
+        const SizedBox(height: 4),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: SelectableText(
+            'Confirmed shot count: ${s.confirmedShotCount ?? s.shots.length}${s.shotCountAppliedToRifle ? ' (applied to rifle rounds)' : ''}',
+          ),
+        ),
         const SizedBox(height: 8),
         Align(
           alignment: Alignment.centerLeft,
@@ -4607,15 +5009,24 @@ _SectionTitle('Loadout'),
   }
 }
 
-class ColdBoreScreen extends StatelessWidget {
+class ColdBoreScreen extends StatefulWidget {
   final AppState state;
   const ColdBoreScreen({super.key, required this.state});
 
   @override
+  State<ColdBoreScreen> createState() => _ColdBoreScreenState();
+}
+
+class _ColdBoreScreenState extends State<ColdBoreScreen> {
+  String? _selectedRifleId;
+  String? _selectedAmmoId;
+
+  @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: state,
+      animation: widget.state,
       builder: (context, _) {
+        final state = widget.state;
         final user = state.activeUser;
         if (user == null) {
           return const _EmptyState(
@@ -4626,23 +5037,92 @@ class ColdBoreScreen extends StatelessWidget {
         }
 
         final rows = state.coldBoreRowsForActiveUser();
+        final rifleOptions = <String, Rifle>{};
+        final ammoOptions = <String, AmmoLot>{};
+        for (final row in rows) {
+          final rifle = row.rifle;
+          if (rifle != null) {
+            rifleOptions[rifle.id] = rifle;
+          }
+          final ammo = row.ammo;
+          if (ammo != null) {
+            ammoOptions[ammo.id] = ammo;
+          }
+        }
+
+        if (_selectedRifleId != null && !rifleOptions.containsKey(_selectedRifleId)) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              setState(() {
+                _selectedRifleId = null;
+                _selectedAmmoId = null;
+              });
+            }
+          });
+        }
+        if (_selectedAmmoId != null && !ammoOptions.containsKey(_selectedAmmoId)) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              setState(() => _selectedAmmoId = null);
+            }
+          });
+        }
+
+        final filteredRows = rows.where((row) {
+          if (_selectedRifleId != null && row.rifle?.id != _selectedRifleId) return false;
+          if (_selectedAmmoId != null && row.ammo?.id != _selectedAmmoId) return false;
+          return true;
+        }).toList();
+
         if (rows.isEmpty) {
-          return const _EmptyState(
-            icon: Icons.ac_unit_outlined,
-            title: 'No cold bore entries yet',
-            message: 'Open a session and tap "Add Cold Bore".',
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+            children: const [
+              _ColdBoreTargetCard(state: null, rows: []),
+              SizedBox(height: 12),
+              _EmptyState(
+                icon: Icons.ac_unit_outlined,
+                title: 'No cold bore entries yet',
+                message: 'Open a session, tap "Add Cold Bore", then save the entry.',
+              ),
+            ],
           );
         }
 
+        final rifleList = rifleOptions.values.toList()
+          ..sort((a, b) {
+            final an = [
+              if (a.caliber.trim().isNotEmpty) a.caliber.trim(),
+              if ((a.manufacturer ?? '').trim().isNotEmpty) (a.manufacturer ?? '').trim(),
+              if ((a.model ?? '').trim().isNotEmpty) (a.model ?? '').trim(),
+              if ((a.name ?? '').trim().isNotEmpty) (a.name ?? '').trim(),
+            ].join(' ');
+            final bn = [
+              if (b.caliber.trim().isNotEmpty) b.caliber.trim(),
+              if ((b.manufacturer ?? '').trim().isNotEmpty) (b.manufacturer ?? '').trim(),
+              if ((b.model ?? '').trim().isNotEmpty) (b.model ?? '').trim(),
+              if ((b.name ?? '').trim().isNotEmpty) (b.name ?? '').trim(),
+            ].join(' ');
+            return an.compareTo(bn);
+          });
+
+        final filteredAmmoOptions = ammoOptions.values
+            .where(
+              (ammo) => _selectedRifleId == null ||
+                  rows.any((row) => row.rifle?.id == _selectedRifleId && row.ammo?.id == ammo.id),
+            )
+            .toList()
+          ..sort((a, b) => (a.name ?? '').compareTo(b.name ?? ''));
+
         return ListView.builder(
-          itemCount: rows.length + 1,
+          itemCount: filteredRows.length + 1,
           itemBuilder: (context, i) {
             if (i == 0) {
               // Build a simple drift summary from existing rows + baseline per rifle+ammo
               final Map<String, List<_ColdBoreRow>> groups = {};
-              for (final r in rows) {
-                final rid = r.session.rifleId;
-                final aid = r.session.ammoLotId;
+              for (final r in filteredRows) {
+                final rid = r.rifle?.id;
+                final aid = r.ammo?.id;
                 if (rid == null || aid == null) continue;
                 final key = '$rid|$aid';
                 (groups[key] ??= []).add(r);
@@ -4654,8 +5134,9 @@ class ColdBoreScreen extends StatelessWidget {
               final items = <Map<String, dynamic>>[];
               groups.forEach((key, list) {
                 final first = list.first;
-                final rifleId = first.session.rifleId!;
-                final ammoLotId = first.session.ammoLotId!;
+                final rifleId = first.rifle?.id;
+                final ammoLotId = first.ammo?.id;
+                if (rifleId == null || ammoLotId == null) return;
                 final baseline = state.baselineColdBoreShot(rifleId: rifleId, ammoLotId: ammoLotId);
                 if (baseline == null) return;
                 if (baseline.offsetX == null || baseline.offsetY == null) return;
@@ -4700,8 +5181,89 @@ class ColdBoreScreen extends StatelessWidget {
 
               return Padding(
                 padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
-                child: Card(
-                  child: Padding(
+                child: Column(
+                  children: [
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Filter Cold Bore History',
+                              style: TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                            const SizedBox(height: 8),
+                            DropdownButtonFormField<String?>(
+                              initialValue: _selectedRifleId,
+                              decoration: const InputDecoration(labelText: 'Rifle filter'),
+                              items: [
+                                const DropdownMenuItem<String?>(value: null, child: Text('All rifles')),
+                                ...rifleList.map(
+                                  (rifle) => DropdownMenuItem<String?>(
+                                      value: rifle.id,
+                                      child: Text(
+                                        [
+                                          if (rifle.caliber.trim().isNotEmpty) rifle.caliber.trim(),
+                                          if ((rifle.manufacturer ?? '').trim().isNotEmpty) (rifle.manufacturer ?? '').trim(),
+                                          if ((rifle.model ?? '').trim().isNotEmpty) (rifle.model ?? '').trim(),
+                                          if ((rifle.name ?? '').trim().isNotEmpty) (rifle.name ?? '').trim(),
+                                        ].join(' • '),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                ),
+                              ],
+                              onChanged: (value) {
+                                setState(() {
+                                  _selectedRifleId = value;
+                                  if (_selectedAmmoId != null &&
+                                      !rows.any((row) => row.rifle?.id == value && row.ammo?.id == _selectedAmmoId)) {
+                                    _selectedAmmoId = null;
+                                  }
+                                });
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                            DropdownButtonFormField<String?>(
+                              initialValue: _selectedAmmoId,
+                              decoration: const InputDecoration(labelText: 'Ammo filter'),
+                              items: [
+                                const DropdownMenuItem<String?>(value: null, child: Text('All ammo')),
+                                ...filteredAmmoOptions.map(
+                                  (ammo) => DropdownMenuItem<String?>(
+                                    value: ammo.id,
+                                    child: Text(
+                                      [
+                                        if (ammo.caliber.trim().isNotEmpty) ammo.caliber.trim(),
+                                        if ((ammo.manufacturer ?? '').trim().isNotEmpty) (ammo.manufacturer ?? '').trim(),
+                                        if (ammo.bullet.trim().isNotEmpty) ammo.bullet.trim(),
+                                        if (ammo.grain > 0) '${ammo.grain}gr',
+                                        if ((ammo.name ?? '').trim().isNotEmpty) (ammo.name ?? '').trim(),
+                                      ].join(' • '),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                              onChanged: (value) => setState(() => _selectedAmmoId = value),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              filteredRows.isEmpty
+                                  ? 'No cold bore entries match the current filter.'
+                                  : 'Showing ${filteredRows.length} cold bore entr${filteredRows.length == 1 ? 'y' : 'ies'} on the target below.',
+                              style: const TextStyle(color: Colors.black54),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _ColdBoreTargetCard(state: state, rows: filteredRows),
+                    const SizedBox(height: 12),
+                    Card(
+                      child: Padding(
                     padding: const EdgeInsets.all(12),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -4728,13 +5290,17 @@ class ColdBoreScreen extends StatelessWidget {
                       ],
                     ),
                   ),
+                    ),
+                  ],
                 ),
               );
             }
 
-            final r = rows[i - 1];
+            final r = filteredRows[i - 1];
             final rifle = r.rifle;
             final ammo = r.ammo;
+            final stringIndex =
+                r.stringId == null ? -1 : r.session.strings.indexWhere((x) => x.id == r.stringId);
             return Column(
               children: [
                 ListTile(
@@ -4746,6 +5312,7 @@ class ColdBoreScreen extends StatelessWidget {
                       r.session.locationName,
                       if (rifle != null) rifle.name ?? '',
                       if (ammo != null) ammo.name ?? '',
+                      if (stringIndex >= 0) 'String ${stringIndex + 1}',
                     ].join(' • '),
                   ),
                   onTap: () {
@@ -4767,6 +5334,224 @@ class ColdBoreScreen extends StatelessWidget {
         );
       },
     );
+  }
+}
+
+class _ColdBoreTargetCard extends StatelessWidget {
+  final AppState? state;
+  final List<_ColdBoreRow> rows;
+
+  const _ColdBoreTargetCard({
+    required this.state,
+    required this.rows,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final plottedRows = rows
+        .where((row) => row.shot.offsetX != null && row.shot.offsetY != null)
+        .toList()
+      ..sort((a, b) => a.shot.time.compareTo(b.shot.time));
+    final hiddenCount = rows.length - plottedRows.length;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Cold bore target', style: TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 6),
+            Text(
+              hiddenCount > 0
+                  ? '${plottedRows.length} plotted • $hiddenCount entries need impact offsets before they can be shown.'
+                  : '${plottedRows.length} plotted',
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7)),
+            ),
+            const SizedBox(height: 12),
+            if (plottedRows.isEmpty)
+              const _HintCard(
+                icon: Icons.gps_not_fixed_outlined,
+                title: 'No plotted cold bore impacts yet',
+                message: 'Add an Impact Offset on cold bore entries to place them on the zero target.',
+              )
+            else
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final size = math.min(constraints.maxWidth, 420.0);
+                  const spanMoa = 6.0;
+                  const pointSize = 18.0;
+
+                  Offset pointOffset(_ColdBoreRow row) {
+                    final dx = _shotOffsetToMoa(row.shot, row.shot.offsetX!).clamp(-spanMoa, spanMoa);
+                    final dy = _shotOffsetToMoa(row.shot, row.shot.offsetY!).clamp(-spanMoa, spanMoa);
+                    final nx = (dx + spanMoa) / (spanMoa * 2);
+                    final ny = (spanMoa - dy) / (spanMoa * 2);
+                    return Offset(nx * size, ny * size);
+                  }
+
+                  return Center(
+                    child: SizedBox(
+                      width: size,
+                      height: size,
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          Positioned.fill(
+                            child: CustomPaint(
+                              painter: _ColdBoreTargetPainter(
+                                colorScheme: Theme.of(context).colorScheme,
+                              ),
+                            ),
+                          ),
+                          ...plottedRows.map((row) {
+                            final offset = pointOffset(row);
+                            final isBaseline = row.shot.isBaseline;
+                            return Positioned(
+                              left: offset.dx - pointSize / 2,
+                              top: offset.dy - pointSize / 2,
+                              width: pointSize,
+                              height: pointSize,
+                              child: Tooltip(
+                                message: '${_fmtDateTime(row.shot.time)}\n${row.shot.distance} • ${row.shot.result}',
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    customBorder: const CircleBorder(),
+                                    onTap: state == null ? null : () {
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) => ColdBoreEntryScreen(
+                                            state: state!,
+                                            sessionId: row.session.id,
+                                            shotId: row.shot.id,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                    child: DecoratedBox(
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: isBaseline
+                                            ? Theme.of(context).colorScheme.tertiary
+                                            : Theme.of(context).colorScheme.primary,
+                                        border: Border.all(color: Colors.white, width: 2),
+                                      ),
+                                      child: isBaseline
+                                          ? const Icon(Icons.star, size: 11, color: Colors.white)
+                                          : const SizedBox.shrink(),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          }),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              children: const [
+                _ColdBoreLegendDot(label: 'Cold bore shot'),
+                _ColdBoreLegendDot(label: 'Baseline', isBaseline: true),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ColdBoreLegendDot extends StatelessWidget {
+  final String label;
+  final bool isBaseline;
+
+  const _ColdBoreLegendDot({
+    required this.label,
+    this.isBaseline = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isBaseline
+        ? Theme.of(context).colorScheme.tertiary
+        : Theme.of(context).colorScheme.primary;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 14,
+          height: 14,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: color,
+            border: Border.all(color: Colors.white, width: 1.5),
+          ),
+          child: isBaseline ? const Icon(Icons.star, size: 9, color: Colors.white) : null,
+        ),
+        const SizedBox(width: 6),
+        Text(label),
+      ],
+    );
+  }
+}
+
+class _ColdBoreTargetPainter extends CustomPainter {
+  final ColorScheme colorScheme;
+
+  const _ColdBoreTargetPainter({
+    required this.colorScheme,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2;
+    final ringPaint = Paint()
+      ..color = colorScheme.outline.withValues(alpha: 0.55)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
+    final boldRingPaint = Paint()
+      ..color = colorScheme.onSurface.withValues(alpha: 0.8)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.8;
+    final fillPaint = Paint()
+      ..color = colorScheme.surfaceContainerHighest.withValues(alpha: 0.4)
+      ..style = PaintingStyle.fill;
+
+    canvas.drawCircle(center, radius, fillPaint);
+    for (final factor in [1.0, 0.8, 0.6, 0.4, 0.2]) {
+      canvas.drawCircle(center, radius * factor, factor == 0.2 ? boldRingPaint : ringPaint);
+    }
+
+    final linePaint = Paint()
+      ..color = colorScheme.onSurface.withValues(alpha: 0.75)
+      ..strokeWidth = 1.4;
+    canvas.drawLine(Offset(center.dx, 0), Offset(center.dx, size.height), linePaint);
+    canvas.drawLine(Offset(0, center.dy), Offset(size.width, center.dy), linePaint);
+
+    final gridPaint = Paint()
+      ..color = colorScheme.outline.withValues(alpha: 0.3)
+      ..strokeWidth = 1;
+    for (var i = 1; i < 6; i++) {
+      final step = size.width * i / 6;
+      canvas.drawLine(Offset(step, 0), Offset(step, size.height), gridPaint);
+      canvas.drawLine(Offset(0, step), Offset(size.width, step), gridPaint);
+    }
+
+    final centerPaint = Paint()..color = colorScheme.error;
+    canvas.drawCircle(center, 4, centerPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _ColdBoreTargetPainter oldDelegate) {
+    return oldDelegate.colorScheme != colorScheme;
   }
 }
 
@@ -5049,6 +5834,142 @@ _SectionTitle('Cold Bore Photos'),
   }
 }
 
+class _EndSessionResult {
+  final int totalShotCount;
+  final Map<String, int> appliedShotCounts;
+
+  const _EndSessionResult({
+    required this.totalShotCount,
+    required this.appliedShotCounts,
+  });
+}
+
+class _EndSessionRifleCount {
+  final String rifleId;
+  final String label;
+  final int initialShotCount;
+
+  const _EndSessionRifleCount({
+    required this.rifleId,
+    required this.label,
+    required this.initialShotCount,
+  });
+}
+
+class _EndSessionDialog extends StatefulWidget {
+  final List<_EndSessionRifleCount> rifleCounts;
+
+  const _EndSessionDialog({
+    required this.rifleCounts,
+  });
+
+  @override
+  State<_EndSessionDialog> createState() => _EndSessionDialogState();
+}
+
+class _EndSessionDialogState extends State<_EndSessionDialog> {
+  late final List<TextEditingController> _shotCountCtrls;
+  late final List<bool> _applyToRifle;
+
+  @override
+  void initState() {
+    super.initState();
+    _shotCountCtrls = [
+      for (final rifle in widget.rifleCounts)
+        TextEditingController(text: rifle.initialShotCount.toString()),
+    ];
+    _applyToRifle = [for (final _ in widget.rifleCounts) true];
+  }
+
+  @override
+  void dispose() {
+    for (final ctrl in _shotCountCtrls) {
+      ctrl.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('End session'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Save the confirmed shot count and close the current session.'),
+            const SizedBox(height: 12),
+            if (widget.rifleCounts.isEmpty)
+              const Text('No rifles with logged shots were detected in this session yet.')
+            else
+              ...List.generate(widget.rifleCounts.length, (index) {
+                final rifle = widget.rifleCounts[index];
+                return Padding(
+                  padding: EdgeInsets.only(bottom: index == widget.rifleCounts.length - 1 ? 0 : 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        rifle.label,
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: _shotCountCtrls[index],
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                        decoration: const InputDecoration(
+                          labelText: 'Shots for this rifle',
+                          helperText: 'Edit if the detected count needs correction.',
+                        ),
+                      ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        value: _applyToRifle[index],
+                        onChanged: (value) => setState(() => _applyToRifle[index] = value),
+                        title: const Text('Apply to rifle rounds'),
+                        subtitle: const Text('This updates the rifle round count when the session ends.'),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () {
+            final appliedShotCounts = <String, int>{};
+            var totalShotCount = 0;
+            for (var i = 0; i < widget.rifleCounts.length; i++) {
+              final shotCount = int.tryParse(_shotCountCtrls[i].text.trim());
+              if (shotCount == null) return;
+              totalShotCount += shotCount;
+              if (_applyToRifle[i] && shotCount > 0) {
+                appliedShotCounts[widget.rifleCounts[i].rifleId] = shotCount;
+              }
+            }
+            Navigator.pop(
+              context,
+              _EndSessionResult(
+                totalShotCount: totalShotCount,
+                appliedShotCounts: appliedShotCounts,
+              ),
+            );
+          },
+          child: const Text('End session'),
+        ),
+      ],
+    );
+  }
+}
+
 class EquipmentScreen extends StatefulWidget {
   final AppState state;
   const EquipmentScreen({super.key, required this.state});
@@ -5080,6 +6001,9 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
       purchasePrice: res.purchasePrice,
       scopeUnit: res.scopeUnit,
       manualRoundCount: res.manualRoundCount,
+      barrelRoundCount: res.barrelRoundCount,
+      barrelInstalledDate: res.barrelInstalledDate,
+      barrelNotes: res.barrelNotes,
       scopeMake: res.scopeMake,
       scopeModel: res.scopeModel,
       scopeSerial: res.scopeSerial,
@@ -5131,6 +6055,10 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
       purchasePrice: res.purchasePrice,
       purchaseLocation: res.purchaseLocation,
       scopeUnit: res.scopeUnit,
+      manualRoundCount: res.manualRoundCount,
+      barrelRoundCount: res.barrelRoundCount,
+      barrelInstalledDate: res.barrelInstalledDate,
+      barrelNotes: res.barrelNotes,
       scopeMake: res.scopeMake,
       scopeModel: res.scopeModel,
       scopeSerial: res.scopeSerial,
@@ -6106,58 +7034,15 @@ class _ColdBoreDialogState extends State<_ColdBoreDialog> {
   final _distance = TextEditingController(text: '100 yd');
   final _result = TextEditingController(text: 'Impact OK');
   final _notes = TextEditingController();
+  final _hOffsetCtrl = TextEditingController();
+  final _vOffsetCtrl = TextEditingController();
 
-  // Impact offset (dial)
   bool _hasOffset = false;
-  double _hOffset = 0.0; // Right + / Left -
-  double _vOffset = 0.0; // Up + / Down -
   String _offsetUnit = 'in';
+  bool _horizontalRight = true;
+  bool _verticalUp = true;
 
   Uint8List? _photoBytes;
-
-  double _maxForUnit(String u) {
-    switch (u) {
-      case 'mil':
-        return 10.0;
-      case 'moa':
-        return 30.0;
-      case 'in':
-      default:
-        return 12.0;
-    }
-  }
-
-  String _dirLabel(double v, String pos, String neg) {
-    if (v == 0) return '0';
-    return v > 0 ? '$pos ${v.abs().toStringAsFixed(2)}' : '$neg ${v.abs().toStringAsFixed(2)}';
-  }
-
-    double? _parseLeadingDouble(String s) {
-    final m = RegExp(r'[-+]?(?:\d+\.?\d*|\.\d+)').firstMatch(s);
-    if (m == null) return null;
-    return double.tryParse(m.group(0)!);
-  }
-
-  double _stepForUnit(String u) {
-    if (u == 'moa') return 0.25; // 1/4 MOA clicks
-    if (u == 'mil') return 0.1;  // 0.1 mil clicks
-
-    // inches: snap to quarter-inch increments
-    return 0.25;
-  }
-
-  int _divisionsForUnit(String u) {
-    final maxV = _maxForUnit(u);
-    final step = _stepForUnit(u);
-    final div = ((2 * maxV) / step).round();
-    return div.clamp(1, 2000);
-  }
-
-  double _snap(double value) {
-    final step = _stepForUnit(_offsetUnit);
-    if (step <= 0) return value;
-    return (value / step).round() * step;
-  }
 
 late DateTime _time;
 
@@ -6172,6 +7057,8 @@ late DateTime _time;
     _distance.dispose();
     _result.dispose();
     _notes.dispose();
+    _hOffsetCtrl.dispose();
+    _vOffsetCtrl.dispose();
     super.dispose();
   }  Future<void> _pickTime() async {
     final t = await showTimePicker(
@@ -6248,14 +7135,6 @@ late DateTime _time;
           TextField(
             controller: _distance,
             decoration: const InputDecoration(labelText: 'Distance'),
-            onChanged: (_) {
-              if (_hasOffset && _offsetUnit == 'in') {
-                setState(() {
-                  _hOffset = _snap(_hOffset);
-                  _vOffset = _snap(_vOffset);
-                });
-              }
-            },
             textInputAction: TextInputAction.next,
           ),
           TextField(
@@ -6305,11 +7184,10 @@ late DateTime _time;
           const SizedBox(height: 12),
 
           
-          // Impact Offset (dial)
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('Impact Offset', style: TextStyle(fontWeight: FontWeight.w600)),
-            subtitle: const Text('Optional: use a dial for Left/Right and Up/Down'),
+            subtitle: const Text('Optional: pick a direction and type the amount'),
             value: _hasOffset,
             onChanged: (v) => setState(() => _hasOffset = v),
           ),
@@ -6324,34 +7202,80 @@ late DateTime _time;
               ],
               onChanged: (v) => setState(() {
                 _offsetUnit = v ?? 'in';
-                _hOffset = _snap(_hOffset);
-                _vOffset = _snap(_vOffset);
               }),
               decoration: const InputDecoration(labelText: 'Units'),
             ),
             const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text('Horizontal: ${_dirLabel(_hOffset, "Right", "Left")}'),
-            ),
-            Slider(
-              value: _hOffset.clamp(-_maxForUnit(_offsetUnit), _maxForUnit(_offsetUnit)),
-              min: -_maxForUnit(_offsetUnit),
-              max: _maxForUnit(_offsetUnit),
-              divisions: _divisionsForUnit(_offsetUnit),
-              onChanged: (v) => setState(() => _hOffset = _snap(v)),
-            ),
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text('Vertical: ${_dirLabel(_vOffset, "Up", "Down")}'),
-            ),
-            Slider(
-              value: _vOffset.clamp(-_maxForUnit(_offsetUnit), _maxForUnit(_offsetUnit)),
-              min: -_maxForUnit(_offsetUnit),
-              max: _maxForUnit(_offsetUnit),
-              divisions: _divisionsForUnit(_offsetUnit),
-              onChanged: (v) => setState(() => _vOffset = _snap(v)),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Horizontal'),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 8,
+                        children: [
+                          ChoiceChip(
+                            label: const Text('Left'),
+                            selected: !_horizontalRight,
+                            onSelected: (_) => setState(() => _horizontalRight = false),
+                          ),
+                          ChoiceChip(
+                            label: const Text('Right'),
+                            selected: _horizontalRight,
+                            onSelected: (_) => setState(() => _horizontalRight = true),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _hOffsetCtrl,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: InputDecoration(
+                          labelText: 'Amount (${_offsetUnit.toUpperCase()})',
+                          helperText: 'Type the horizontal amount',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Vertical'),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 8,
+                        children: [
+                          ChoiceChip(
+                            label: const Text('Up'),
+                            selected: _verticalUp,
+                            onSelected: (_) => setState(() => _verticalUp = true),
+                          ),
+                          ChoiceChip(
+                            label: const Text('Down'),
+                            selected: !_verticalUp,
+                            onSelected: (_) => setState(() => _verticalUp = false),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _vOffsetCtrl,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: InputDecoration(
+                          labelText: 'Amount (${_offsetUnit.toUpperCase()})',
+                          helperText: 'Type the vertical amount',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ],
             ],
@@ -6370,8 +7294,14 @@ late DateTime _time;
             double? oy;
 
             if (_hasOffset) {
-              ox = _snap(_hOffset);
-              oy = _snap(_vOffset);
+              final hText = _hOffsetCtrl.text.trim();
+              final vText = _vOffsetCtrl.text.trim();
+              final hAmount = hText.isEmpty ? 0.0 : double.tryParse(hText);
+              final vAmount = vText.isEmpty ? 0.0 : double.tryParse(vText);
+              if (hAmount == null || vAmount == null) return;
+              ox = (_horizontalRight ? 1 : -1) * hAmount.abs();
+              oy = (_verticalUp ? 1 : -1) * vAmount.abs();
+              if (ox == null || oy == null) return;
             } else {
               ox = null;
               oy = null;
@@ -6710,6 +7640,9 @@ Navigator.of(context).pop(
       _NewRifleResult(
       scopeUnit: _scopeUnit,
         manualRoundCount: widget.existing?.manualRoundCount ?? 0,
+        barrelRoundCount: widget.existing?.barrelRoundCount ?? widget.existing?.manualRoundCount ?? 0,
+        barrelInstalledDate: widget.existing?.barrelInstalledDate,
+        barrelNotes: widget.existing?.barrelNotes ?? '',
         scopeMake: _scopeMake.text.trim().isEmpty ? null : _scopeMake.text.trim(),
         scopeModel: _scopeModel.text.trim().isEmpty ? null : _scopeModel.text.trim(),
         scopeSerial: _scopeSerial.text.trim().isEmpty ? null : _scopeSerial.text.trim(),
@@ -6906,6 +7839,9 @@ name: _name.text.trim().isEmpty ? null : _name.text.trim(),
 class _NewRifleResult {
   final ScopeUnit scopeUnit;
   final int manualRoundCount;
+  final int? barrelRoundCount;
+  final DateTime? barrelInstalledDate;
+  final String barrelNotes;
 
   final String? scopeMake;
   final String? scopeModel;
@@ -6931,6 +7867,9 @@ final String? name;
   _NewRifleResult({
     this.scopeUnit = ScopeUnit.mil,
     this.manualRoundCount = 0,
+    this.barrelRoundCount,
+    this.barrelInstalledDate,
+    this.barrelNotes = '',
     this.scopeMake,
     this.scopeModel,
     this.scopeSerial,
@@ -7446,10 +8385,13 @@ class MaintenanceHubScreen extends StatelessWidget {
             itemBuilder: (context, i) {
               final r = rifles[i];
               final total = state.totalRoundsForRifle(r.id);
+              final barrelDate = r.barrelInstalledDate == null ? null : _fmtDate(r.barrelInstalledDate!);
               return ListTile(
                 leading: const Icon(Icons.build_outlined),
                 title: Text(_rifleLabel(r)),
-                subtitle: Text('Total rounds: $total'),
+                subtitle: Text(
+                  'Rounds on rifle: $total${barrelDate == null ? '' : ' | Barrel since $barrelDate'}',
+                ),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () {
                   Navigator.of(context).push(
@@ -7486,10 +8428,38 @@ class _RifleServiceLogScreenState extends State<RifleServiceLogScreen> {
     widget.state.addRifleService(rifleId: widget.rifleId, entry: res);
   }
 
+  Future<void> _resetBarrelCount() async {
+    final rifle = widget.state.rifleById(widget.rifleId);
+    if (rifle == null) return;
+    final res = await showDialog<_ResetBarrelResult>(
+      context: context,
+      builder: (_) => _ResetBarrelDialog(rifle: rifle),
+    );
+    if (res == null) return;
+    widget.state.resetRifleBarrelCount(
+      rifleId: widget.rifleId,
+      installedDate: res.installedDate,
+      notes: res.notes,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Rifle round count reset for the new barrel.')),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Service log')),
+      appBar: AppBar(
+        title: const Text('Service log'),
+        actions: [
+          IconButton(
+            tooltip: 'Reset barrel count',
+            onPressed: _resetBarrelCount,
+            icon: const Icon(Icons.refresh_outlined),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: _addService,
         child: const Icon(Icons.add),
@@ -7499,16 +8469,45 @@ class _RifleServiceLogScreenState extends State<RifleServiceLogScreen> {
         builder: (context, _) {
           final rifle = widget.state.rifleById(widget.rifleId);
           final services = rifle?.services ?? const <RifleServiceEntry>[];
+          final roundCount = widget.state.totalRoundsForRifle(widget.rifleId);
 
           if (rifle == null) return const Center(child: Text('Rifle not found.'));
-          if (services.isEmpty) return const Center(child: Text('No services logged yet.'));
 
           return ListView.separated(
             padding: const EdgeInsets.all(12),
-            itemCount: services.length,
+            itemCount: services.length + 1,
             separatorBuilder: (_, __) => const Divider(height: 1),
             itemBuilder: (context, i) {
-              final s = services[i];
+              if (i == 0) {
+                return Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Rounds on rifle: $roundCount',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        if (rifle.barrelInstalledDate != null) ...[
+                          const SizedBox(height: 4),
+                          Text('Current barrel installed: ${_fmtDate(rifle.barrelInstalledDate!)}'),
+                        ],
+                        if (rifle.barrelNotes.trim().isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text('Barrel notes: ${rifle.barrelNotes.trim()}'),
+                        ],
+                        if (services.isEmpty) ...[
+                          const SizedBox(height: 12),
+                          const Text('No services logged yet. Tap + to add a service entry.'),
+                        ],
+                      ],
+                    ),
+                  ),
+                );
+              }
+
+              final s = services[i - 1];
               return ListTile(
                 title: Text(s.service),
                 subtitle: Text('${_fmtDate(s.date)} • ${s.roundsAtService} rds${s.notes.trim().isEmpty ? '' : ' • ${s.notes.trim()}'}'),
@@ -7604,7 +8603,7 @@ class _AddRifleServiceDialogState extends State<_AddRifleServiceDialog> {
             const Divider(),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Use current total rounds'),
+              title: const Text('Use current rifle rounds'),
               subtitle: Text(_useCurrentRounds ? '$currentRounds rds' : 'Enter manually'),
               value: _useCurrentRounds,
               onChanged: (v) => setState(() => _useCurrentRounds = v),
@@ -7641,6 +8640,101 @@ class _AddRifleServiceDialogState extends State<_AddRifleServiceDialog> {
             Navigator.pop(context, entry);
           },
           child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
+class _ResetBarrelResult {
+  final DateTime installedDate;
+  final String notes;
+
+  const _ResetBarrelResult({
+    required this.installedDate,
+    required this.notes,
+  });
+}
+
+class _ResetBarrelDialog extends StatefulWidget {
+  final Rifle rifle;
+
+  const _ResetBarrelDialog({required this.rifle});
+
+  @override
+  State<_ResetBarrelDialog> createState() => _ResetBarrelDialogState();
+}
+
+class _ResetBarrelDialogState extends State<_ResetBarrelDialog> {
+  late DateTime _installedDate;
+  late final TextEditingController _notesCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _installedDate = widget.rifle.barrelInstalledDate ?? DateTime.now();
+    _notesCtrl = TextEditingController(text: widget.rifle.barrelNotes);
+  }
+
+  @override
+  void dispose() {
+    _notesCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Reset barrel count'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Use this when a new barrel is installed. Lifetime rounds stay unchanged.'),
+            const SizedBox(height: 12),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Barrel installed'),
+              subtitle: Text(_fmtDate(_installedDate)),
+              trailing: const Icon(Icons.calendar_today_outlined),
+              onTap: () async {
+                final picked = await showDatePicker(
+                  context: context,
+                  initialDate: _installedDate,
+                  firstDate: DateTime(2000),
+                  lastDate: DateTime(2100),
+                );
+                if (picked != null) {
+                  setState(() => _installedDate = picked);
+                }
+              },
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _notesCtrl,
+              maxLines: 3,
+              decoration: const InputDecoration(labelText: 'Barrel notes (optional)'),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () {
+            Navigator.pop(
+              context,
+              _ResetBarrelResult(
+                installedDate: _installedDate,
+                notes: _notesCtrl.text.trim(),
+              ),
+            );
+          },
+          child: const Text('Reset'),
         ),
       ],
     );
