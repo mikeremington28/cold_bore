@@ -9,6 +9,7 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:noise_meter/noise_meter.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:universal_html/html.dart' as html;
@@ -232,6 +233,18 @@ String _sessionEvidenceId(TrainingSession s) {
     'rifleId': s.rifleId,
     'ammoLotId': s.ammoLotId,
     'notes': s.notes,
+    'shotTimerElapsedMs': s.shotTimerElapsedMs,
+    'shotTimerFirstShotMs': s.shotTimerFirstShotMs,
+    'shotTimerSplitMs': s.shotTimerSplitMs,
+    'timerRuns': s.timerRuns
+        .map((run) => {
+              'id': run.id,
+              'time': _fmtDateTimeIso(run.time),
+              'elapsedMs': run.elapsedMs,
+              'firstShotMs': run.firstShotMs,
+              'splitMs': run.splitMs,
+            })
+        .toList(),
     'shots': s.shots
         .map((x) => {
               'id': x.id,
@@ -305,6 +318,12 @@ String _buildCasePacket(AppState state, {
   b.writeln('COLD BORE - CASE PACKET');
   b.writeln('Schema: $kExportSchemaVersion');
   b.writeln('Generated: ${_fmtDateTimeIso(DateTime.now())}');
+  if ((s.shotTimerElapsedMs ?? 0) > 0 || (s.shotTimerFirstShotMs ?? 0) > 0 || s.shotTimerSplitMs.isNotEmpty) {
+    b.writeln('â€¢ Shot timer total (ms): ${s.shotTimerElapsedMs ?? 0}');
+    b.writeln('â€¢ First shot (ms): ${s.shotTimerFirstShotMs ?? 0}');
+    b.writeln('â€¢ Split times (ms): ${s.shotTimerSplitMs.isEmpty ? '-' : s.shotTimerSplitMs.join(', ')}');
+  }
+
   b.writeln('');
   b.writeln('SESSION');
   b.writeln('• Session ID: ${s.id}');
@@ -1960,6 +1979,62 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void saveSessionTimer({
+    required String sessionId,
+    int? elapsedMs,
+    int? firstShotMs,
+    List<int> splitMs = const [],
+  }) {
+    final idx = _sessions.indexWhere((s) => s.id == sessionId);
+    if (idx < 0) return;
+    final session = _sessions[idx];
+    _sessions[idx] = session.copyWith(
+      shotTimerElapsedMs: elapsedMs,
+      shotTimerFirstShotMs: firstShotMs,
+      shotTimerSplitMs: List<int>.from(splitMs),
+    );
+    notifyListeners();
+  }
+
+  void addSessionTimerRun({
+    required String sessionId,
+    required int elapsedMs,
+    int firstShotMs = 0,
+    List<int> splitMs = const [],
+  }) {
+    final idx = _sessions.indexWhere((s) => s.id == sessionId);
+    if (idx < 0) return;
+    final session = _sessions[idx];
+    final run = SessionTimerRun(
+      id: _newId(),
+      time: DateTime.now(),
+      elapsedMs: elapsedMs,
+      firstShotMs: firstShotMs,
+      splitMs: List<int>.from(splitMs),
+    );
+    _sessions[idx] = session.copyWith(
+      shotTimerElapsedMs: elapsedMs,
+      shotTimerFirstShotMs: firstShotMs,
+      shotTimerSplitMs: List<int>.from(splitMs),
+      timerRuns: [...session.timerRuns, run],
+    );
+    notifyListeners();
+  }
+
+  void clearSessionTimer({
+    required String sessionId,
+  }) {
+    final idx = _sessions.indexWhere((s) => s.id == sessionId);
+    if (idx < 0) return;
+    final session = _sessions[idx];
+    _sessions[idx] = session.copyWith(
+      shotTimerElapsedMs: 0,
+      shotTimerFirstShotMs: 0,
+      shotTimerSplitMs: const [],
+    );
+    notifyListeners();
+  }
+
   void endSession({
     required String sessionId,
     int? confirmedShotCount,
@@ -2625,6 +2700,22 @@ SessionPhoto _sessionPhotoFromMap(Map<String, dynamic> map) => SessionPhoto(
       caption: (map['caption'] ?? '').toString(),
     );
 
+Map<String, dynamic> _sessionTimerRunToMap(SessionTimerRun run) => <String, dynamic>{
+      'id': run.id,
+      'time': run.time.toIso8601String(),
+      'elapsedMs': run.elapsedMs,
+      'firstShotMs': run.firstShotMs,
+      'splitMs': run.splitMs,
+    };
+
+SessionTimerRun _sessionTimerRunFromMap(Map<String, dynamic> map) => SessionTimerRun(
+      id: (map['id'] ?? '').toString(),
+      time: _parseDateTime(map['time']),
+      elapsedMs: _toNullableInt(map['elapsedMs']) ?? 0,
+      firstShotMs: _toNullableInt(map['firstShotMs']) ?? 0,
+      splitMs: ((map['splitMs'] as List?) ?? const []).map((e) => _toNullableInt(e) ?? 0).toList(),
+    );
+
 Map<String, dynamic> _trainingSessionToMap(TrainingSession session) => <String, dynamic>{
       'id': session.id,
       'userId': session.userId,
@@ -2644,6 +2735,10 @@ Map<String, dynamic> _trainingSessionToMap(TrainingSession session) => <String, 
       'confirmedShotCount': session.confirmedShotCount,
       'shotCountAppliedToRifle': session.shotCountAppliedToRifle,
       'endedAt': session.endedAt?.toIso8601String(),
+      'shotTimerElapsedMs': session.shotTimerElapsedMs,
+      'shotTimerFirstShotMs': session.shotTimerFirstShotMs,
+      'shotTimerSplitMs': session.shotTimerSplitMs,
+      'timerRuns': session.timerRuns.map(_sessionTimerRunToMap).toList(),
       'trainingDopeByString': session.trainingDopeByString.map(
         (key, value) => MapEntry(key, value.map(_dopeEntryToMap).toList()),
       ),
@@ -2705,6 +2800,14 @@ TrainingSession _trainingSessionFromMap(Map<String, dynamic> map) => TrainingSes
       confirmedShotCount: _toNullableInt(map['confirmedShotCount']),
       shotCountAppliedToRifle: map['shotCountAppliedToRifle'] == true,
       endedAt: map['endedAt'] == null ? null : _parseDateTime(map['endedAt']),
+      shotTimerElapsedMs: _toNullableInt(map['shotTimerElapsedMs']),
+      shotTimerFirstShotMs: _toNullableInt(map['shotTimerFirstShotMs']),
+      shotTimerSplitMs: ((map['shotTimerSplitMs'] as List?) ?? const [])
+          .map((e) => _toNullableInt(e) ?? 0)
+          .toList(),
+      timerRuns: ((map['timerRuns'] as List?) ?? const [])
+          .map((e) => _sessionTimerRunFromMap(Map<String, dynamic>.from(e as Map)))
+          .toList(),
     );
 
 class UserProfile {
@@ -2992,6 +3095,10 @@ class TrainingSession {
   final int? confirmedShotCount;
   final bool shotCountAppliedToRifle;
   final DateTime? endedAt;
+  final int? shotTimerElapsedMs;
+  final int? shotTimerFirstShotMs;
+  final List<int> shotTimerSplitMs;
+  final List<SessionTimerRun> timerRuns;
 
   TrainingSession({
     required this.id,
@@ -3018,6 +3125,10 @@ class TrainingSession {
     this.confirmedShotCount,
     this.shotCountAppliedToRifle = false,
     this.endedAt,
+    this.shotTimerElapsedMs,
+    this.shotTimerFirstShotMs,
+    this.shotTimerSplitMs = const [],
+    this.timerRuns = const [],
   });
 
 
@@ -3044,6 +3155,10 @@ class TrainingSession {
     int? confirmedShotCount,
     bool? shotCountAppliedToRifle,
     DateTime? endedAt,
+    int? shotTimerElapsedMs,
+    int? shotTimerFirstShotMs,
+    List<int>? shotTimerSplitMs,
+    List<SessionTimerRun>? timerRuns,
   }) {
     return TrainingSession(
       id: id,
@@ -3070,10 +3185,30 @@ class TrainingSession {
       confirmedShotCount: confirmedShotCount ?? this.confirmedShotCount,
       shotCountAppliedToRifle: shotCountAppliedToRifle ?? this.shotCountAppliedToRifle,
       endedAt: endedAt ?? this.endedAt,
+      shotTimerElapsedMs: shotTimerElapsedMs ?? this.shotTimerElapsedMs,
+      shotTimerFirstShotMs: shotTimerFirstShotMs ?? this.shotTimerFirstShotMs,
+      shotTimerSplitMs: shotTimerSplitMs ?? this.shotTimerSplitMs,
+      timerRuns: timerRuns ?? this.timerRuns,
     );
   }
 
 
+}
+
+class SessionTimerRun {
+  final String id;
+  final DateTime time;
+  final int elapsedMs;
+  final int firstShotMs;
+  final List<int> splitMs;
+
+  const SessionTimerRun({
+    required this.id,
+    required this.time,
+    required this.elapsedMs,
+    required this.firstShotMs,
+    required this.splitMs,
+  });
 }
 
 class ShotEntry {
@@ -3222,6 +3357,7 @@ class _HomeShellState extends State<HomeShell> {
     final pages = <Widget>[
       SessionsScreen(state: widget.state),
       ColdBoreScreen(state: widget.state),
+      const ShotTimerToolScreen(),
       EquipmentScreen(state: widget.state),
       DataScreen(state: widget.state),
       ExportPlaceholderScreen(state: widget.state),
@@ -3267,6 +3403,7 @@ class _HomeShellState extends State<HomeShell> {
             destinations: const [
               NavigationDestination(icon: Icon(Icons.event_note_outlined), label: 'Sessions'),
               NavigationDestination(icon: Icon(Icons.ac_unit_outlined), label: 'Cold Bore'),
+              NavigationDestination(icon: Icon(Icons.timer_outlined), label: 'Timer'),
               NavigationDestination(icon: Icon(Icons.build_outlined), label: 'Equipment'),
               NavigationDestination(icon: Icon(Icons.list_alt_outlined), label: 'Data'),
               NavigationDestination(icon: Icon(Icons.ios_share_outlined), label: 'Export'),
@@ -3909,6 +4046,787 @@ const SizedBox(height: 12),
   }
 }
 
+class _SessionShotTimerCard extends StatefulWidget {
+  final AppState state;
+  final String sessionId;
+
+  const _SessionShotTimerCard({
+    required this.state,
+    required this.sessionId,
+  });
+
+  @override
+  State<_SessionShotTimerCard> createState() => _SessionShotTimerCardState();
+}
+
+class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
+  final Stopwatch _stopwatch = Stopwatch();
+  Timer? _ticker;
+  StreamSubscription<NoiseReading>? _noiseSubscription;
+  int _baseElapsedMs = 0;
+  int _elapsedMs = 0;
+  int? _firstShotMs;
+  List<int> _splitMs = const [];
+  bool _audioAssistEnabled = false;
+  double _audioThresholdDb = 92;
+  double _latestDb = 0;
+  DateTime? _lastAudioShotAt;
+  String? _audioAssistMessage;
+
+  bool get _isRunning => _stopwatch.isRunning;
+  bool get _audioAssistSupported => !kIsWeb && (defaultTargetPlatform == TargetPlatform.iOS || defaultTargetPlatform == TargetPlatform.android);
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFromSession();
+  }
+
+  @override
+  void didUpdateWidget(covariant _SessionShotTimerCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_isRunning &&
+        (oldWidget.sessionId != widget.sessionId || oldWidget.state != widget.state)) {
+      _loadFromSession();
+    }
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    _noiseSubscription?.cancel();
+    _stopwatch.stop();
+    super.dispose();
+  }
+
+  void _loadFromSession() {
+    final session = widget.state.getSessionById(widget.sessionId);
+    _baseElapsedMs = 0;
+    _elapsedMs = ((session?.shotTimerElapsedMs ?? 0) > 0) ? session!.shotTimerElapsedMs! : 0;
+    _firstShotMs = ((session?.shotTimerFirstShotMs ?? 0) > 0) ? session!.shotTimerFirstShotMs : null;
+    _splitMs = [
+      for (final split in session?.shotTimerSplitMs ?? const <int>[])
+        if (split > 0) split,
+    ];
+  }
+
+  int _currentElapsedMs() {
+    if (!_isRunning) return _elapsedMs;
+    return _baseElapsedMs + _stopwatch.elapsedMilliseconds;
+  }
+
+  int _lastMarkMs() {
+    if (_firstShotMs == null) return 0;
+    var total = _firstShotMs!;
+    for (final split in _splitMs) {
+      total += split;
+    }
+    return total;
+  }
+
+  List<int> _shotMarks(int? firstShotMs, List<int> splitMs) {
+    if ((firstShotMs ?? 0) <= 0) return const [];
+    final marks = <int>[firstShotMs!];
+    var total = firstShotMs;
+    for (final split in splitMs) {
+      total += split;
+      marks.add(total);
+    }
+    return marks;
+  }
+
+  String _shotMarksLabel(List<int> marks) {
+    if (marks.isEmpty) return '-';
+    return marks.asMap().entries.map((e) => '${e.key + 1}. ${_fmtMs(e.value)}').join('   ');
+  }
+
+  void _recordShotAt(int current) {
+    _elapsedMs = current;
+    if ((_firstShotMs ?? 0) <= 0) {
+      _firstShotMs = current;
+    } else {
+      final previous = _lastMarkMs();
+      final split = current - previous;
+      if (split > 0) {
+        _splitMs = [..._splitMs, split];
+      }
+    }
+  }
+
+  Future<void> _setAudioAssist(bool enabled) async {
+    if (!_audioAssistSupported) {
+      setState(() {
+        _audioAssistEnabled = false;
+        _audioAssistMessage = 'Audio assist is available on iPhone and Android only.';
+      });
+      return;
+    }
+    if (!enabled) {
+      await _noiseSubscription?.cancel();
+      _noiseSubscription = null;
+      if (!mounted) return;
+      setState(() {
+        _audioAssistEnabled = false;
+        _latestDb = 0;
+        _audioAssistMessage = null;
+      });
+      return;
+    }
+
+    try {
+      await _noiseSubscription?.cancel();
+      _noiseSubscription = NoiseMeter().noise.listen(
+        (reading) {
+          if (!mounted) return;
+          final maxDb = reading.maxDecibel;
+          final now = DateTime.now();
+          final shouldMark = _audioAssistEnabled &&
+              _isRunning &&
+              maxDb >= _audioThresholdDb &&
+              (_lastAudioShotAt == null || now.difference(_lastAudioShotAt!).inMilliseconds >= 250);
+
+          setState(() {
+            _latestDb = maxDb;
+            if (shouldMark) {
+              _lastAudioShotAt = now;
+              _recordShotAt(_currentElapsedMs());
+            }
+          });
+          if (shouldMark) {
+            _persist();
+          }
+        },
+        onError: (Object error) {
+          if (!mounted) return;
+          setState(() {
+            _audioAssistEnabled = false;
+            _audioAssistMessage = 'Microphone unavailable. Check permissions and try again.';
+          });
+        },
+        cancelOnError: true,
+      );
+      if (!mounted) return;
+      setState(() {
+        _audioAssistEnabled = true;
+        _audioAssistMessage = 'Audio assist armed. Loud impulses can auto-mark shots.';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _audioAssistEnabled = false;
+        _audioAssistMessage = 'Microphone unavailable. Check permissions and try again.';
+      });
+    }
+  }
+
+  void _persist() {
+    widget.state.saveSessionTimer(
+      sessionId: widget.sessionId,
+      elapsedMs: _elapsedMs > 0 ? _elapsedMs : 0,
+      firstShotMs: (_firstShotMs ?? 0) > 0 ? _firstShotMs : 0,
+      splitMs: _splitMs,
+    );
+  }
+
+  void _start() {
+    if (_isRunning) return;
+    setState(() {
+      _baseElapsedMs = _elapsedMs;
+      _stopwatch
+        ..reset()
+        ..start();
+    });
+    _ticker?.cancel();
+    _ticker = Timer.periodic(const Duration(milliseconds: 16), (_) {
+      if (!mounted) return;
+      setState(() {
+        _elapsedMs = _currentElapsedMs();
+      });
+    });
+  }
+
+  Future<void> _stop() async {
+    if (!_isRunning) return;
+    _ticker?.cancel();
+    _stopwatch.stop();
+    setState(() {
+      _elapsedMs = _currentElapsedMs();
+    });
+    final action = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Save Timer?'),
+        content: const Text('Do you want to save this timer run to the session, delete it, or keep it paused for now?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'keep'),
+            child: const Text('Keep'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'delete'),
+            child: const Text('Delete'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, 'save'),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted) return;
+    switch (action) {
+      case 'save':
+        widget.state.addSessionTimerRun(
+          sessionId: widget.sessionId,
+          elapsedMs: _elapsedMs,
+          firstShotMs: _firstShotMs ?? 0,
+          splitMs: _splitMs,
+        );
+        break;
+      case 'delete':
+        _reset();
+        break;
+      case 'keep':
+      default:
+        setState(() {});
+        break;
+    }
+  }
+
+  void _markShot() {
+    if (!_isRunning) return;
+    final current = _currentElapsedMs();
+    setState(() {
+      _recordShotAt(current);
+    });
+    _persist();
+  }
+
+  void _reset() {
+    _ticker?.cancel();
+    _stopwatch
+      ..stop()
+      ..reset();
+    setState(() {
+      _baseElapsedMs = 0;
+      _elapsedMs = 0;
+      _firstShotMs = null;
+      _splitMs = const [];
+    });
+    widget.state.clearSessionTimer(sessionId: widget.sessionId);
+  }
+
+  String _fmtMs(int ms) {
+    final totalSeconds = (ms / 1000).floor();
+    final minutes = totalSeconds ~/ 60;
+    final seconds = totalSeconds % 60;
+    final milliseconds = ms % 1000;
+    if (minutes > 0) {
+      return '$minutes:${seconds.toString().padLeft(2, '0')}.${milliseconds.toString().padLeft(3, '0')}';
+    }
+    return '$seconds.${milliseconds.toString().padLeft(3, '0')}';
+  }
+
+  String _runSummary(SessionTimerRun run) {
+    final parts = <String>['total ${_fmtMs(run.elapsedMs)}'];
+    if (run.firstShotMs > 0) {
+      parts.add('first ${_fmtMs(run.firstShotMs)}');
+    }
+    if (run.splitMs.isNotEmpty) {
+      parts.add('${run.splitMs.length} split${run.splitMs.length == 1 ? '' : 's'}');
+    }
+    return parts.join(' • ');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final session = widget.state.getSessionById(widget.sessionId);
+    final isEnded = session?.endedAt != null;
+    final totalShotsMarked = (_firstShotMs == null ? 0 : 1) + _splitMs.length;
+    final savedRuns = session?.timerRuns.reversed.toList() ?? const <SessionTimerRun>[];
+    final currentShotMarks = _shotMarks(_firstShotMs, _splitMs);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Shot Timer',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                if (_isRunning)
+                  const Chip(
+                    label: Text('Running'),
+                    avatar: Icon(Icons.timer_outlined, size: 18),
+                  )
+                else if ((_elapsedMs > 0) || totalShotsMarked > 0)
+                  const Chip(
+                    label: Text('Saved'),
+                    avatar: Icon(Icons.check_circle_outline, size: 18),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _fmtMs(_currentElapsedMs()),
+              style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                Chip(
+                  label: Text('First shot: ${_firstShotMs == null ? '-' : _fmtMs(_firstShotMs!)}'),
+                ),
+                Chip(
+                  label: Text('Splits: ${_splitMs.isEmpty ? '-' : _splitMs.map(_fmtMs).join(', ')}'),
+                ),
+                Chip(
+                  label: Text('Marked shots: $totalShotsMarked'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            SelectableText(
+              'Shot marks: ${_shotMarksLabel(currentShotMarks)}',
+              style: const TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.icon(
+                  onPressed: isEnded
+                      ? null
+                      : () async {
+                          if (_isRunning) {
+                            await _stop();
+                          } else {
+                            _start();
+                          }
+                        },
+                  icon: Icon(_isRunning ? Icons.stop_circle_outlined : Icons.play_arrow_outlined),
+                  label: Text(_isRunning ? 'Stop' : ((_elapsedMs > 0 || totalShotsMarked > 0) ? 'Start / Resume' : 'Start')),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _isRunning ? _markShot : null,
+                  icon: const Icon(Icons.gps_fixed),
+                  label: const Text('Lap / Shot'),
+                ),
+                TextButton.icon(
+                  onPressed: (!_isRunning && (_elapsedMs > 0 || totalShotsMarked > 0)) ? _reset : null,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Clear'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Records total elapsed time, first-shot time, and split times for this session.',
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.72)),
+            ),
+            const SizedBox(height: 12),
+            SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Audio Assist'),
+              subtitle: Text(_audioAssistSupported
+                  ? (_audioAssistEnabled
+                      ? 'Microphone listening for loud shot impulses.'
+                      : 'Optional microphone assist for auto-marking shots.')
+                  : 'Available only in iPhone and Android app builds.'),
+              value: _audioAssistEnabled,
+              onChanged: isEnded ? null : (value) => _setAudioAssist(value),
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: Slider(
+                    value: _audioThresholdDb,
+                    min: 70,
+                    max: 120,
+                    divisions: 50,
+                    label: '${_audioThresholdDb.toStringAsFixed(0)} dB',
+                    onChanged: (_audioAssistEnabled && _audioAssistSupported)
+                        ? (value) => setState(() => _audioThresholdDb = value)
+                        : null,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text('${_audioThresholdDb.toStringAsFixed(0)} dB'),
+              ],
+            ),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                Chip(label: Text('Live level: ${_latestDb.toStringAsFixed(1)} dB')),
+                if (_audioAssistMessage != null) Chip(label: Text(_audioAssistMessage!)),
+                if (!_audioAssistSupported) const Chip(label: Text('Phone app only')),
+              ],
+            ),
+            if (savedRuns.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                childrenPadding: const EdgeInsets.only(bottom: 4),
+                title: Text('Saved Runs (${savedRuns.length})'),
+                children: [
+                  for (final run in savedRuns)
+                    ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.timer_outlined),
+                      title: Text(_runSummary(run)),
+                      subtitle: Text(
+                        '${_fmtDateTime(run.time)}\nShot marks: ${_shotMarksLabel(_shotMarks(run.firstShotMs > 0 ? run.firstShotMs : null, run.splitMs))}',
+                      ),
+                      isThreeLine: true,
+                    ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class ShotTimerToolScreen extends StatelessWidget {
+  const ShotTimerToolScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Shot Timer'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: const [
+          _StandaloneShotTimerCard(),
+        ],
+      ),
+    );
+  }
+}
+
+class _StandaloneShotTimerCard extends StatefulWidget {
+  const _StandaloneShotTimerCard();
+
+  @override
+  State<_StandaloneShotTimerCard> createState() => _StandaloneShotTimerCardState();
+}
+
+class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
+  final Stopwatch _stopwatch = Stopwatch();
+  Timer? _ticker;
+  StreamSubscription<NoiseReading>? _noiseSubscription;
+  int _baseElapsedMs = 0;
+  int _elapsedMs = 0;
+  int? _firstShotMs;
+  List<int> _splitMs = const [];
+  bool _audioAssistEnabled = false;
+  double _audioThresholdDb = 92;
+  double _latestDb = 0;
+  DateTime? _lastAudioShotAt;
+  String? _audioAssistMessage;
+
+  bool get _isRunning => _stopwatch.isRunning;
+  bool get _audioAssistSupported => !kIsWeb && (defaultTargetPlatform == TargetPlatform.iOS || defaultTargetPlatform == TargetPlatform.android);
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    _noiseSubscription?.cancel();
+    _stopwatch.stop();
+    super.dispose();
+  }
+
+  int _currentElapsedMs() {
+    if (!_isRunning) return _elapsedMs;
+    return _baseElapsedMs + _stopwatch.elapsedMilliseconds;
+  }
+
+  int _lastMarkMs() {
+    if (_firstShotMs == null) return 0;
+    var total = _firstShotMs!;
+    for (final split in _splitMs) {
+      total += split;
+    }
+    return total;
+  }
+
+  List<int> _shotMarks(int? firstShotMs, List<int> splitMs) {
+    if ((firstShotMs ?? 0) <= 0) return const [];
+    final marks = <int>[firstShotMs!];
+    var total = firstShotMs;
+    for (final split in splitMs) {
+      total += split;
+      marks.add(total);
+    }
+    return marks;
+  }
+
+  String _shotMarksLabel(List<int> marks) {
+    if (marks.isEmpty) return '-';
+    return marks.asMap().entries.map((e) => '${e.key + 1}. ${_fmtMs(e.value)}').join('   ');
+  }
+
+  void _recordShotAt(int current) {
+    _elapsedMs = current;
+    if ((_firstShotMs ?? 0) <= 0) {
+      _firstShotMs = current;
+    } else {
+      final previous = _lastMarkMs();
+      final split = current - previous;
+      if (split > 0) {
+        _splitMs = [..._splitMs, split];
+      }
+    }
+  }
+
+  Future<void> _setAudioAssist(bool enabled) async {
+    if (!_audioAssistSupported) {
+      setState(() {
+        _audioAssistEnabled = false;
+        _audioAssistMessage = 'Audio assist is available on iPhone and Android only.';
+      });
+      return;
+    }
+    if (!enabled) {
+      await _noiseSubscription?.cancel();
+      _noiseSubscription = null;
+      if (!mounted) return;
+      setState(() {
+        _audioAssistEnabled = false;
+        _latestDb = 0;
+        _audioAssistMessage = null;
+      });
+      return;
+    }
+
+    try {
+      await _noiseSubscription?.cancel();
+      _noiseSubscription = NoiseMeter().noise.listen(
+        (reading) {
+          if (!mounted) return;
+          final maxDb = reading.maxDecibel;
+          final now = DateTime.now();
+          final shouldMark = _audioAssistEnabled &&
+              _isRunning &&
+              maxDb >= _audioThresholdDb &&
+              (_lastAudioShotAt == null || now.difference(_lastAudioShotAt!).inMilliseconds >= 250);
+
+          setState(() {
+            _latestDb = maxDb;
+            if (shouldMark) {
+              _lastAudioShotAt = now;
+              _recordShotAt(_currentElapsedMs());
+            }
+          });
+        },
+        onError: (Object error) {
+          if (!mounted) return;
+          setState(() {
+            _audioAssistEnabled = false;
+            _audioAssistMessage = 'Microphone unavailable. Check permissions and try again.';
+          });
+        },
+        cancelOnError: true,
+      );
+      if (!mounted) return;
+      setState(() {
+        _audioAssistEnabled = true;
+        _audioAssistMessage = 'Audio assist armed. Loud impulses can auto-mark shots.';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _audioAssistEnabled = false;
+        _audioAssistMessage = 'Microphone unavailable. Check permissions and try again.';
+      });
+    }
+  }
+
+  void _start() {
+    if (_isRunning) return;
+    setState(() {
+      _baseElapsedMs = _elapsedMs;
+      _stopwatch
+        ..reset()
+        ..start();
+    });
+    _ticker?.cancel();
+    _ticker = Timer.periodic(const Duration(milliseconds: 16), (_) {
+      if (!mounted) return;
+      setState(() {
+        _elapsedMs = _currentElapsedMs();
+      });
+    });
+  }
+
+  void _stop() {
+    if (!_isRunning) return;
+    _ticker?.cancel();
+    _stopwatch.stop();
+    setState(() {
+      _elapsedMs = _currentElapsedMs();
+    });
+  }
+
+  void _markShot() {
+    if (!_isRunning) return;
+    final current = _currentElapsedMs();
+    setState(() {
+      _recordShotAt(current);
+    });
+  }
+
+  void _reset() {
+    _ticker?.cancel();
+    _stopwatch
+      ..stop()
+      ..reset();
+    setState(() {
+      _baseElapsedMs = 0;
+      _elapsedMs = 0;
+      _firstShotMs = null;
+      _splitMs = const [];
+    });
+  }
+
+  String _fmtMs(int ms) {
+    final totalSeconds = (ms / 1000).floor();
+    final minutes = totalSeconds ~/ 60;
+    final seconds = totalSeconds % 60;
+    final milliseconds = ms % 1000;
+    if (minutes > 0) {
+      return '$minutes:${seconds.toString().padLeft(2, '0')}.${milliseconds.toString().padLeft(3, '0')}';
+    }
+    return '$seconds.${milliseconds.toString().padLeft(3, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final totalShotsMarked = (_firstShotMs == null ? 0 : 1) + _splitMs.length;
+    final shotMarks = _shotMarks(_firstShotMs, _splitMs);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Standalone Shot Timer', style: TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Text(
+              _fmtMs(_currentElapsedMs()),
+              style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                Chip(label: Text('First shot: ${_firstShotMs == null ? '-' : _fmtMs(_firstShotMs!)}')),
+                Chip(label: Text('Splits: ${_splitMs.isEmpty ? '-' : _splitMs.map(_fmtMs).join(', ')}')),
+                Chip(label: Text('Marked shots: $totalShotsMarked')),
+              ],
+            ),
+            const SizedBox(height: 8),
+            SelectableText(
+              'Shot marks: ${_shotMarksLabel(shotMarks)}',
+              style: const TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.icon(
+                  onPressed: () {
+                    if (_isRunning) {
+                      _stop();
+                    } else {
+                      _start();
+                    }
+                  },
+                  icon: Icon(_isRunning ? Icons.stop_circle_outlined : Icons.play_arrow_outlined),
+                  label: Text(_isRunning ? 'Stop' : ((_elapsedMs > 0 || totalShotsMarked > 0) ? 'Start / Resume' : 'Start')),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _isRunning ? _markShot : null,
+                  icon: const Icon(Icons.gps_fixed),
+                  label: const Text('Lap / Shot'),
+                ),
+                TextButton.icon(
+                  onPressed: (!_isRunning && (_elapsedMs > 0 || totalShotsMarked > 0)) ? _reset : null,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Clear'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Use this outside of a session when you just need the timer by itself.',
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.72)),
+            ),
+            const SizedBox(height: 12),
+            SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Audio Assist'),
+              subtitle: Text(_audioAssistSupported
+                  ? (_audioAssistEnabled
+                      ? 'Microphone listening for loud shot impulses.'
+                      : 'Optional microphone assist for auto-marking shots.')
+                  : 'Available only in iPhone and Android app builds.'),
+              value: _audioAssistEnabled,
+              onChanged: (value) => _setAudioAssist(value),
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: Slider(
+                    value: _audioThresholdDb,
+                    min: 70,
+                    max: 120,
+                    divisions: 50,
+                    label: '${_audioThresholdDb.toStringAsFixed(0)} dB',
+                    onChanged: (_audioAssistEnabled && _audioAssistSupported)
+                        ? (value) => setState(() => _audioThresholdDb = value)
+                        : null,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text('${_audioThresholdDb.toStringAsFixed(0)} dB'),
+              ],
+            ),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                Chip(label: Text('Live level: ${_latestDb.toStringAsFixed(1)} dB')),
+                if (_audioAssistMessage != null) Chip(label: Text(_audioAssistMessage!)),
+                if (!_audioAssistSupported) const Chip(label: Text('Phone app only')),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class SessionDetailScreen extends StatelessWidget {
   final AppState state;
   final String sessionId;
@@ -4443,6 +5361,16 @@ Card(
             'Confirmed shot count: ${s.confirmedShotCount ?? s.shots.length}${s.shotCountAppliedToRifle ? ' (applied to rifle rounds)' : ''}',
           ),
         ),
+        const SizedBox(height: 4),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: SelectableText(
+            'Shot timer: ${(s.shotTimerElapsedMs ?? 0) > 0 ? '${(s.shotTimerElapsedMs! / 1000).toStringAsFixed(3)}s total' : '-'}'
+            '${(s.shotTimerFirstShotMs ?? 0) > 0 ? ' • first ${(s.shotTimerFirstShotMs! / 1000).toStringAsFixed(3)}s' : ''}'
+            '${s.shotTimerSplitMs.isNotEmpty ? ' • ${s.shotTimerSplitMs.length} split${s.shotTimerSplitMs.length == 1 ? '' : 's'}' : ''}'
+            '${s.timerRuns.isNotEmpty ? ' • ${s.timerRuns.length} saved run${s.timerRuns.length == 1 ? '' : 's'}' : ''}',
+          ),
+        ),
         const SizedBox(height: 8),
         Align(
           alignment: Alignment.centerLeft,
@@ -4460,8 +5388,6 @@ Card(
     ),
   ),
 ),
-
-              const SizedBox(height: 16),
               _SectionTitle('Notes'),
               const SizedBox(height: 8),
               Card(
@@ -4486,7 +5412,6 @@ Card(
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
                             _SectionTitle('String'),
               const SizedBox(height: 8),
               _StringSummaryCard(state: state, session: s),
@@ -4994,6 +5919,10 @@ _SectionTitle('Loadout'),
                   ),
                 ),
               ],
+              const SizedBox(height: 16),
+              _SectionTitle('Shot Timer'),
+              const SizedBox(height: 8),
+              _SessionShotTimerCard(state: state, sessionId: s.id),
               const SizedBox(height: 8),
               const Divider(),
               const SizedBox(height: 8),
@@ -5379,14 +6308,14 @@ class _ColdBoreTargetCard extends StatelessWidget {
               LayoutBuilder(
                 builder: (context, constraints) {
                   final size = math.min(constraints.maxWidth, 420.0);
-                  const spanMoa = 6.0;
-                  const pointSize = 18.0;
+                  const spanInches = 6.0;
+                  const pointSize = 16.0;
 
                   Offset pointOffset(_ColdBoreRow row) {
-                    final dx = _shotOffsetToMoa(row.shot, row.shot.offsetX!).clamp(-spanMoa, spanMoa);
-                    final dy = _shotOffsetToMoa(row.shot, row.shot.offsetY!).clamp(-spanMoa, spanMoa);
-                    final nx = (dx + spanMoa) / (spanMoa * 2);
-                    final ny = (spanMoa - dy) / (spanMoa * 2);
+                    final dx = _shotOffsetToInches(row.shot, row.shot.offsetX!).clamp(-spanInches, spanInches);
+                    final dy = _shotOffsetToInches(row.shot, row.shot.offsetY!).clamp(-spanInches, spanInches);
+                    final nx = (dx + spanInches) / (spanInches * 2);
+                    final ny = (spanInches - dy) / (spanInches * 2);
                     return Offset(nx * size, ny * size);
                   }
 
@@ -5417,7 +6346,7 @@ class _ColdBoreTargetCard extends StatelessWidget {
                                 child: Material(
                                   color: Colors.transparent,
                                   child: InkWell(
-                                    customBorder: const CircleBorder(),
+                                    borderRadius: BorderRadius.circular(4),
                                     onTap: state == null ? null : () {
                                       Navigator.of(context).push(
                                         MaterialPageRoute(
@@ -5431,7 +6360,7 @@ class _ColdBoreTargetCard extends StatelessWidget {
                                     },
                                     child: DecoratedBox(
                                       decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
+                                        borderRadius: BorderRadius.circular(4),
                                         color: isBaseline
                                             ? Theme.of(context).colorScheme.tertiary
                                             : Theme.of(context).colorScheme.primary,
@@ -5453,13 +6382,9 @@ class _ColdBoreTargetCard extends StatelessWidget {
                 },
               ),
             const SizedBox(height: 12),
-            Wrap(
-              spacing: 12,
-              runSpacing: 8,
-              children: const [
-                _ColdBoreLegendDot(label: 'Cold bore shot'),
-                _ColdBoreLegendDot(label: 'Baseline', isBaseline: true),
-              ],
+            Text(
+              'Grid spacing is 1 inch. Tap any plotted point to open that cold bore entry.',
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7)),
             ),
           ],
         ),
@@ -5512,41 +6437,43 @@ class _ColdBoreTargetPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.width / 2;
-    final ringPaint = Paint()
-      ..color = colorScheme.outline.withValues(alpha: 0.55)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.2;
-    final boldRingPaint = Paint()
-      ..color = colorScheme.onSurface.withValues(alpha: 0.8)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.8;
     final fillPaint = Paint()
       ..color = colorScheme.surfaceContainerHighest.withValues(alpha: 0.4)
       ..style = PaintingStyle.fill;
-
-    canvas.drawCircle(center, radius, fillPaint);
-    for (final factor in [1.0, 0.8, 0.6, 0.4, 0.2]) {
-      canvas.drawCircle(center, radius * factor, factor == 0.2 ? boldRingPaint : ringPaint);
-    }
-
-    final linePaint = Paint()
-      ..color = colorScheme.onSurface.withValues(alpha: 0.75)
+    final borderPaint = Paint()
+      ..color = colorScheme.onSurface.withValues(alpha: 0.72)
+      ..style = PaintingStyle.stroke
       ..strokeWidth = 1.4;
-    canvas.drawLine(Offset(center.dx, 0), Offset(center.dx, size.height), linePaint);
-    canvas.drawLine(Offset(0, center.dy), Offset(size.width, center.dy), linePaint);
 
     final gridPaint = Paint()
-      ..color = colorScheme.outline.withValues(alpha: 0.3)
+      ..color = colorScheme.outline.withValues(alpha: 0.35)
       ..strokeWidth = 1;
-    for (var i = 1; i < 6; i++) {
-      final step = size.width * i / 6;
-      canvas.drawLine(Offset(step, 0), Offset(step, size.height), gridPaint);
-      canvas.drawLine(Offset(0, step), Offset(size.width, step), gridPaint);
+    final axisPaint = Paint()
+      ..color = colorScheme.onSurface.withValues(alpha: 0.82)
+      ..strokeWidth = 1.7;
+
+    canvas.drawRect(Offset.zero & size, fillPaint);
+    canvas.drawRect(Offset.zero & size, borderPaint);
+
+    const halfSpanInches = 6.0;
+    const fullSpanInches = halfSpanInches * 2;
+    final step = size.width / fullSpanInches;
+    for (var i = 1; i < fullSpanInches; i++) {
+      final offset = step * i;
+      if ((offset - center.dx).abs() < 0.01 || (offset - center.dy).abs() < 0.01) {
+        continue;
+      }
+      canvas.drawLine(Offset(offset, 0), Offset(offset, size.height), gridPaint);
+      canvas.drawLine(Offset(0, offset), Offset(size.width, offset), gridPaint);
     }
+
+    canvas.drawLine(Offset(center.dx, 0), Offset(center.dx, size.height), axisPaint);
+    canvas.drawLine(Offset(0, center.dy), Offset(size.width, center.dy), axisPaint);
 
     final centerPaint = Paint()..color = colorScheme.error;
     canvas.drawCircle(center, 4, centerPaint);
+    canvas.drawLine(Offset(center.dx - 10, center.dy), Offset(center.dx + 10, center.dy), axisPaint);
+    canvas.drawLine(Offset(center.dx, center.dy - 10), Offset(center.dx, center.dy + 10), axisPaint);
   }
 
   @override
@@ -5722,6 +6649,26 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
           return const Scaffold(body: Center(child: Text('Entry not found')));
         }
 
+        String? stringId;
+        for (final entry in s.shotsByString.entries) {
+          if (entry.value.any((x) => x.id == shot.id)) {
+            stringId = entry.key;
+            break;
+          }
+        }
+        final stringIndex = stringId == null ? -1 : s.strings.indexWhere((x) => x.id == stringId);
+        final stringMeta = stringIndex >= 0 ? s.strings[stringIndex] : null;
+        final rifle = widget.state.rifleById(stringMeta?.rifleId ?? s.rifleId);
+        final ammo = widget.state.ammoById(stringMeta?.ammoLotId ?? s.ammoLotId);
+
+        String weatherLine() {
+          final parts = <String>[];
+          if (s.temperatureF != null) parts.add('${s.temperatureF!.toStringAsFixed(0)} F');
+          if (s.windSpeedMph != null) parts.add('${s.windSpeedMph!.toStringAsFixed(0)} mph wind');
+          if (s.windDirectionDeg != null) parts.add('${s.windDirectionDeg} deg');
+          return parts.isEmpty ? 'No weather saved' : parts.join(' • ');
+        }
+
         return Scaffold(
           appBar: AppBar(
             title: Text(shot.isBaseline ? 'Cold Bore (Baseline)' : 'Cold Bore'),
@@ -5751,7 +6698,43 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
                 Text(shot.notes),
               ],
               const SizedBox(height: 16),
-                            if (shot.offsetX != null || shot.offsetY != null) ...[
+              _SectionTitle('Session Data'),
+              const SizedBox(height: 8),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Session started: ${_fmtDateTime(s.dateTime)}'),
+                      const SizedBox(height: 6),
+                      Text('Cold bore time: ${_fmtDateTime(shot.time)}'),
+                      const SizedBox(height: 6),
+                      Text('Location: ${s.locationName.isEmpty ? '-' : s.locationName}'),
+                      const SizedBox(height: 6),
+                      Text('Weather: ${weatherLine()}'),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Rifle: ${rifle == null ? '-' : ((rifle.name ?? '').trim().isNotEmpty ? (rifle.name ?? '').trim() : [if (rifle.caliber.trim().isNotEmpty) rifle.caliber.trim(), if ((rifle.manufacturer ?? '').trim().isNotEmpty) (rifle.manufacturer ?? '').trim(), if ((rifle.model ?? '').trim().isNotEmpty) (rifle.model ?? '').trim()].join(' '))}',
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Ammo: ${ammo == null ? '-' : (((ammo.name ?? '').trim().isNotEmpty) ? (ammo.name ?? '').trim() : [if (ammo.caliber.trim().isNotEmpty) ammo.caliber.trim(), if ((ammo.manufacturer ?? '').trim().isNotEmpty) (ammo.manufacturer ?? '').trim(), if (ammo.bullet.trim().isNotEmpty) ammo.bullet.trim(), if (ammo.grain > 0) '${ammo.grain}gr'].join(' '))}',
+                      ),
+                      if (stringIndex >= 0) ...[
+                        const SizedBox(height: 6),
+                        Text('String: ${stringIndex + 1}'),
+                      ],
+                      if (s.latitude != null && s.longitude != null) ...[
+                        const SizedBox(height: 6),
+                        Text('GPS: ${s.latitude!.toStringAsFixed(6)}, ${s.longitude!.toStringAsFixed(6)}'),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              if (shot.offsetX != null || shot.offsetY != null) ...[
                 _SectionTitle('Impact Offset'),
                 const SizedBox(height: 8),
                 Builder(
@@ -8147,6 +9130,13 @@ double _shotOffsetToMoa(ShotEntry shot, double value) {
   if (shot.offsetUnit == 'moa') return value;
   if (shot.offsetUnit == 'mil') return value * 3.43774677;
   return value * (100.0 / (_distanceStringToYards(shot.distance) * 1.047));
+}
+
+double _shotOffsetToInches(ShotEntry shot, double value) {
+  if (shot.offsetUnit == 'in') return value;
+  final yards = _distanceStringToYards(shot.distance);
+  if (shot.offsetUnit == 'mil') return value * (yards / 100.0) * 3.6;
+  return value * (yards / 100.0) * 1.047;
 }
 
 class DopeManagerScreen extends StatelessWidget {
