@@ -67,6 +67,7 @@ ThemeData _buildTacticalTheme() {
       margin: EdgeInsets.zero,
     ),
     navigationBarTheme: NavigationBarThemeData(
+      height: 72,
       backgroundColor: surfaceAlt,
       surfaceTintColor: Colors.transparent,
       indicatorColor: primary.withValues(alpha: 0.16),
@@ -74,6 +75,7 @@ ThemeData _buildTacticalTheme() {
         (states) => TextStyle(
           color: states.contains(WidgetState.selected) ? primary : onSurface.withValues(alpha: 0.78),
           fontWeight: states.contains(WidgetState.selected) ? FontWeight.w700 : FontWeight.w500,
+          fontSize: 11,
         ),
       ),
       iconTheme: WidgetStateProperty.resolveWith(
@@ -2001,6 +2003,8 @@ class AppState extends ChangeNotifier {
     required int elapsedMs,
     int firstShotMs = 0,
     List<int> splitMs = const [],
+    int startDelayMs = 0,
+    int goalMs = 0,
   }) {
     final idx = _sessions.indexWhere((s) => s.id == sessionId);
     if (idx < 0) return;
@@ -2011,6 +2015,8 @@ class AppState extends ChangeNotifier {
       elapsedMs: elapsedMs,
       firstShotMs: firstShotMs,
       splitMs: List<int>.from(splitMs),
+      startDelayMs: startDelayMs,
+      goalMs: goalMs,
     );
     _sessions[idx] = session.copyWith(
       shotTimerElapsedMs: elapsedMs,
@@ -2706,6 +2712,8 @@ Map<String, dynamic> _sessionTimerRunToMap(SessionTimerRun run) => <String, dyna
       'elapsedMs': run.elapsedMs,
       'firstShotMs': run.firstShotMs,
       'splitMs': run.splitMs,
+      'startDelayMs': run.startDelayMs,
+      'goalMs': run.goalMs,
     };
 
 SessionTimerRun _sessionTimerRunFromMap(Map<String, dynamic> map) => SessionTimerRun(
@@ -2714,6 +2722,8 @@ SessionTimerRun _sessionTimerRunFromMap(Map<String, dynamic> map) => SessionTime
       elapsedMs: _toNullableInt(map['elapsedMs']) ?? 0,
       firstShotMs: _toNullableInt(map['firstShotMs']) ?? 0,
       splitMs: ((map['splitMs'] as List?) ?? const []).map((e) => _toNullableInt(e) ?? 0).toList(),
+      startDelayMs: _toNullableInt(map['startDelayMs']) ?? 0,
+      goalMs: _toNullableInt(map['goalMs']) ?? 0,
     );
 
 Map<String, dynamic> _trainingSessionToMap(TrainingSession session) => <String, dynamic>{
@@ -3201,6 +3211,8 @@ class SessionTimerRun {
   final int elapsedMs;
   final int firstShotMs;
   final List<int> splitMs;
+  final int startDelayMs;
+  final int goalMs;
 
   const SessionTimerRun({
     required this.id,
@@ -3208,6 +3220,8 @@ class SessionTimerRun {
     required this.elapsedMs,
     required this.firstShotMs,
     required this.splitMs,
+    this.startDelayMs = 0,
+    this.goalMs = 0,
   });
 }
 
@@ -3400,11 +3414,12 @@ class _HomeShellState extends State<HomeShell> {
           bottomNavigationBar: NavigationBar(
             selectedIndex: _tab,
             onDestinationSelected: (i) => setState(() => _tab = i),
+            labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
             destinations: const [
-              NavigationDestination(icon: Icon(Icons.event_note_outlined), label: 'Sessions'),
-              NavigationDestination(icon: Icon(Icons.ac_unit_outlined), label: 'Cold Bore'),
+              NavigationDestination(icon: Icon(Icons.event_note_outlined), label: 'Session'),
+              NavigationDestination(icon: Icon(Icons.ac_unit_outlined), label: 'Cold'),
               NavigationDestination(icon: Icon(Icons.timer_outlined), label: 'Timer'),
-              NavigationDestination(icon: Icon(Icons.build_outlined), label: 'Equipment'),
+              NavigationDestination(icon: Icon(Icons.build_outlined), label: 'Gear'),
               NavigationDestination(icon: Icon(Icons.list_alt_outlined), label: 'Data'),
               NavigationDestination(icon: Icon(Icons.ios_share_outlined), label: 'Export'),
             ],
@@ -4061,12 +4076,19 @@ class _SessionShotTimerCard extends StatefulWidget {
 
 class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
   final Stopwatch _stopwatch = Stopwatch();
+  final TextEditingController _delayCtrl = TextEditingController(text: '0');
+  final TextEditingController _goalCtrl = TextEditingController();
   Timer? _ticker;
   StreamSubscription<NoiseReading>? _noiseSubscription;
   int _baseElapsedMs = 0;
   int _elapsedMs = 0;
   int? _firstShotMs;
   List<int> _splitMs = const [];
+  bool _isArmed = false;
+  int _countdownRemainingMs = 0;
+  int _startDelayMs = 0;
+  int _goalMs = 0;
+  bool _goalAlertPlayed = false;
   bool _audioAssistEnabled = false;
   double _audioThresholdDb = 92;
   double _latestDb = 0;
@@ -4074,6 +4096,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
   String? _audioAssistMessage;
 
   bool get _isRunning => _stopwatch.isRunning;
+  bool get _isActive => _isRunning || _isArmed;
   bool get _audioAssistSupported => !kIsWeb && (defaultTargetPlatform == TargetPlatform.iOS || defaultTargetPlatform == TargetPlatform.android);
 
   @override
@@ -4096,6 +4119,8 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
     _ticker?.cancel();
     _noiseSubscription?.cancel();
     _stopwatch.stop();
+    _delayCtrl.dispose();
+    _goalCtrl.dispose();
     super.dispose();
   }
 
@@ -4138,6 +4163,81 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
   String _shotMarksLabel(List<int> marks) {
     if (marks.isEmpty) return '-';
     return marks.asMap().entries.map((e) => '${e.key + 1}. ${_fmtMs(e.value)}').join('   ');
+  }
+
+  List<InlineSpan> _shotMarkSpans(List<int> marks, {int goalMs = 0}) {
+    if (marks.isEmpty) {
+      return const [TextSpan(text: '-')];
+    }
+    final spans = <InlineSpan>[];
+    for (var i = 0; i < marks.length; i++) {
+      final afterGoal = goalMs > 0 && marks[i] > goalMs;
+      spans.add(
+        TextSpan(
+          text: '${i + 1}. ${_fmtMs(marks[i])}',
+          style: TextStyle(
+            color: afterGoal ? Colors.red.shade700 : null,
+            fontWeight: afterGoal ? FontWeight.w700 : FontWeight.w500,
+          ),
+        ),
+      );
+      if (i < marks.length - 1) {
+        spans.add(const TextSpan(text: '   '));
+      }
+    }
+    return spans;
+  }
+
+  int _parseSecondsToMs(String raw) {
+    final seconds = double.tryParse(raw.trim()) ?? 0;
+    if (seconds <= 0) return 0;
+    return (seconds * 1000).round();
+  }
+
+  Future<void> _beep() async {
+    await SystemSound.play(SystemSoundType.alert);
+  }
+
+  void _beginRun() {
+    _stopwatch
+      ..reset()
+      ..start();
+    _baseElapsedMs = _elapsedMs;
+  }
+
+  void _startTicker() {
+    _ticker?.cancel();
+    _ticker = Timer.periodic(const Duration(milliseconds: 16), (_) async {
+      if (!mounted) return;
+      if (_isArmed) {
+        final next = _countdownRemainingMs - 16;
+        if (next <= 0) {
+          _beginRun();
+          await _beep();
+          if (!mounted) return;
+          setState(() {
+            _isArmed = false;
+            _countdownRemainingMs = 0;
+          });
+        } else {
+          setState(() {
+            _countdownRemainingMs = next;
+          });
+        }
+        return;
+      }
+      if (!_isRunning) return;
+      final current = _currentElapsedMs();
+      final hitGoal = _goalMs > 0 && !_goalAlertPlayed && current >= _goalMs;
+      if (hitGoal) {
+        _goalAlertPlayed = true;
+        await _beep();
+        if (!mounted) return;
+      }
+      setState(() {
+        _elapsedMs = current;
+      });
+    });
   }
 
   void _recordShotAt(int current) {
@@ -4229,23 +4329,29 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
   }
 
   void _start() {
-    if (_isRunning) return;
+    if (_isActive) return;
+    _startDelayMs = _parseSecondsToMs(_delayCtrl.text);
+    _goalMs = _parseSecondsToMs(_goalCtrl.text);
+    _goalAlertPlayed = _goalMs > 0 && _elapsedMs >= _goalMs;
     setState(() {
-      _baseElapsedMs = _elapsedMs;
-      _stopwatch
-        ..reset()
-        ..start();
+      _countdownRemainingMs = _startDelayMs;
+      _isArmed = _startDelayMs > 0;
     });
-    _ticker?.cancel();
-    _ticker = Timer.periodic(const Duration(milliseconds: 16), (_) {
-      if (!mounted) return;
-      setState(() {
-        _elapsedMs = _currentElapsedMs();
-      });
-    });
+    if (!_isArmed) {
+      _beginRun();
+    }
+    _startTicker();
   }
 
   Future<void> _stop() async {
+    if (_isArmed) {
+      _ticker?.cancel();
+      setState(() {
+        _isArmed = false;
+        _countdownRemainingMs = 0;
+      });
+      return;
+    }
     if (!_isRunning) return;
     _ticker?.cancel();
     _stopwatch.stop();
@@ -4282,6 +4388,8 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
           elapsedMs: _elapsedMs,
           firstShotMs: _firstShotMs ?? 0,
           splitMs: _splitMs,
+          startDelayMs: _startDelayMs,
+          goalMs: _goalMs,
         );
         break;
       case 'delete':
@@ -4309,10 +4417,13 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
       ..stop()
       ..reset();
     setState(() {
+      _isArmed = false;
+      _countdownRemainingMs = 0;
       _baseElapsedMs = 0;
       _elapsedMs = 0;
       _firstShotMs = null;
       _splitMs = const [];
+      _goalAlertPlayed = false;
     });
     widget.state.clearSessionTimer(sessionId: widget.sessionId);
   }
@@ -4361,7 +4472,12 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
                     style: TextStyle(fontWeight: FontWeight.w700),
                   ),
                 ),
-                if (_isRunning)
+                if (_isArmed)
+                  const Chip(
+                    label: Text('Armed'),
+                    avatar: Icon(Icons.hourglass_top_outlined, size: 18),
+                  )
+                else if (_isRunning)
                   const Chip(
                     label: Text('Running'),
                     avatar: Icon(Icons.timer_outlined, size: 18),
@@ -4375,7 +4491,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
             ),
             const SizedBox(height: 8),
             Text(
-              _fmtMs(_currentElapsedMs()),
+              _isArmed ? _fmtMs(_countdownRemainingMs) : _fmtMs(_currentElapsedMs()),
               style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
@@ -4392,12 +4508,54 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
                 Chip(
                   label: Text('Marked shots: $totalShotsMarked'),
                 ),
+                if (_startDelayMs > 0)
+                  Chip(
+                    label: Text('Delay: ${(_startDelayMs / 1000).toStringAsFixed(1)}s'),
+                  ),
+                if (_goalMs > 0)
+                  Chip(
+                    avatar: Icon(Icons.flag_outlined, size: 18, color: _goalAlertPlayed ? Colors.red.shade700 : null),
+                    label: Text('Goal: ${(_goalMs / 1000).toStringAsFixed(1)}s'),
+                  ),
               ],
             ),
             const SizedBox(height: 8),
-            SelectableText(
-              'Shot marks: ${_shotMarksLabel(currentShotMarks)}',
+            Text.rich(
+              TextSpan(
+                children: [
+                  const TextSpan(text: 'Shot marks: ', style: TextStyle(fontWeight: FontWeight.w700)),
+                  ..._shotMarkSpans(currentShotMarks, goalMs: _goalMs),
+                ],
+              ),
               style: const TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    controller: _delayCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    enabled: !isEnded && !_isActive,
+                    decoration: const InputDecoration(
+                      labelText: 'Delay Start (sec)',
+                      helperText: 'Beep to begin',
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextFormField(
+                    controller: _goalCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    enabled: !isEnded && !_isActive,
+                    decoration: const InputDecoration(
+                      labelText: 'Time Goal (sec)',
+                      helperText: 'Beep at limit',
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 12),
             Wrap(
@@ -4408,14 +4566,14 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
                   onPressed: isEnded
                       ? null
                       : () async {
-                          if (_isRunning) {
+                          if (_isActive) {
                             await _stop();
                           } else {
                             _start();
                           }
                         },
-                  icon: Icon(_isRunning ? Icons.stop_circle_outlined : Icons.play_arrow_outlined),
-                  label: Text(_isRunning ? 'Stop' : ((_elapsedMs > 0 || totalShotsMarked > 0) ? 'Start / Resume' : 'Start')),
+                  icon: Icon(_isActive ? Icons.stop_circle_outlined : Icons.play_arrow_outlined),
+                  label: Text(_isActive ? 'Stop' : ((_elapsedMs > 0 || totalShotsMarked > 0) ? 'Start / Resume' : 'Start')),
                 ),
                 OutlinedButton.icon(
                   onPressed: _isRunning ? _markShot : null,
@@ -4486,8 +4644,21 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
                       contentPadding: EdgeInsets.zero,
                       leading: const Icon(Icons.timer_outlined),
                       title: Text(_runSummary(run)),
-                      subtitle: Text(
-                        '${_fmtDateTime(run.time)}\nShot marks: ${_shotMarksLabel(_shotMarks(run.firstShotMs > 0 ? run.firstShotMs : null, run.splitMs))}',
+                      subtitle: Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(text: '${_fmtDateTime(run.time)}\n'),
+                            if (run.startDelayMs > 0)
+                              TextSpan(text: 'Delay ${_fmtMs(run.startDelayMs)} • '),
+                            if (run.goalMs > 0)
+                              TextSpan(text: 'Goal ${_fmtMs(run.goalMs)}\n'),
+                            const TextSpan(text: 'Shot marks: ', style: TextStyle(fontWeight: FontWeight.w700)),
+                            ..._shotMarkSpans(
+                              _shotMarks(run.firstShotMs > 0 ? run.firstShotMs : null, run.splitMs),
+                              goalMs: run.goalMs,
+                            ),
+                          ],
+                        ),
                       ),
                       isThreeLine: true,
                     ),
@@ -4529,12 +4700,19 @@ class _StandaloneShotTimerCard extends StatefulWidget {
 
 class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
   final Stopwatch _stopwatch = Stopwatch();
+  final TextEditingController _delayCtrl = TextEditingController(text: '0');
+  final TextEditingController _goalCtrl = TextEditingController();
   Timer? _ticker;
   StreamSubscription<NoiseReading>? _noiseSubscription;
   int _baseElapsedMs = 0;
   int _elapsedMs = 0;
   int? _firstShotMs;
   List<int> _splitMs = const [];
+  bool _isArmed = false;
+  int _countdownRemainingMs = 0;
+  int _startDelayMs = 0;
+  int _goalMs = 0;
+  bool _goalAlertPlayed = false;
   bool _audioAssistEnabled = false;
   double _audioThresholdDb = 92;
   double _latestDb = 0;
@@ -4542,6 +4720,7 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
   String? _audioAssistMessage;
 
   bool get _isRunning => _stopwatch.isRunning;
+  bool get _isActive => _isRunning || _isArmed;
   bool get _audioAssistSupported => !kIsWeb && (defaultTargetPlatform == TargetPlatform.iOS || defaultTargetPlatform == TargetPlatform.android);
 
   @override
@@ -4549,6 +4728,8 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
     _ticker?.cancel();
     _noiseSubscription?.cancel();
     _stopwatch.stop();
+    _delayCtrl.dispose();
+    _goalCtrl.dispose();
     super.dispose();
   }
 
@@ -4580,6 +4761,81 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
   String _shotMarksLabel(List<int> marks) {
     if (marks.isEmpty) return '-';
     return marks.asMap().entries.map((e) => '${e.key + 1}. ${_fmtMs(e.value)}').join('   ');
+  }
+
+  List<InlineSpan> _shotMarkSpans(List<int> marks, {int goalMs = 0}) {
+    if (marks.isEmpty) {
+      return const [TextSpan(text: '-')];
+    }
+    final spans = <InlineSpan>[];
+    for (var i = 0; i < marks.length; i++) {
+      final afterGoal = goalMs > 0 && marks[i] > goalMs;
+      spans.add(
+        TextSpan(
+          text: '${i + 1}. ${_fmtMs(marks[i])}',
+          style: TextStyle(
+            color: afterGoal ? Colors.red.shade700 : null,
+            fontWeight: afterGoal ? FontWeight.w700 : FontWeight.w500,
+          ),
+        ),
+      );
+      if (i < marks.length - 1) {
+        spans.add(const TextSpan(text: '   '));
+      }
+    }
+    return spans;
+  }
+
+  int _parseSecondsToMs(String raw) {
+    final seconds = double.tryParse(raw.trim()) ?? 0;
+    if (seconds <= 0) return 0;
+    return (seconds * 1000).round();
+  }
+
+  Future<void> _beep() async {
+    await SystemSound.play(SystemSoundType.alert);
+  }
+
+  void _beginRun() {
+    _stopwatch
+      ..reset()
+      ..start();
+    _baseElapsedMs = _elapsedMs;
+  }
+
+  void _startTicker() {
+    _ticker?.cancel();
+    _ticker = Timer.periodic(const Duration(milliseconds: 16), (_) async {
+      if (!mounted) return;
+      if (_isArmed) {
+        final next = _countdownRemainingMs - 16;
+        if (next <= 0) {
+          _beginRun();
+          await _beep();
+          if (!mounted) return;
+          setState(() {
+            _isArmed = false;
+            _countdownRemainingMs = 0;
+          });
+        } else {
+          setState(() {
+            _countdownRemainingMs = next;
+          });
+        }
+        return;
+      }
+      if (!_isRunning) return;
+      final current = _currentElapsedMs();
+      final hitGoal = _goalMs > 0 && !_goalAlertPlayed && current >= _goalMs;
+      if (hitGoal) {
+        _goalAlertPlayed = true;
+        await _beep();
+        if (!mounted) return;
+      }
+      setState(() {
+        _elapsedMs = current;
+      });
+    });
   }
 
   void _recordShotAt(int current) {
@@ -4659,23 +4915,29 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
   }
 
   void _start() {
-    if (_isRunning) return;
+    if (_isActive) return;
+    _startDelayMs = _parseSecondsToMs(_delayCtrl.text);
+    _goalMs = _parseSecondsToMs(_goalCtrl.text);
+    _goalAlertPlayed = _goalMs > 0 && _elapsedMs >= _goalMs;
     setState(() {
-      _baseElapsedMs = _elapsedMs;
-      _stopwatch
-        ..reset()
-        ..start();
+      _countdownRemainingMs = _startDelayMs;
+      _isArmed = _startDelayMs > 0;
     });
-    _ticker?.cancel();
-    _ticker = Timer.periodic(const Duration(milliseconds: 16), (_) {
-      if (!mounted) return;
-      setState(() {
-        _elapsedMs = _currentElapsedMs();
-      });
-    });
+    if (!_isArmed) {
+      _beginRun();
+    }
+    _startTicker();
   }
 
   void _stop() {
+    if (_isArmed) {
+      _ticker?.cancel();
+      setState(() {
+        _isArmed = false;
+        _countdownRemainingMs = 0;
+      });
+      return;
+    }
     if (!_isRunning) return;
     _ticker?.cancel();
     _stopwatch.stop();
@@ -4698,10 +4960,13 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
       ..stop()
       ..reset();
     setState(() {
+      _isArmed = false;
+      _countdownRemainingMs = 0;
       _baseElapsedMs = 0;
       _elapsedMs = 0;
       _firstShotMs = null;
       _splitMs = const [];
+      _goalAlertPlayed = false;
     });
   }
 
@@ -4727,10 +4992,26 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Standalone Shot Timer', style: TextStyle(fontWeight: FontWeight.w700)),
+            Row(
+              children: [
+                const Expanded(
+                  child: Text('Standalone Shot Timer', style: TextStyle(fontWeight: FontWeight.w700)),
+                ),
+                if (_isArmed)
+                  const Chip(
+                    label: Text('Armed'),
+                    avatar: Icon(Icons.hourglass_top_outlined, size: 18),
+                  )
+                else if (_isRunning)
+                  const Chip(
+                    label: Text('Running'),
+                    avatar: Icon(Icons.timer_outlined, size: 18),
+                  ),
+              ],
+            ),
             const SizedBox(height: 8),
             Text(
-              _fmtMs(_currentElapsedMs()),
+              _isArmed ? _fmtMs(_countdownRemainingMs) : _fmtMs(_currentElapsedMs()),
               style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
@@ -4741,12 +5022,52 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
                 Chip(label: Text('First shot: ${_firstShotMs == null ? '-' : _fmtMs(_firstShotMs!)}')),
                 Chip(label: Text('Splits: ${_splitMs.isEmpty ? '-' : _splitMs.map(_fmtMs).join(', ')}')),
                 Chip(label: Text('Marked shots: $totalShotsMarked')),
+                if (_startDelayMs > 0)
+                  Chip(label: Text('Delay: ${(_startDelayMs / 1000).toStringAsFixed(1)}s')),
+                if (_goalMs > 0)
+                  Chip(
+                    avatar: Icon(Icons.flag_outlined, size: 18, color: _goalAlertPlayed ? Colors.red.shade700 : null),
+                    label: Text('Goal: ${(_goalMs / 1000).toStringAsFixed(1)}s'),
+                  ),
               ],
             ),
             const SizedBox(height: 8),
-            SelectableText(
-              'Shot marks: ${_shotMarksLabel(shotMarks)}',
+            Text.rich(
+              TextSpan(
+                children: [
+                  const TextSpan(text: 'Shot marks: ', style: TextStyle(fontWeight: FontWeight.w700)),
+                  ..._shotMarkSpans(shotMarks, goalMs: _goalMs),
+                ],
+              ),
               style: const TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    controller: _delayCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    enabled: !_isActive,
+                    decoration: const InputDecoration(
+                      labelText: 'Delay Start (sec)',
+                      helperText: 'Beep to begin',
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextFormField(
+                    controller: _goalCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    enabled: !_isActive,
+                    decoration: const InputDecoration(
+                      labelText: 'Time Goal (sec)',
+                      helperText: 'Beep at limit',
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 12),
             Wrap(
@@ -4755,14 +5076,14 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
               children: [
                 FilledButton.icon(
                   onPressed: () {
-                    if (_isRunning) {
+                    if (_isActive) {
                       _stop();
                     } else {
                       _start();
                     }
                   },
-                  icon: Icon(_isRunning ? Icons.stop_circle_outlined : Icons.play_arrow_outlined),
-                  label: Text(_isRunning ? 'Stop' : ((_elapsedMs > 0 || totalShotsMarked > 0) ? 'Start / Resume' : 'Start')),
+                  icon: Icon(_isActive ? Icons.stop_circle_outlined : Icons.play_arrow_outlined),
+                  label: Text(_isActive ? 'Stop' : ((_elapsedMs > 0 || totalShotsMarked > 0) ? 'Start / Resume' : 'Start')),
                 ),
                 OutlinedButton.icon(
                   onPressed: _isRunning ? _markShot : null,
