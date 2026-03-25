@@ -10,6 +10,9 @@ import 'dart:typed_data';
 import 'package:image_picker/image_picker.dart';
 import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:noise_meter/noise_meter.dart';
 import 'package:share_plus/share_plus.dart';
@@ -23,11 +26,12 @@ import 'package:file_picker/file_picker.dart';
 const String kBackupSchemaVersion = '2026-02-05';
 const String kLocalStatePrefsKey = 'cold_bore.local_state.v1';
 final Uint8List _shotTimerBeepBytes = _buildShotTimerBeepWav();
+final AudioPlayer _shotTimerBeepPlayer = AudioPlayer();
 
 Uint8List _buildShotTimerBeepWav({
   int sampleRate = 44100,
-  double frequencyHz = 1200,
-  int durationMs = 180,
+  double frequencyHz = 1750,
+  int durationMs = 260,
 }) {
   final sampleCount = (sampleRate * durationMs / 1000).round();
   final dataLength = sampleCount * 2;
@@ -55,8 +59,10 @@ Uint8List _buildShotTimerBeepWav({
 
   for (var i = 0; i < sampleCount; i++) {
     final t = i / sampleRate;
-    final envelope = 1 - (i / sampleCount);
-    final sample = (math.sin(2 * math.pi * frequencyHz * t) * 0.45 * envelope * 32767).round();
+    final fadeIn = math.min(1.0, i / (sampleRate * 0.01));
+    final fadeOut = math.min(1.0, (sampleCount - i) / (sampleRate * 0.02));
+    final envelope = math.min(fadeIn, fadeOut);
+    final sample = (math.sin(2 * math.pi * frequencyHz * t) * 0.9 * envelope * 32767).round();
     byteData.setInt16(44 + (i * 2), sample.clamp(-32768, 32767), Endian.little);
   }
 
@@ -64,9 +70,9 @@ Uint8List _buildShotTimerBeepWav({
 }
 
 Future<void> _playShotTimerBeep() async {
-  final player = AudioPlayer();
-  await player.play(BytesSource(_shotTimerBeepBytes, mimeType: 'audio/wav'));
-  unawaited(player.dispose());
+  await _shotTimerBeepPlayer.setVolume(1.0);
+  await _shotTimerBeepPlayer.stop();
+  await _shotTimerBeepPlayer.play(BytesSource(_shotTimerBeepBytes, mimeType: 'audio/wav'));
 }
 
 ThemeData _buildTacticalTheme() {
@@ -368,6 +374,18 @@ String _buildCasePacket(AppState state, {
   b.writeln('COLD BORE - CASE PACKET');
   b.writeln('Schema: $kExportSchemaVersion');
   b.writeln('Generated: ${_fmtDateTimeIso(DateTime.now())}');
+  if (s.timerRuns.isNotEmpty) {
+    b.writeln('Saved timer runs: ${s.timerRuns.length}');
+    for (final run in s.timerRuns) {
+      final marks = <int>[if (run.firstShotMs > 0) run.firstShotMs, ...run.splitMs];
+      b.writeln(
+        '  - ${_fmtDateTimeIso(run.time)} | total ${run.elapsedMs} ms | first ${run.firstShotMs} ms | '
+        'marks ${marks.isEmpty ? "-" : marks.join(", ")}'
+        '${run.startDelayMs > 0 ? ' | delay ${run.startDelayMs} ms' : ''}'
+        '${run.goalMs > 0 ? ' | goal ${run.goalMs} ms' : ''}',
+      );
+    }
+  }
   if ((s.shotTimerElapsedMs ?? 0) > 0 || (s.shotTimerFirstShotMs ?? 0) > 0 || s.shotTimerSplitMs.isNotEmpty) {
     b.writeln('â€¢ Shot timer total (ms): ${s.shotTimerElapsedMs ?? 0}');
     b.writeln('â€¢ First shot (ms): ${s.shotTimerFirstShotMs ?? 0}');
@@ -485,8 +503,21 @@ String _buildCourtReport(AppState state, {required bool redactLocation}) {
         : '${(ammo.name ?? 'Ammo').trim()} (${ammo.caliber})';
     b.writeln('Rifle: $rifleLabel');
     b.writeln('Ammo: $ammoLabel');
+    b.writeln('Ended: ${sess.endedAt == null ? '-' : _fmtDateTimeIso(sess.endedAt!)}');
+    b.writeln('Confirmed shot count: ${sess.confirmedShotCount ?? sess.shots.length}');
+    b.writeln('Cold bore entries: ${sess.shots.where((shot) => shot.isColdBore).length}');
+    b.writeln('Saved timer runs: ${sess.timerRuns.length}');
+    b.writeln('Strings: ${sess.strings.length}');
     if (sess.trainingDope.isNotEmpty) b.writeln('Training DOPE count: ${sess.trainingDope.length}');
     if (sess.shots.isNotEmpty) b.writeln('Shots count: ${sess.shots.length}');
+    if (sess.timerRuns.isNotEmpty) {
+      for (final run in sess.timerRuns) {
+        b.writeln(
+          '  - Timer ${_fmtDateTimeIso(run.time)} | total ${run.elapsedMs} ms | first ${run.firstShotMs} ms | '
+          'splits ${run.splitMs.isEmpty ? "-" : run.splitMs.join(", ")}',
+        );
+      }
+    }
     b.writeln('');
   }
 
@@ -1718,6 +1749,30 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void promoteExistingDope({
+    required DopeEntry entry,
+    required bool rifleOnly,
+  }) {
+    final rifleId = entry.rifleId;
+    if (rifleId == null) return;
+
+    final String key;
+    final Map<String, Map<DistanceKey, DopeEntry>> workingMap;
+
+    if (rifleOnly || entry.ammoLotId == null) {
+      key = rifleId;
+      workingMap = _workingDopeRifleOnly;
+    } else {
+      key = '${rifleId}_${entry.ammoLotId}';
+      workingMap = _workingDopeRifleAmmo;
+    }
+
+    workingMap[key] ??= {};
+    final dk = DistanceKey(entry.distance, entry.distanceUnit);
+    workingMap[key]![dk] = entry;
+    notifyListeners();
+  }
+
   ShotEntry? shotById({required String sessionId, required String shotId}) {
     final s = getSessionById(sessionId);
     if (s == null) return null;
@@ -2072,6 +2127,19 @@ class AppState extends ChangeNotifier {
       shotTimerSplitMs: List<int>.from(splitMs),
       timerRuns: [...session.timerRuns, run],
     );
+    notifyListeners();
+  }
+
+  void deleteSessionTimerRun({
+    required String sessionId,
+    required String runId,
+  }) {
+    final idx = _sessions.indexWhere((s) => s.id == sessionId);
+    if (idx < 0) return;
+    final session = _sessions[idx];
+    final updatedRuns = session.timerRuns.where((run) => run.id != runId).toList();
+    if (updatedRuns.length == session.timerRuns.length) return;
+    _sessions[idx] = session.copyWith(timerRuns: updatedRuns);
     notifyListeners();
   }
 
@@ -4137,6 +4205,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
   int _startDelayMs = 0;
   int _goalMs = 0;
   bool _goalAlertPlayed = false;
+  DateTime? _armedUntil;
   bool _audioAssistEnabled = false;
   double _audioThresholdDb = 92;
   double _latestDb = 0;
@@ -4208,15 +4277,56 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
     return marks;
   }
 
-  String _shotMarksLabel(List<int> marks) {
-    if (marks.isEmpty) return '-';
-    return marks.asMap().entries.map((e) => '${e.key + 1}. ${_fmtMs(e.value)}').join('   ');
+  Widget _shotMarkChart(List<int> marks, {int goalMs = 0}) {
+    if (marks.isEmpty) {
+      return const Text('No shots logged yet.', style: TextStyle(fontSize: 13));
+    }
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (var i = 0; i < marks.length; i++)
+          Container(
+            width: 96,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: goalMs > 0 && marks[i] > goalMs ? Colors.red.withValues(alpha: 0.12) : null,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: goalMs > 0 && marks[i] > goalMs
+                    ? Colors.red.withValues(alpha: 0.55)
+                    : Theme.of(context).colorScheme.outline.withValues(alpha: 0.35),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Shot ${i + 1}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: goalMs > 0 && marks[i] > goalMs ? Colors.red.shade700 : null,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _fmtMs(marks[i]),
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: goalMs > 0 && marks[i] > goalMs ? Colors.red.shade700 : null,
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
   }
 
   List<InlineSpan> _shotMarkSpans(List<int> marks, {int goalMs = 0}) {
-    if (marks.isEmpty) {
-      return const [TextSpan(text: '-')];
-    }
+    if (marks.isEmpty) return const [TextSpan(text: '-')];
     final spans = <InlineSpan>[];
     for (var i = 0; i < marks.length; i++) {
       final afterGoal = goalMs > 0 && marks[i] > goalMs;
@@ -4258,7 +4368,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
     _ticker = Timer.periodic(const Duration(milliseconds: 16), (_) async {
       if (!mounted) return;
       if (_isArmed) {
-        final next = _countdownRemainingMs - 16;
+        final next = math.max(0, (_armedUntil?.difference(DateTime.now()).inMilliseconds ?? 0));
         if (next <= 0) {
           _beginRun();
           await _beep();
@@ -4266,6 +4376,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
           setState(() {
             _isArmed = false;
             _countdownRemainingMs = 0;
+            _armedUntil = null;
           });
         } else {
           setState(() {
@@ -4384,6 +4495,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
     setState(() {
       _countdownRemainingMs = _startDelayMs;
       _isArmed = _startDelayMs > 0;
+      _armedUntil = _startDelayMs > 0 ? DateTime.now().add(Duration(milliseconds: _startDelayMs)) : null;
     });
     if (!_isArmed) {
       _beginRun();
@@ -4397,6 +4509,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
       setState(() {
         _isArmed = false;
         _countdownRemainingMs = 0;
+        _armedUntil = null;
       });
       return;
     }
@@ -4467,6 +4580,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
     setState(() {
       _isArmed = false;
       _countdownRemainingMs = 0;
+      _armedUntil = null;
       _baseElapsedMs = 0;
       _elapsedMs = 0;
       _firstShotMs = null;
@@ -4480,11 +4594,11 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
     final totalSeconds = (ms / 1000).floor();
     final minutes = totalSeconds ~/ 60;
     final seconds = totalSeconds % 60;
-    final milliseconds = ms % 1000;
+    final hundredths = (ms % 1000) ~/ 10;
     if (minutes > 0) {
-      return '$minutes:${seconds.toString().padLeft(2, '0')}.${milliseconds.toString().padLeft(3, '0')}';
+      return '$minutes:${seconds.toString().padLeft(2, '0')}.${hundredths.toString().padLeft(2, '0')}';
     }
-    return '$seconds.${milliseconds.toString().padLeft(3, '0')}';
+    return '$seconds.${hundredths.toString().padLeft(2, '0')}';
   }
 
   String _runSummary(SessionTimerRun run) {
@@ -4568,15 +4682,12 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
               ],
             ),
             const SizedBox(height: 8),
-            Text.rich(
-              TextSpan(
-                children: [
-                  const TextSpan(text: 'Shot marks: ', style: TextStyle(fontWeight: FontWeight.w700)),
-                  ..._shotMarkSpans(currentShotMarks, goalMs: _goalMs),
-                ],
-              ),
-              style: const TextStyle(fontSize: 13),
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text('Shot Chart', style: TextStyle(fontWeight: FontWeight.w700)),
             ),
+            const SizedBox(height: 6),
+            _shotMarkChart(currentShotMarks, goalMs: _goalMs),
             const SizedBox(height: 12),
             Row(
               children: [
@@ -4692,23 +4803,53 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
                       contentPadding: EdgeInsets.zero,
                       leading: const Icon(Icons.timer_outlined),
                       title: Text(_runSummary(run)),
-                      subtitle: Text.rich(
-                        TextSpan(
-                          children: [
-                            TextSpan(text: '${_fmtDateTime(run.time)}\n'),
-                            if (run.startDelayMs > 0)
-                              TextSpan(text: 'Delay ${_fmtMs(run.startDelayMs)} • '),
-                            if (run.goalMs > 0)
-                              TextSpan(text: 'Goal ${_fmtMs(run.goalMs)}\n'),
-                            const TextSpan(text: 'Shot marks: ', style: TextStyle(fontWeight: FontWeight.w700)),
-                            ..._shotMarkSpans(
-                              _shotMarks(run.firstShotMs > 0 ? run.firstShotMs : null, run.splitMs),
-                              goalMs: run.goalMs,
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(_fmtDateTime(run.time)),
+                          if (run.startDelayMs > 0 || run.goalMs > 0)
+                            Text(
+                              [
+                                if (run.startDelayMs > 0) 'Delay ${_fmtMs(run.startDelayMs)}',
+                                if (run.goalMs > 0) 'Goal ${_fmtMs(run.goalMs)}',
+                              ].join(' | '),
                             ),
-                          ],
-                        ),
+                          const SizedBox(height: 6),
+                          _shotMarkChart(
+                            _shotMarks(run.firstShotMs > 0 ? run.firstShotMs : null, run.splitMs),
+                            goalMs: run.goalMs,
+                          ),
+                        ],
                       ),
-                      isThreeLine: true,
+                      trailing: IconButton(
+                        tooltip: 'Delete run',
+                        icon: const Icon(Icons.delete_outline),
+                        onPressed: () async {
+                          final confirm = await showDialog<bool>(
+                            context: context,
+                            builder: (_) => AlertDialog(
+                              title: const Text('Delete saved run?'),
+                              content: const Text('This removes the saved timer run from this session.'),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.of(context).pop(false),
+                                  child: const Text('Cancel'),
+                                ),
+                                FilledButton(
+                                  onPressed: () => Navigator.of(context).pop(true),
+                                  child: const Text('Delete'),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (confirm != true) return;
+                          widget.state.deleteSessionTimerRun(
+                            sessionId: widget.sessionId,
+                            runId: run.id,
+                          );
+                        },
+                      ),
                     ),
                 ],
               ),
@@ -4761,6 +4902,7 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
   int _startDelayMs = 0;
   int _goalMs = 0;
   bool _goalAlertPlayed = false;
+  DateTime? _armedUntil;
   bool _audioAssistEnabled = false;
   double _audioThresholdDb = 92;
   double _latestDb = 0;
@@ -4806,32 +4948,52 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
     return marks;
   }
 
-  String _shotMarksLabel(List<int> marks) {
-    if (marks.isEmpty) return '-';
-    return marks.asMap().entries.map((e) => '${e.key + 1}. ${_fmtMs(e.value)}').join('   ');
-  }
-
-  List<InlineSpan> _shotMarkSpans(List<int> marks, {int goalMs = 0}) {
+  Widget _shotMarkChart(List<int> marks, {int goalMs = 0}) {
     if (marks.isEmpty) {
-      return const [TextSpan(text: '-')];
+      return const Text('No shots logged yet.', style: TextStyle(fontSize: 13));
     }
-    final spans = <InlineSpan>[];
-    for (var i = 0; i < marks.length; i++) {
-      final afterGoal = goalMs > 0 && marks[i] > goalMs;
-      spans.add(
-        TextSpan(
-          text: '${i + 1}. ${_fmtMs(marks[i])}',
-          style: TextStyle(
-            color: afterGoal ? Colors.red.shade700 : null,
-            fontWeight: afterGoal ? FontWeight.w700 : FontWeight.w500,
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (var i = 0; i < marks.length; i++)
+          Container(
+            width: 96,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: goalMs > 0 && marks[i] > goalMs ? Colors.red.withValues(alpha: 0.12) : null,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: goalMs > 0 && marks[i] > goalMs
+                    ? Colors.red.withValues(alpha: 0.55)
+                    : Theme.of(context).colorScheme.outline.withValues(alpha: 0.35),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Shot ${i + 1}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: goalMs > 0 && marks[i] > goalMs ? Colors.red.shade700 : null,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _fmtMs(marks[i]),
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: goalMs > 0 && marks[i] > goalMs ? Colors.red.shade700 : null,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-      );
-      if (i < marks.length - 1) {
-        spans.add(const TextSpan(text: '   '));
-      }
-    }
-    return spans;
+      ],
+    );
   }
 
   int _parseSecondsToMs(String raw) {
@@ -4856,7 +5018,7 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
     _ticker = Timer.periodic(const Duration(milliseconds: 16), (_) async {
       if (!mounted) return;
       if (_isArmed) {
-        final next = _countdownRemainingMs - 16;
+        final next = math.max(0, (_armedUntil?.difference(DateTime.now()).inMilliseconds ?? 0));
         if (next <= 0) {
           _beginRun();
           await _beep();
@@ -4864,6 +5026,7 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
           setState(() {
             _isArmed = false;
             _countdownRemainingMs = 0;
+            _armedUntil = null;
           });
         } else {
           setState(() {
@@ -4970,6 +5133,7 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
     setState(() {
       _countdownRemainingMs = _startDelayMs;
       _isArmed = _startDelayMs > 0;
+      _armedUntil = _startDelayMs > 0 ? DateTime.now().add(Duration(milliseconds: _startDelayMs)) : null;
     });
     if (!_isArmed) {
       _beginRun();
@@ -4983,6 +5147,7 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
       setState(() {
         _isArmed = false;
         _countdownRemainingMs = 0;
+        _armedUntil = null;
       });
       return;
     }
@@ -5010,6 +5175,7 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
     setState(() {
       _isArmed = false;
       _countdownRemainingMs = 0;
+      _armedUntil = null;
       _baseElapsedMs = 0;
       _elapsedMs = 0;
       _firstShotMs = null;
@@ -5022,11 +5188,11 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
     final totalSeconds = (ms / 1000).floor();
     final minutes = totalSeconds ~/ 60;
     final seconds = totalSeconds % 60;
-    final milliseconds = ms % 1000;
+    final hundredths = (ms % 1000) ~/ 10;
     if (minutes > 0) {
-      return '$minutes:${seconds.toString().padLeft(2, '0')}.${milliseconds.toString().padLeft(3, '0')}';
+      return '$minutes:${seconds.toString().padLeft(2, '0')}.${hundredths.toString().padLeft(2, '0')}';
     }
-    return '$seconds.${milliseconds.toString().padLeft(3, '0')}';
+    return '$seconds.${hundredths.toString().padLeft(2, '0')}';
   }
 
   @override
@@ -5080,15 +5246,12 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
               ],
             ),
             const SizedBox(height: 8),
-            Text.rich(
-              TextSpan(
-                children: [
-                  const TextSpan(text: 'Shot marks: ', style: TextStyle(fontWeight: FontWeight.w700)),
-                  ..._shotMarkSpans(shotMarks, goalMs: _goalMs),
-                ],
-              ),
-              style: const TextStyle(fontSize: 13),
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text('Shot Chart', style: TextStyle(fontWeight: FontWeight.w700)),
             ),
+            const SizedBox(height: 6),
+            _shotMarkChart(shotMarks, goalMs: _goalMs),
             const SizedBox(height: 12),
             Row(
               children: [
@@ -5469,7 +5632,7 @@ class SessionDetailScreen extends StatelessWidget {
     );
   }
 
-Future<void> _addDope(BuildContext context, TrainingSession s) async {
+  Future<void> _addDope(BuildContext context, TrainingSession s) async {
     if (s.rifleId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Select a rifle first.')),
@@ -5553,6 +5716,46 @@ Future<void> _addDope(BuildContext context, TrainingSession s) async {
     }
   }
 
+  Future<void> _promoteSuggestedDope(
+    BuildContext context, {
+    required TrainingSession session,
+    required DopeEntry entry,
+    required bool rifleOnly,
+    required bool replacing,
+  }) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(replacing ? 'Replace working DOPE?' : 'Save to working DOPE?'),
+        content: Text(
+          '${entry.distance.toStringAsFixed(0)} ${entry.distanceUnit == DistanceUnit.yards ? 'yd' : 'm'}'
+          ' will be ${replacing ? 'replaced' : 'saved'} in ${rifleOnly ? 'Rifle only' : 'Rifle + Ammo'} working DOPE.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(replacing ? 'Replace' : 'Save'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    state.promoteExistingDope(entry: entry, rifleOnly: rifleOnly);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Working DOPE ${replacing ? 'updated' : 'saved'} for ${entry.distance.toStringAsFixed(0)} ${entry.distanceUnit == DistanceUnit.yards ? 'yd' : 'm'}.',
+          ),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -5627,6 +5830,17 @@ Future<void> _addDope(BuildContext context, TrainingSession s) async {
         final safeAmmoLotId = ammoIsCompatible ? s.ammoLotId : null;
 
         final currentTrainingDope = s.trainingDopeByString[s.activeStringId] ?? const <DopeEntry>[];
+        final suggestedDopeByDistance = <DistanceKey, DopeEntry>{};
+        for (final entry in currentTrainingDope) {
+          suggestedDopeByDistance[DistanceKey(entry.distance, entry.distanceUnit)] = entry;
+        }
+        final currentRifleKey = s.rifleId;
+        final currentAmmoKey = (s.rifleId != null && s.ammoLotId != null) ? '${s.rifleId}_${s.ammoLotId}' : null;
+        final currentWorkingMap = currentAmmoKey != null && (state.workingDopeRifleAmmo[currentAmmoKey]?.isNotEmpty ?? false)
+            ? state.workingDopeRifleAmmo[currentAmmoKey]!
+            : (currentRifleKey == null ? <DistanceKey, DopeEntry>{} : (state.workingDopeRifleOnly[currentRifleKey] ?? <DistanceKey, DopeEntry>{}));
+        final suggestedDope = suggestedDopeByDistance.values.toList()
+          ..sort((a, b) => a.distance.compareTo(b.distance));
 
         return Scaffold(
           appBar: AppBar(
@@ -6073,6 +6287,50 @@ _SectionTitle('Loadout'),
                     );
                   }).toList();
                 })(),
+              const SizedBox(height: 16),
+              _SectionTitle('Suggested DOPE'),
+              const SizedBox(height: 8),
+              if (s.rifleId == null || suggestedDope.isEmpty)
+                _HintCard(
+                  icon: Icons.auto_awesome_outlined,
+                  title: 'No suggestions yet',
+                  message: s.rifleId == null
+                      ? 'Select a rifle in Loadout to save working DOPE suggestions.'
+                      : 'Add training DOPE in this string, then save the ones you want as working DOPE.',
+                )
+              else
+                ...suggestedDope.map((entry) {
+                  final dk = DistanceKey(entry.distance, entry.distanceUnit);
+                  final existing = currentWorkingMap[dk];
+                  final replacing = existing != null;
+                  final wind = (entry.windageLeft > 0)
+                      ? 'L ${entry.windageLeft.toStringAsFixed(2)}'
+                      : (entry.windageRight > 0 ? 'R ${entry.windageRight.toStringAsFixed(2)}' : '-');
+                  return Card(
+                    child: ListTile(
+                      title: Text(
+                        '${entry.distance.toStringAsFixed(0)} ${entry.distanceUnit == DistanceUnit.yards ? 'yd' : 'm'}'
+                        ' | ${entry.elevation.toStringAsFixed(2)} ${entry.elevationUnit.name.toUpperCase()}',
+                      ),
+                      subtitle: Text(
+                        '${replacing ? 'Existing working DOPE will be replaced' : 'Ready to save to working DOPE'}'
+                        ' | Wind $wind'
+                        '${entry.elevationNotes.trim().isEmpty ? '' : ' | ${entry.elevationNotes.trim()}'}',
+                      ),
+                      trailing: FilledButton(
+                        onPressed: () => _promoteSuggestedDope(
+                          context,
+                          session: s,
+                          entry: entry,
+                          rifleOnly: s.ammoLotId == null,
+                          replacing: replacing,
+                        ),
+                        child: Text(replacing ? 'Replace' : 'Save'),
+                      ),
+                    ),
+                  );
+                }),
+              const SizedBox(height: 16),
               _SectionTitle('Cold Bore Entries'),
               const SizedBox(height: 8),
               if (s.shots.where((x) => x.isColdBore).isEmpty)
@@ -6318,6 +6576,7 @@ class ColdBoreScreen extends StatefulWidget {
 class _ColdBoreScreenState extends State<ColdBoreScreen> {
   String? _selectedRifleId;
   String? _selectedAmmoId;
+  int _selectedDateWindowDays = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -6369,6 +6628,10 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
         final filteredRows = rows.where((row) {
           if (_selectedRifleId != null && row.rifle?.id != _selectedRifleId) return false;
           if (_selectedAmmoId != null && row.ammo?.id != _selectedAmmoId) return false;
+          if (_selectedDateWindowDays > 0) {
+            final cutoff = DateTime.now().subtract(Duration(days: _selectedDateWindowDays));
+            if (row.shot.time.isBefore(cutoff)) return false;
+          }
           return true;
         }).toList();
 
@@ -6545,6 +6808,18 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
                                 ),
                               ],
                               onChanged: (value) => setState(() => _selectedAmmoId = value),
+                            ),
+                            const SizedBox(height: 12),
+                            DropdownButtonFormField<int>(
+                              initialValue: _selectedDateWindowDays,
+                              decoration: const InputDecoration(labelText: 'Date filter'),
+                              items: const [
+                                DropdownMenuItem<int>(value: 0, child: Text('All time')),
+                                DropdownMenuItem<int>(value: 30, child: Text('Last 30 days')),
+                                DropdownMenuItem<int>(value: 90, child: Text('Last 90 days')),
+                                DropdownMenuItem<int>(value: 365, child: Text('Last year')),
+                              ],
+                              onChanged: (value) => setState(() => _selectedDateWindowDays = value ?? 0),
                             ),
                             const SizedBox(height: 8),
                             Text(
@@ -10105,6 +10380,24 @@ class _BackupScreen extends StatelessWidget {
   final AppState state;
   const _BackupScreen({required this.state});
 
+  Future<User> _ensureCloudUser() async {
+    final auth = FirebaseAuth.instance;
+    final existing = auth.currentUser;
+    if (existing != null) return existing;
+    final cred = await auth.signInAnonymously();
+    final user = cred.user;
+    if (user == null) {
+      throw StateError('Cloud sign-in failed.');
+    }
+    return user;
+  }
+
+  Future<Map<String, dynamic>?> _latestCloudBackupMeta() async {
+    final user = await _ensureCloudUser();
+    final doc = await FirebaseFirestore.instance.collection('cloud_backups').doc(user.uid).get();
+    return doc.data();
+  }
+
   Future<String?> _pickJsonFile() async {
     final res = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -10214,6 +10507,91 @@ class _BackupScreen extends StatelessWidget {
     }
   }
 
+  Future<void> _backupToCloud(BuildContext context) async {
+    try {
+      final firebaseUser = await _ensureCloudUser();
+      final appUser = state.activeUser;
+      final json = state.exportBackupJson();
+      final bytes = Uint8List.fromList(utf8.encode(json));
+      final backupId = DateTime.now().toUtc().toIso8601String().replaceAll(':', '-');
+      final path = 'backups/${firebaseUser.uid}/$backupId.json';
+      final ref = FirebaseStorage.instance.ref(path);
+      await ref.putData(
+        bytes,
+        SettableMetadata(contentType: 'application/json'),
+      );
+
+      final meta = <String, dynamic>{
+        'path': path,
+        'backupId': backupId,
+        'schema': kBackupSchemaVersion,
+        'byteCount': bytes.length,
+        'createdAt': FieldValue.serverTimestamp(),
+        'activeUserId': appUser?.id,
+        'activeUserName': appUser?.name,
+        'sessionCount': state.allSessions.length,
+        'rifleCount': state.rifles.length,
+        'ammoCount': state.ammoLots.length,
+      };
+
+      final root = FirebaseFirestore.instance.collection('cloud_backups').doc(firebaseUser.uid);
+      await root.set({
+        ...meta,
+        'latestBackupId': backupId,
+        'latestPath': path,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      await root.collection('history').doc(backupId).set(meta);
+
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cloud backup uploaded.')),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Cloud backup failed: $e')),
+      );
+    }
+  }
+
+  Future<void> _restoreFromCloud(BuildContext context) async {
+    try {
+      final mode = await _pickImportMode(context);
+      if (mode == null) return;
+
+      final meta = await _latestCloudBackupMeta();
+      final path = (meta?['latestPath'] ?? '').toString();
+      if (path.isEmpty) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No cloud backup found yet.')),
+        );
+        return;
+      }
+
+      final bytes = await FirebaseStorage.instance.ref(path).getData(20 * 1024 * 1024);
+      if (bytes == null) {
+        throw StateError('Downloaded backup was empty.');
+      }
+      final jsonText = utf8.decode(bytes);
+      if (mode == _ImportMode.merge) {
+        state.mergeBackupJson(jsonText, overwriteScope: true);
+      } else {
+        state.importBackupJson(jsonText, replaceExisting: true);
+      }
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cloud restore complete.')),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Cloud restore failed: $e')),
+      );
+    }
+  }
+
 @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -10306,6 +10684,37 @@ class _BackupScreen extends StatelessWidget {
                 }
               },
             ),
+          ),
+          FutureBuilder<Map<String, dynamic>?>(
+            future: _latestCloudBackupMeta(),
+            builder: (context, snapshot) {
+              final meta = snapshot.data;
+              final activeUserName = (meta?['activeUserName'] ?? '').toString();
+              final latestBackupId = (meta?['latestBackupId'] ?? '').toString();
+              final cloudSubtitle = latestBackupId.isEmpty
+                  ? 'Upload the full app backup to Firebase cloud storage'
+                  : 'Latest: ${latestBackupId.split(".").first}${activeUserName.isEmpty ? "" : " | $activeUserName"}';
+              return Column(
+                children: [
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.cloud_upload_outlined),
+                      title: const Text('Backup to Cloud'),
+                      subtitle: Text(cloudSubtitle),
+                      onTap: () => _backupToCloud(context),
+                    ),
+                  ),
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.cloud_download_outlined),
+                      title: const Text('Restore from Cloud'),
+                      subtitle: const Text('Load the latest cloud backup into this device'),
+                      onTap: () => _restoreFromCloud(context),
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
 
         ],
