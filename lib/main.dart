@@ -7043,7 +7043,6 @@ class _ColdBoreLegendDot extends StatelessWidget {
 
   const _ColdBoreLegendDot({
     required this.label,
-    this.isBaseline = false,
   });
 
   @override
@@ -8237,8 +8236,6 @@ class _HintCard extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.message,
-    this.actionLabel,
-    this.onAction,
   });
 
   @override
@@ -8928,7 +8925,7 @@ late DateTime _time;
               if (hAmount == null || vAmount == null) return;
               ox = (_horizontalRight ? 1 : -1) * hAmount.abs();
               oy = (_verticalUp ? 1 : -1) * vAmount.abs();
-              if (ox == null || oy == null) return;
+              if (oy == null) return;
             } else {
               ox = null;
               oy = null;
@@ -10509,44 +10506,12 @@ class _BackupScreen extends StatelessWidget {
 
   Future<void> _backupToCloud(BuildContext context) async {
     try {
-      final firebaseUser = await _ensureCloudUser();
-      final appUser = state.activeUser;
-      final json = state.exportBackupJson();
-      final bytes = Uint8List.fromList(utf8.encode(json));
-      final backupId = DateTime.now().toUtc().toIso8601String().replaceAll(':', '-');
-      final path = 'backups/${firebaseUser.uid}/$backupId.json';
-      final ref = FirebaseStorage.instance.ref(path);
-      await ref.putData(
-        bytes,
-        SettableMetadata(contentType: 'application/json'),
-      );
-
-      final meta = <String, dynamic>{
-        'path': path,
-        'backupId': backupId,
-        'schema': kBackupSchemaVersion,
-        'byteCount': bytes.length,
-        'createdAt': FieldValue.serverTimestamp(),
-        'activeUserId': appUser?.id,
-        'activeUserName': appUser?.name,
-        'sessionCount': state.allSessions.length,
-        'rifleCount': state.rifles.length,
-        'ammoCount': state.ammoLots.length,
-      };
-
-      final root = FirebaseFirestore.instance.collection('cloud_backups').doc(firebaseUser.uid);
-      await root.set({
-        ...meta,
-        'latestBackupId': backupId,
-        'latestPath': path,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-      await root.collection('history').doc(backupId).set(meta);
-
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cloud backup uploaded.')),
-      );
+      // iOS: Uses iCloud, Android/Web: Uses Firebase
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
+        await _backupToiCloud(context);
+      } else {
+        await _backupToFirebase(context);
+      }
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -10555,41 +10520,105 @@ class _BackupScreen extends StatelessWidget {
     }
   }
 
+  Future<void> _backupToiCloud(BuildContext context) async {
+    // TODO: Implement CloudKit for native iCloud backup
+    // This would use native iOS code or a CloudKit package
+    // For now, fallback to Firebase
+    await _backupToFirebase(context);
+  }
+
+  Future<void> _backupToFirebase(BuildContext context) async {
+    final firebaseUser = await _ensureCloudUser();
+    final appUser = state.activeUser;
+    final json = state.exportBackupJson();
+    final bytes = Uint8List.fromList(utf8.encode(json));
+    final backupId = DateTime.now().toUtc().toIso8601String().replaceAll(':', '-');
+    final path = 'backups/${firebaseUser.uid}/$backupId.json';
+    final ref = FirebaseStorage.instance.ref(path);
+    await ref.putData(
+      bytes,
+      SettableMetadata(contentType: 'application/json'),
+    );
+
+    final meta = <String, dynamic>{
+      'path': path,
+      'backupId': backupId,
+      'schema': kBackupSchemaVersion,
+      'byteCount': bytes.length,
+      'createdAt': FieldValue.serverTimestamp(),
+      'activeUserId': appUser?.id,
+      'activeUserName': appUser?.name,
+      'sessionCount': state.allSessions.length,
+      'rifleCount': state.rifles.length,
+      'ammoCount': state.ammoLots.length,
+    };
+
+    final root = FirebaseFirestore.instance.collection('cloud_backups').doc(firebaseUser.uid);
+    await root.set({
+      ...meta,
+      'latestBackupId': backupId,
+      'latestPath': path,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    await root.collection('history').doc(backupId).set(meta);
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Cloud backup uploaded.')),
+    );
+  }
+
   Future<void> _restoreFromCloud(BuildContext context) async {
     try {
-      final mode = await _pickImportMode(context);
-      if (mode == null) return;
-
-      final meta = await _latestCloudBackupMeta();
-      final path = (meta?['latestPath'] ?? '').toString();
-      if (path.isEmpty) {
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No cloud backup found yet.')),
-        );
-        return;
-      }
-
-      final bytes = await FirebaseStorage.instance.ref(path).getData(20 * 1024 * 1024);
-      if (bytes == null) {
-        throw StateError('Downloaded backup was empty.');
-      }
-      final jsonText = utf8.decode(bytes);
-      if (mode == _ImportMode.merge) {
-        state.mergeBackupJson(jsonText, overwriteScope: true);
+      // iOS: Uses iCloud, Android/Web: Uses Firebase
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
+        await _restoreFromiCloud(context);
       } else {
-        state.importBackupJson(jsonText, replaceExisting: true);
+        await _restoreFromFirebase(context);
       }
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cloud restore complete.')),
-      );
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Cloud restore failed: $e')),
       );
     }
+  }
+
+  Future<void> _restoreFromiCloud(BuildContext context) async {
+    // TODO: Implement CloudKit for native iCloud restore
+    // This would use native iOS code or a CloudKit package
+    // For now, fallback to Firebase
+    await _restoreFromFirebase(context);
+  }
+
+  Future<void> _restoreFromFirebase(BuildContext context) async {
+    final mode = await _pickImportMode(context);
+    if (mode == null) return;
+
+    final meta = await _latestCloudBackupMeta();
+    final path = (meta?['latestPath'] ?? '').toString();
+    if (path.isEmpty) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No cloud backup found yet.')),
+      );
+      return;
+    }
+
+    final bytes = await FirebaseStorage.instance.ref(path).getData(20 * 1024 * 1024);
+    if (bytes == null) {
+      throw StateError('Downloaded backup was empty.');
+    }
+    final jsonText = utf8.decode(bytes);
+    if (mode == _ImportMode.merge) {
+      state.mergeBackupJson(jsonText, overwriteScope: true);
+    } else {
+      state.importBackupJson(jsonText, replaceExisting: true);
+    }
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Cloud restore complete.')),
+    );
   }
 
 @override
