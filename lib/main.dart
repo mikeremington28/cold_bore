@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
 import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'package:image_picker/image_picker.dart';
 import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
@@ -20,6 +22,52 @@ import 'firebase_options.dart';
 import 'package:file_picker/file_picker.dart';
 const String kBackupSchemaVersion = '2026-02-05';
 const String kLocalStatePrefsKey = 'cold_bore.local_state.v1';
+final Uint8List _shotTimerBeepBytes = _buildShotTimerBeepWav();
+
+Uint8List _buildShotTimerBeepWav({
+  int sampleRate = 44100,
+  double frequencyHz = 1200,
+  int durationMs = 180,
+}) {
+  final sampleCount = (sampleRate * durationMs / 1000).round();
+  final dataLength = sampleCount * 2;
+  final byteData = ByteData(44 + dataLength);
+
+  void writeAscii(int offset, String value) {
+    for (var i = 0; i < value.length; i++) {
+      byteData.setUint8(offset + i, value.codeUnitAt(i));
+    }
+  }
+
+  writeAscii(0, 'RIFF');
+  byteData.setUint32(4, 36 + dataLength, Endian.little);
+  writeAscii(8, 'WAVE');
+  writeAscii(12, 'fmt ');
+  byteData.setUint32(16, 16, Endian.little);
+  byteData.setUint16(20, 1, Endian.little);
+  byteData.setUint16(22, 1, Endian.little);
+  byteData.setUint32(24, sampleRate, Endian.little);
+  byteData.setUint32(28, sampleRate * 2, Endian.little);
+  byteData.setUint16(32, 2, Endian.little);
+  byteData.setUint16(34, 16, Endian.little);
+  writeAscii(36, 'data');
+  byteData.setUint32(40, dataLength, Endian.little);
+
+  for (var i = 0; i < sampleCount; i++) {
+    final t = i / sampleRate;
+    final envelope = 1 - (i / sampleCount);
+    final sample = (math.sin(2 * math.pi * frequencyHz * t) * 0.45 * envelope * 32767).round();
+    byteData.setInt16(44 + (i * 2), sample.clamp(-32768, 32767), Endian.little);
+  }
+
+  return byteData.buffer.asUint8List();
+}
+
+Future<void> _playShotTimerBeep() async {
+  final player = AudioPlayer();
+  await player.play(BytesSource(_shotTimerBeepBytes, mimeType: 'audio/wav'));
+  unawaited(player.dispose());
+}
 
 ThemeData _buildTacticalTheme() {
   const baseBg = Color(0xFFE3E0D2);
@@ -75,7 +123,7 @@ ThemeData _buildTacticalTheme() {
         (states) => TextStyle(
           color: states.contains(WidgetState.selected) ? primary : onSurface.withValues(alpha: 0.78),
           fontWeight: states.contains(WidgetState.selected) ? FontWeight.w700 : FontWeight.w500,
-          fontSize: 11,
+          fontSize: 10,
         ),
       ),
       iconTheme: WidgetStateProperty.resolveWith(
@@ -3414,10 +3462,10 @@ class _HomeShellState extends State<HomeShell> {
           bottomNavigationBar: NavigationBar(
             selectedIndex: _tab,
             onDestinationSelected: (i) => setState(() => _tab = i),
-            labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
+            labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
             destinations: const [
               NavigationDestination(icon: Icon(Icons.event_note_outlined), label: 'Session'),
-              NavigationDestination(icon: Icon(Icons.ac_unit_outlined), label: 'Cold'),
+              NavigationDestination(icon: Icon(Icons.ac_unit_outlined), label: 'Bore'),
               NavigationDestination(icon: Icon(Icons.timer_outlined), label: 'Timer'),
               NavigationDestination(icon: Icon(Icons.build_outlined), label: 'Gear'),
               NavigationDestination(icon: Icon(Icons.list_alt_outlined), label: 'Data'),
@@ -4195,7 +4243,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
   }
 
   Future<void> _beep() async {
-    await SystemSound.play(SystemSoundType.alert);
+    await _playShotTimerBeep();
   }
 
   void _beginRun() {
@@ -4793,7 +4841,7 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
   }
 
   Future<void> _beep() async {
-    await SystemSound.play(SystemSoundType.alert);
+    await _playShotTimerBeep();
   }
 
   void _beginRun() {
