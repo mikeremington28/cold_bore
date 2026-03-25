@@ -7043,6 +7043,7 @@ class _ColdBoreLegendDot extends StatelessWidget {
 
   const _ColdBoreLegendDot({
     required this.label,
+    this.isBaseline = false,
   });
 
   @override
@@ -8236,6 +8237,8 @@ class _HintCard extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.message,
+    this.actionLabel,
+    this.onAction,
   });
 
   @override
