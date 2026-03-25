@@ -1,7 +1,7 @@
 # CocoaPods configuration for Flutter.
 # Added to ensure Firebase iOS pods can be installed correctly.
 
-platform :ios, '12.0'
+platform :ios, '13.0'
 
 # Disable CocoaPods analytics to improve flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -45,9 +45,9 @@ post_install do |installer|
     flutter_additional_ios_build_settings(target)
 
     # Some pods still declare older deployment targets (9.0/11.0) in their podspecs.
-    # Force everything up to 12.0 to match Flutter + current Xcode supported range.
+    # Force everything up to 13.0 to match the Runner target and current plugin requirements.
     target.build_configurations.each do |config|
-      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '12.0'
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
     end
   end
 end
