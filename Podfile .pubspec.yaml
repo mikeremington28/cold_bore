@@ -1,0 +1,172 @@
+warning: in the working copy of 'lib/main.dart', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'linux/flutter/generated_plugin_registrant.cc', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'linux/flutter/generated_plugins.cmake', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'macos/Flutter/GeneratedPluginRegistrant.swift', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'pubspec.lock', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'pubspec.yaml', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'windows/flutter/generated_plugin_registrant.cc', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'windows/flutter/generated_plugins.cmake', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/lib/main.dart b/lib/main.dart[m
+[1mindex 8fb1e01..4ba0c33 100644[m
+[1m--- a/lib/main.dart[m
+[1m+++ b/lib/main.dart[m
+[36m@@ -565,8 +565,14 @@[m [mvoid main() {[m
+     String? firebaseError;[m
+ [m
+     try {[m
+[31m-      await Firebase.initializeApp();[m
+[31m-      firebaseReady = true;[m
+[32m+[m[32m      if (kIsWeb) {[m
+[32m+[m[32m        // Web builds require explicit FirebaseOptions. For local UI preview, we skip Firebase init.[m
+[32m+[m[32m        // (iOS/Android still initialize normally via their platform config files.)[m
+[32m+[m[32m        firebaseReady = true;[m
+[32m+[m[32m      } else {[m
+[32m+[m[32m        await Firebase.initializeApp();[m
+[32m+[m[32m        firebaseReady = true;[m
+[32m+[m[32m      }[m
+     } catch (e, st) {[m
+       firebaseReady = false;[m
+       firebaseError = '$e';[m
+[1mdiff --git a/linux/flutter/generated_plugin_registrant.cc b/linux/flutter/generated_plugin_registrant.cc[m
+[1mindex 64a0ece..7299b5c 100644[m
+[1m--- a/linux/flutter/generated_plugin_registrant.cc[m
+[1m+++ b/linux/flutter/generated_plugin_registrant.cc[m
+[36m@@ -7,9 +7,13 @@[m
+ #include "generated_plugin_registrant.h"[m
+ [m
+ #include <file_selector_linux/file_selector_plugin.h>[m
+[32m+[m[32m#include <url_launcher_linux/url_launcher_plugin.h>[m
+ [m
+ void fl_register_plugins(FlPluginRegistry* registry) {[m
+   g_autoptr(FlPluginRegistrar) file_selector_linux_registrar =[m
+       fl_plugin_registry_get_registrar_for_plugin(registry, "FileSelectorPlugin");[m
+   file_selector_plugin_register_with_registrar(file_selector_linux_registrar);[m
+[32m+[m[32m  g_autoptr(FlPluginRegistrar) url_launcher_linux_registrar =[m
+[32m+[m[32m      fl_plugin_registry_get_registrar_for_plugin(registry, "UrlLauncherPlugin");[m
+[32m+[m[32m  url_launcher_plugin_register_with_registrar(url_launcher_linux_registrar);[m
+ }[m
+[1mdiff --git a/linux/flutter/generated_plugins.cmake b/linux/flutter/generated_plugins.cmake[m
+[1mindex 2db3c22..786ff5c 100644[m
+[1m--- a/linux/flutter/generated_plugins.cmake[m
+[1m+++ b/linux/flutter/generated_plugins.cmake[m
+[36m@@ -4,6 +4,7 @@[m
+ [m
+ list(APPEND FLUTTER_PLUGIN_LIST[m
+   file_selector_linux[m
+[32m+[m[32m  url_launcher_linux[m
+ )[m
+ [m
+ list(APPEND FLUTTER_FFI_PLUGIN_LIST[m
+[1mdiff --git a/macos/Flutter/GeneratedPluginRegistrant.swift b/macos/Flutter/GeneratedPluginRegistrant.swift[m
+[1mindex c7dcec3..c6c6f46 100644[m
+[1m--- a/macos/Flutter/GeneratedPluginRegistrant.swift[m
+[1m+++ b/macos/Flutter/GeneratedPluginRegistrant.swift[m
+[36m@@ -5,10 +5,22 @@[m
+ import FlutterMacOS[m
+ import Foundation[m
+ [m
+[32m+[m[32mimport cloud_firestore[m
+ import file_selector_macos[m
+[32m+[m[32mimport firebase_auth[m
+[32m+[m[32mimport firebase_core[m
+[32m+[m[32mimport firebase_storage[m
+ import geolocator_apple[m
+[32m+[m[32mimport share_plus[m
+[32m+[m[32mimport shared_preferences_foundation[m
+ [m
+ func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {[m
+[32m+[m[32m  FLTFirebaseFirestorePlugin.register(with: registry.registrar(forPlugin: "FLTFirebaseFirestorePlugin"))[m
+   FileSelectorPlugin.register(with: registry.registrar(forPlugin: "FileSelectorPlugin"))[m
+[32m+[m[32m  FLTFirebaseAuthPlugin.register(with: registry.registrar(forPlugin: "FLTFirebaseAuthPlugin"))[m
+[32m+[m[32m  FLTFirebaseCorePlugin.register(with: registry.registrar(forPlugin: "FLTFirebaseCorePlugin"))[m
+[32m+[m[32m  FLTFirebaseStoragePlugin.register(with: registry.registrar(forPlugin: "FLTFirebaseStoragePlugin"))[m
+   GeolocatorPlugin.register(with: registry.registrar(forPlugin: "GeolocatorPlugin"))[m
+[32m+[m[32m  SharePlusMacosPlugin.register(with: registry.registrar(forPlugin: "SharePlusMacosPlugin"))[m
+[32m+[m[32m  SharedPreferencesPlugin.register(with: registry.registrar(forPlugin: "SharedPreferencesPlugin"))[m
+ }[m
+[1mdiff --git a/pubspec.lock b/pubspec.lock[m
+[1mindex 09dcbfc..0809946 100644[m
+[1m--- a/pubspec.lock[m
+[1m+++ b/pubspec.lock[m
+[36m@@ -49,6 +49,14 @@[m [mpackages:[m
+       url: "https://pub.dev"[m
+     source: hosted[m
+     version: "1.4.0"[m
+[32m+[m[32m  charcode:[m
+[32m+[m[32m    dependency: transitive[m
+[32m+[m[32m    description:[m
+[32m+[m[32m      name: charcode[m
+[32m+[m[32m      sha256: fb0f1107cac15a5ea6ef0a6ef71a807b9e4267c713bb93e00e92d737cc8dbd8a[m
+[32m+[m[32m      url: "https://pub.dev"[m
+[32m+[m[32m    source: hosted[m
+[32m+[m[32m    version: "1.4.0"[m
+   checked_yaml:[m
+     dependency: transitive[m
+     description:[m
+[36m@@ -97,6 +105,14 @@[m [mpackages:[m
+       url: "https://pub.dev"[m
+     source: hosted[m
+     version: "4.4.12"[m
+[32m+[m[32m  code_assets:[m
+[32m+[m[32m    dependency: transitive[m
+[32m+[m[32m    description:[m
+[32m+[m[32m      name: code_assets[m
+[32m+[m[32m      sha256: "83ccdaa064c980b5596c35dd64a8d3ecc68620174ab9b90b6343b753aa721687"[m
+[32m+[m[32m      url: "https://pub.dev"[m
+[32m+[m[32m    source: hosted[m
+[32m+[m[32m    version: "1.0.0"[m
+   collection:[m
+     dependency: transitive[m
+     description:[m
+[36m@@ -121,6 +137,14 @@[m [mpackages:[m
+       url: "https://pub.dev"[m
+     source: hosted[m
+     version: "3.0.7"[m
+[32m+[m[32m  csslib:[m
+[32m+[m[32m    dependency: transitive[m
+[32m+[m[32m    description:[m
+[32m+[m[32m      name: csslib[m
+[32m+[m[32m      sha256: "09bad715f418841f976c77db72d5398dc1253c21fb9c0c7f0b0b985860b2d58e"[m
+[32m+[m[32m      url: "https://pub.dev"[m
+[32m+[m[32m    source: hosted[m
+[32m+[m[32m    version: "1.0.2"[m
+   cupertino_icons:[m
+     dependency: "direct main"[m
+     description:[m
+[36m@@ -352,6 +376,30 @@[m [mpackages:[m
+       url: "https://pub.dev"[m
+     source: hosted[m
+     version: "0.2.5"[m
+[32m+[m[32m  glob:[m
+[32m+[m[32m    dependency: transitive[m
+[32m+[m[32m    description:[m
+[32m+[m[32m      name: glob[m
+[32m+[m[32m      sha256: c3f1ee72c96f8f78935e18aa8cecced9ab132419e8625dc187e1c2408efc20de[m
+[32m+[m[32m      url: "https://pub.dev"[m
+[32m+[m[32m    source: hosted[m
+[32m+[m[32m    version: "2.1.3"[m
+[32m+[m[32m  hooks:[m
+[32m+[m[32m    dependency: transitive[m
+[32m+[m[32m    description:[m
+[32m+[m[32m      name: hooks[m
+[32m+[m[32m      sha256: "7a08a0d684cb3b8fb604b78455d5d352f502b68079f7b80b831c62220ab0a4f6"[m
+[32m+[m[32m      url: "https://pub.dev"[m
+[32m+[m[32m    source: hosted[m
+[32m+[m[32m    version: "1.0.1"[m
+[32m+[m[32m  html:[m
+[32m+[m[32m    dependency: transitive[m
+[32m+[m[32m    description:[m
+[32m+[m[32m      name: html[m
+[32m+[m[32m      sha256: "6d1264f2dffa1b1101c25a91dff0dc2daee4c18e87cd8538729773c073dbf602"[m
+[32m+[m[32m      url: "https://pub.dev"[m
+[32m+[m[32m    source: hosted[m
+[32m+[m[32m    version: "0.15.6"[m
+   http:[m
+     dependency: "direct main"[m
+     description:[m
+[36m@@ -480,6 +528,14 @@[m [mpackages:[m
+       url: "https://pub.dev"[m
+     source: hosted[m
+     version: "6.0.0"[m
+[32m+[m[32m  logging:[m
+[32m+[m[32m    de

@@ -4371,7 +4371,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
         final next = math.max(0, (_armedUntil?.difference(DateTime.now()).inMilliseconds ?? 0));
         if (next <= 0) {
           _beginRun();
-          await _beep();
+          _beep(); // Fire and forget - don't await to avoid blocking timer
           if (!mounted) return;
           setState(() {
             _isArmed = false;
@@ -4390,7 +4390,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
       final hitGoal = _goalMs > 0 && !_goalAlertPlayed && current >= _goalMs;
       if (hitGoal) {
         _goalAlertPlayed = true;
-        await _beep();
+        _beep(); // Fire and forget - don't await to avoid blocking timer
         if (!mounted) return;
       }
       setState(() {
@@ -5021,7 +5021,7 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
         final next = math.max(0, (_armedUntil?.difference(DateTime.now()).inMilliseconds ?? 0));
         if (next <= 0) {
           _beginRun();
-          await _beep();
+          _beep(); // Fire and forget - don't await to avoid blocking timer
           if (!mounted) return;
           setState(() {
             _isArmed = false;
@@ -5040,7 +5040,7 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
       final hitGoal = _goalMs > 0 && !_goalAlertPlayed && current >= _goalMs;
       if (hitGoal) {
         _goalAlertPlayed = true;
-        await _beep();
+        _beep(); // Fire and forget - don't await to avoid blocking timer
         if (!mounted) return;
       }
       setState(() {
