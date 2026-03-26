@@ -762,8 +762,10 @@ Future<void> main() async {
   bool firebaseReady = false;
   String? firebaseError;
 
-  // Only initialize Firebase on Android (iOS uses CloudKit)
-  if (defaultTargetPlatform != TargetPlatform.iOS) {
+  // Initialize Firebase where options are configured for this app.
+  final shouldInitializeFirebase = kIsWeb || defaultTargetPlatform == TargetPlatform.iOS;
+
+  if (shouldInitializeFirebase) {
     try {
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
@@ -779,6 +781,9 @@ Future<void> main() async {
       // ignore: avoid_print
       print(st);
     }
+  } else {
+    // Non-configured platforms are allowed to run without Firebase startup.
+    firebaseReady = true;
   }
 
   runApp(ColdBoreApp(firebaseReady: firebaseReady, firebaseError: firebaseError));
