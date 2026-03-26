@@ -6,7 +6,6 @@ import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
 import 'dart:convert';
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'package:image_picker/image_picker.dart';
 import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
@@ -25,7 +24,6 @@ import 'firebase_options.dart';
 import 'package:file_picker/file_picker.dart';
 const String kBackupSchemaVersion = '2026-02-05';
 const String kLocalStatePrefsKey = 'cold_bore.local_state.v1';
-final Uint8List _shotTimerBeepBytes = _buildShotTimerBeepWav();
 final AudioPlayer _shotTimerBeepPlayer = AudioPlayer();
 
 Uint8List _buildShotTimerBeepWav({
@@ -69,10 +67,11 @@ Uint8List _buildShotTimerBeepWav({
   return byteData.buffer.asUint8List();
 }
 
-Future<void> _playShotTimerBeep() async {
-  await _shotTimerBeepPlayer.setVolume(1.0);
+Future<void> _playShotTimerBeep({double volume = 1.0, double frequencyHz = 1750.0}) async {
+  await _shotTimerBeepPlayer.setVolume(volume);
   await _shotTimerBeepPlayer.stop();
-  await _shotTimerBeepPlayer.play(BytesSource(_shotTimerBeepBytes, mimeType: 'audio/wav'));
+  final bytes = _buildShotTimerBeepWav(frequencyHz: frequencyHz);
+  await _shotTimerBeepPlayer.play(BytesSource(bytes, mimeType: 'audio/wav'));
 }
 
 ThemeData _buildTacticalTheme() {
@@ -763,20 +762,23 @@ Future<void> main() async {
   bool firebaseReady = false;
   String? firebaseError;
 
-  try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-    firebaseReady = true;
-  } catch (e, st) {
-    // Keep the app running even if Firebase fails (shows an in-app error banner).
-    firebaseReady = false;
-    firebaseError = e.toString();
-    // Optional: log for debugging
-    // ignore: avoid_print
-    print('Firebase init failed: $e');
-    // ignore: avoid_print
-    print(st);
+  // Only initialize Firebase on Android (iOS uses CloudKit)
+  if (defaultTargetPlatform != TargetPlatform.iOS) {
+    try {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+      firebaseReady = true;
+    } catch (e, st) {
+      // Keep the app running even if Firebase fails (shows an in-app error banner).
+      firebaseReady = false;
+      firebaseError = e.toString();
+      // Optional: log for debugging
+      // ignore: avoid_print
+      print('Firebase init failed: $e');
+      // ignore: avoid_print
+      print(st);
+    }
   }
 
   runApp(ColdBoreApp(firebaseReady: firebaseReady, firebaseError: firebaseError));
@@ -872,6 +874,12 @@ class AppState extends ChangeNotifier {
 
   UserProfile? _activeUser;
 
+  // Shot timer settings
+  double _shotTimerBeepFrequencyHz = 1750.0;
+  double _shotTimerBeepVolume = 1.0;
+  bool _shotTimerApplyAudioShotCountToRifle = false;
+  String? _shotTimerSelectedRifleId;
+  double _audioThresholdDb = 92.0;
 
   // Current environment (optional)
   double? _latitude;
@@ -990,8 +998,39 @@ class AppState extends ChangeNotifier {
 
   UserProfile? get activeUser => _activeUser;
 
+  double get shotTimerBeepFrequencyHz => _shotTimerBeepFrequencyHz;
+  double get shotTimerBeepVolume => _shotTimerBeepVolume;
+  bool get shotTimerApplyAudioShotCountToRifle => _shotTimerApplyAudioShotCountToRifle;
+  String? get shotTimerSelectedRifleId => _shotTimerSelectedRifleId;
+  double get audioThresholdDb => _audioThresholdDb;
+
   Map<String, Map<DistanceKey, DopeEntry>> get workingDopeRifleOnly => _workingDopeRifleOnly;
   Map<String, Map<DistanceKey, DopeEntry>> get workingDopeRifleAmmo => _workingDopeRifleAmmo;
+
+  void setShotTimerBeepFrequencyHz(double value) {
+    _shotTimerBeepFrequencyHz = value.clamp(400.0, 3000.0);
+    notifyListeners();
+  }
+
+  void setShotTimerBeepVolume(double value) {
+    _shotTimerBeepVolume = value.clamp(0.0, 1.0);
+    notifyListeners();
+  }
+
+  void setShotTimerApplyAudioShotCountToRifle(bool value) {
+    _shotTimerApplyAudioShotCountToRifle = value;
+    notifyListeners();
+  }
+
+  void setShotTimerSelectedRifleId(String? rifleId) {
+    _shotTimerSelectedRifleId = rifleId;
+    notifyListeners();
+  }
+
+  void setAudioThresholdDb(double value) {
+    _audioThresholdDb = value.clamp(70.0, 120.0);
+    notifyListeners();
+  }
 
   List<TrainingSession> get allSessions => List.unmodifiable(_sessions);
 
@@ -1057,6 +1096,13 @@ class AppState extends ChangeNotifier {
         'windSpeedMph': _windSpeedMph,
         'windDirectionDeg': _windDirectionDeg,
       },
+      'shotTimerSettings': <String, dynamic>{
+        'beepFrequencyHz': _shotTimerBeepFrequencyHz,
+        'beepVolume': _shotTimerBeepVolume,
+        'applyAudioShotCountToRifle': _shotTimerApplyAudioShotCountToRifle,
+        'selectedRifleId': _shotTimerSelectedRifleId,
+        'audioThresholdDb': _audioThresholdDb,
+      },
       'users': _users.map(_userToMap).toList(),
       'rifles': _rifles.map(_rifleToMap).toList(),
       'ammoLots': _ammoLots.map(_ammoLotToMap).toList(),
@@ -1117,6 +1163,16 @@ class AppState extends ChangeNotifier {
       _temperatureF = _toNullableDouble(envMap['temperatureF']);
       _windSpeedMph = _toNullableDouble(envMap['windSpeedMph']);
       _windDirectionDeg = _toNullableInt(envMap['windDirectionDeg']);
+    }
+
+    final shotTimerSettings = map['shotTimerSettings'];
+    if (shotTimerSettings is Map) {
+      final stMap = Map<String, dynamic>.from(shotTimerSettings);
+      _shotTimerBeepFrequencyHz = _toNullableDouble(stMap['beepFrequencyHz']) ?? _shotTimerBeepFrequencyHz;
+      _shotTimerBeepVolume = _toNullableDouble(stMap['beepVolume']) ?? _shotTimerBeepVolume;
+      _shotTimerApplyAudioShotCountToRifle = stMap['applyAudioShotCountToRifle'] == true;
+      _shotTimerSelectedRifleId = stMap['selectedRifleId']?.toString();
+      _audioThresholdDb = _toNullableDouble(stMap['audioThresholdDb']) ?? _audioThresholdDb;
     }
 
     final activeUserId = map['activeUserId']?.toString();
@@ -2197,6 +2253,22 @@ class AppState extends ChangeNotifier {
         }
       }
     }
+    notifyListeners();
+  }
+
+  void addRifleRounds({
+    required String rifleId,
+    required int roundCount,
+  }) {
+    if (roundCount <= 0) return;
+    final idx = _rifles.indexWhere((r) => r.id == rifleId);
+    if (idx < 0) return;
+    final rifle = _rifles[idx];
+    final nextRoundCount = rifle.manualRoundCount + roundCount;
+    _rifles[idx] = rifle.copyWith(
+      manualRoundCount: nextRoundCount,
+      barrelRoundCount: nextRoundCount,
+    );
     notifyListeners();
   }
 
@@ -3471,6 +3543,261 @@ class _ColdBoreRow {
 
 
 
+class AudioCounterScreen extends StatefulWidget {
+  final AppState state;
+  const AudioCounterScreen({super.key, required this.state});
+
+  @override
+  State<AudioCounterScreen> createState() => _AudioCounterScreenState();
+}
+
+class _AudioCounterScreenState extends State<AudioCounterScreen> {
+  bool _isListening = false;
+  StreamSubscription<NoiseReading>? _noiseSubscription;
+  double _latestDb = 0;
+  int _totalShotsDetected = 0;
+  String? _selectedRifleId;
+  double _audioThresholdDb = 92;
+  DateTime? _lastShotAt;
+  bool _applyToRifleOnDetection = false;
+  String? _statusMessage;
+
+  bool get _audioSupported => !kIsWeb && (defaultTargetPlatform == TargetPlatform.iOS || defaultTargetPlatform == TargetPlatform.android);
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.state.rifles.isNotEmpty) {
+      _selectedRifleId = widget.state.shotTimerSelectedRifleId ?? widget.state.rifles.first.id;
+    }
+    _audioThresholdDb = widget.state.audioThresholdDb;
+  }
+
+  @override
+  void dispose() {
+    _noiseSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _toggleAudioListener(bool enable) async {
+    if (!_audioSupported) {
+      setState(() {
+        _isListening = false;
+        _statusMessage = 'Audio counter available on iPhone and Android only.';
+      });
+      return;
+    }
+
+    if (!enable) {
+      await _noiseSubscription?.cancel();
+      _noiseSubscription = null;
+      if (!mounted) return;
+      setState(() {
+        _isListening = false;
+        _latestDb = 0;
+        _statusMessage = null;
+      });
+      return;
+    }
+
+    try {
+      await _noiseSubscription?.cancel();
+      _noiseSubscription = NoiseMeter().noise.listen(
+        (reading) {
+          if (!mounted) return;
+          final maxDb = reading.maxDecibel;
+          final now = DateTime.now();
+          final shouldMark = _isListening &&
+              maxDb >= _audioThresholdDb &&
+              (_lastShotAt == null || now.difference(_lastShotAt!).inMilliseconds >= 250);
+
+          setState(() {
+            _latestDb = maxDb;
+            if (shouldMark) {
+              _lastShotAt = now;
+              _totalShotsDetected += 1;
+              if (_applyToRifleOnDetection && _selectedRifleId != null) {
+                widget.state.addRifleRounds(rifleId: _selectedRifleId!, roundCount: 1);
+              }
+            }
+          });
+        },
+        onError: (Object error) {
+          if (!mounted) return;
+          setState(() {
+            _isListening = false;
+            _statusMessage = 'Microphone unavailable. Check permissions and try again.';
+          });
+        },
+        cancelOnError: true,
+      );
+      if (!mounted) return;
+      setState(() {
+        _isListening = true;
+        _statusMessage = 'Listening for shots...';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isListening = false;
+        _statusMessage = 'Microphone unavailable. Check permissions and try again.';
+      });
+    }
+  }
+
+  void _applyDetectedShotsToRifle() {
+    if (_totalShotsDetected <= 0 || _selectedRifleId == null) return;
+    widget.state.addRifleRounds(rifleId: _selectedRifleId!, roundCount: _totalShotsDetected);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Applied $_totalShotsDetected shots to rifle')),
+    );
+    setState(() => _totalShotsDetected = 0);
+  }
+
+  void _resetCounter() {
+    setState(() => _totalShotsDetected = 0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Audio Shot Counter'),
+      ),
+      body: AnimatedBuilder(
+        animation: widget.state,
+        builder: (context, _) {
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Standalone Audio Counter',
+                              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                          if (_isListening)
+                            const Chip(
+                              label: Text('Listening'),
+                              avatar: Icon(Icons.mic, size: 18),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Shots detected: $_totalShotsDetected',
+                        style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Live level: ${_latestDb.toStringAsFixed(1)} dB',
+                        style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.72)),
+                      ),
+                      const SizedBox(height: 12),
+                      if (widget.state.rifles.isNotEmpty) ...[
+                        DropdownButtonFormField<String>(
+                          value: _selectedRifleId,
+                          decoration: const InputDecoration(labelText: 'Target Rifle'),
+                          items: widget.state.rifles
+                              .map((rifle) => DropdownMenuItem(value: rifle.id, child: Text(rifle.name ?? rifle.caliber)))
+                              .toList(),
+                          onChanged: (val) => setState(() => _selectedRifleId = val),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      SwitchListTile.adaptive(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Apply shots immediately'),
+                        subtitle: const Text('Auto-increment rifle round count as shots are detected'),
+                        value: _applyToRifleOnDetection,
+                        onChanged: (v) => setState(() => _applyToRifleOnDetection = v),
+                      ),
+                      const SizedBox(height: 12),
+                      Text('Detection threshold', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.78))),
+                      Slider(
+                        value: _audioThresholdDb,
+                        min: 70,
+                        max: 120,
+                        divisions: 50,
+                        label: '${_audioThresholdDb.toStringAsFixed(0)} dB',
+                        onChanged: _isListening
+                            ? (value) {
+                              setState(() => _audioThresholdDb = value);
+                              widget.state.setAudioThresholdDb(value);
+                            }
+                            : null,
+                      ),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          FilledButton.icon(
+                            onPressed: () => _toggleAudioListener(!_isListening),
+                            icon: Icon(_isListening ? Icons.stop_circle_outlined : Icons.mic_outlined),
+                            label: Text(_isListening ? 'Stop Listening' : 'Start Listening'),
+                          ),
+                          OutlinedButton.icon(
+                            onPressed: _totalShotsDetected > 0 ? _resetCounter : null,
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Reset'),
+                          ),
+                          if (_totalShotsDetected > 0 && _selectedRifleId != null)
+                            FilledButton.icon(
+                              onPressed: _applyDetectedShotsToRifle,
+                              icon: const Icon(Icons.check_circle_outline),
+                              label: Text('Apply $_totalShotsDetected shots'),
+                            ),
+                        ],
+                      ),
+                      if (_statusMessage != null) ...[
+                        const SizedBox(height: 12),
+                        Chip(label: Text(_statusMessage!)),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'How to use',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        '1. Select your rifle\n'
+                        '2. Adjust threshold for your range noise level\n'
+                        '3. Start listening\n'
+                        '4. Fire shots - loud impulses above threshold will auto-detect\n'
+                        '5. Tap "Apply shots" to add count to rifle round total\n'
+                        'Or enable "Apply shots immediately" to auto-increment as detected.',
+                        style: TextStyle(fontSize: 13),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
 class HomeShell extends StatefulWidget {
   final AppState state;
   const HomeShell({super.key, required this.state});
@@ -3487,7 +3814,8 @@ class _HomeShellState extends State<HomeShell> {
     final pages = <Widget>[
       SessionsScreen(state: widget.state),
       ColdBoreScreen(state: widget.state),
-      const ShotTimerToolScreen(),
+      ShotTimerToolScreen(state: widget.state),
+      AudioCounterScreen(state: widget.state),
       EquipmentScreen(state: widget.state),
       DataScreen(state: widget.state),
       ExportPlaceholderScreen(state: widget.state),
@@ -3535,6 +3863,7 @@ class _HomeShellState extends State<HomeShell> {
               NavigationDestination(icon: Icon(Icons.event_note_outlined), label: 'Session'),
               NavigationDestination(icon: Icon(Icons.ac_unit_outlined), label: 'Bore'),
               NavigationDestination(icon: Icon(Icons.timer_outlined), label: 'Timer'),
+              NavigationDestination(icon: Icon(Icons.mic_outlined), label: 'Audio'),
               NavigationDestination(icon: Icon(Icons.build_outlined), label: 'Gear'),
               NavigationDestination(icon: Icon(Icons.list_alt_outlined), label: 'Data'),
               NavigationDestination(icon: Icon(Icons.ios_share_outlined), label: 'Export'),
@@ -4325,27 +4654,6 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
     );
   }
 
-  List<InlineSpan> _shotMarkSpans(List<int> marks, {int goalMs = 0}) {
-    if (marks.isEmpty) return const [TextSpan(text: '-')];
-    final spans = <InlineSpan>[];
-    for (var i = 0; i < marks.length; i++) {
-      final afterGoal = goalMs > 0 && marks[i] > goalMs;
-      spans.add(
-        TextSpan(
-          text: '${i + 1}. ${_fmtMs(marks[i])}',
-          style: TextStyle(
-            color: afterGoal ? Colors.red.shade700 : null,
-            fontWeight: afterGoal ? FontWeight.w700 : FontWeight.w500,
-          ),
-        ),
-      );
-      if (i < marks.length - 1) {
-        spans.add(const TextSpan(text: '   '));
-      }
-    }
-    return spans;
-  }
-
   int _parseSecondsToMs(String raw) {
     final seconds = double.tryParse(raw.trim()) ?? 0;
     if (seconds <= 0) return 0;
@@ -4862,7 +5170,9 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
 }
 
 class ShotTimerToolScreen extends StatelessWidget {
-  const ShotTimerToolScreen({super.key});
+  final AppState state;
+
+  const ShotTimerToolScreen({super.key, required this.state});
 
   @override
   Widget build(BuildContext context) {
@@ -4872,8 +5182,8 @@ class ShotTimerToolScreen extends StatelessWidget {
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
-        children: const [
-          _StandaloneShotTimerCard(),
+        children: [
+          _StandaloneShotTimerCard(state: state),
         ],
       ),
     );
@@ -4881,7 +5191,9 @@ class ShotTimerToolScreen extends StatelessWidget {
 }
 
 class _StandaloneShotTimerCard extends StatefulWidget {
-  const _StandaloneShotTimerCard();
+  final AppState state;
+
+  const _StandaloneShotTimerCard({required this.state});
 
   @override
   State<_StandaloneShotTimerCard> createState() => _StandaloneShotTimerCardState();
@@ -4908,10 +5220,22 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
   double _latestDb = 0;
   DateTime? _lastAudioShotAt;
   String? _audioAssistMessage;
+  String? _selectedRifleId;
+  int _audioShotCount = 0;
 
   bool get _isRunning => _stopwatch.isRunning;
   bool get _isActive => _isRunning || _isArmed;
   bool get _audioAssistSupported => !kIsWeb && (defaultTargetPlatform == TargetPlatform.iOS || defaultTargetPlatform == TargetPlatform.android);
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.state.rifles.isNotEmpty) {
+      _selectedRifleId = widget.state.shotTimerSelectedRifleId ?? widget.state.rifles.first.id;
+      widget.state.setShotTimerSelectedRifleId(_selectedRifleId);
+    }
+    _audioThresholdDb = widget.state.audioThresholdDb;
+  }
 
   @override
   void dispose() {
@@ -5181,6 +5505,7 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
       _firstShotMs = null;
       _splitMs = const [];
       _goalAlertPlayed = false;
+      _audioShotCount = 0;
     });
   }
 
@@ -5325,6 +5650,61 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
               value: _audioAssistEnabled,
               onChanged: (value) => _setAudioAssist(value),
             ),
+            if (widget.state.rifles.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: _selectedRifleId,
+                decoration: const InputDecoration(labelText: 'Apply to Rifle'),
+                items: widget.state.rifles
+                    .map((rifle) => DropdownMenuItem(value: rifle.id, child: Text(rifle.name ?? rifle.caliber)))
+                    .toList(),
+                onChanged: (val) {
+                  if (val != null) {
+                    setState(() => _selectedRifleId = val);
+                    widget.state.setShotTimerSelectedRifleId(val);
+                  }
+                },
+              ),
+            ],
+            SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Auto-apply audio shot count to rifle'),
+              subtitle: const Text('Increment selected rifle round count for auto-marked audio shots'),
+              value: widget.state.shotTimerApplyAudioShotCountToRifle,
+              onChanged: (v) => widget.state.setShotTimerApplyAudioShotCountToRifle(v),
+            ),
+            if (_audioShotCount > 0 && _selectedRifleId != null)
+              FilledButton.icon(
+                onPressed: () {
+                  widget.state.addRifleRounds(rifleId: _selectedRifleId!, roundCount: _audioShotCount);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Applied $_audioShotCount shots to rifle')),
+                  );
+                  setState(() => _audioShotCount = 0);
+                },
+                icon: const Icon(Icons.check_circle_outline),
+                label: Text('Apply $_audioShotCount audio shots to rifle now'),
+              ),
+            Text('Audio-shot detections: $_audioShotCount', style: const TextStyle(fontSize: 13)),
+            const SizedBox(height: 8),
+            Text('Beep volume', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.78))),
+            Slider(
+              value: widget.state.shotTimerBeepVolume,
+              min: 0.0,
+              max: 1.0,
+              divisions: 10,
+              label: (widget.state.shotTimerBeepVolume * 100).round().toString(),
+              onChanged: (v) => widget.state.setShotTimerBeepVolume(v),
+            ),
+            Text('Beep frequency', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.78))),
+            Slider(
+              value: widget.state.shotTimerBeepFrequencyHz,
+              min: 400.0,
+              max: 3000.0,
+              divisions: 52,
+              label: widget.state.shotTimerBeepFrequencyHz.toStringAsFixed(0),
+              onChanged: (v) => widget.state.setShotTimerBeepFrequencyHz(v),
+            ),
             Row(
               children: [
                 Expanded(
@@ -5335,7 +5715,10 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
                     divisions: 50,
                     label: '${_audioThresholdDb.toStringAsFixed(0)} dB',
                     onChanged: (_audioAssistEnabled && _audioAssistSupported)
-                        ? (value) => setState(() => _audioThresholdDb = value)
+                        ? (value) {
+                          setState(() => _audioThresholdDb = value);
+                          widget.state.setAudioThresholdDb(value);
+                        }
                         : null,
                   ),
                 ),
@@ -8928,7 +9311,6 @@ late DateTime _time;
               if (hAmount == null || vAmount == null) return;
               ox = (_horizontalRight ? 1 : -1) * hAmount.abs();
               oy = (_verticalUp ? 1 : -1) * vAmount.abs();
-              if (oy == null) return;
             } else {
               ox = null;
               oy = null;
@@ -10381,6 +10763,10 @@ class _BackupScreen extends StatelessWidget {
   const _BackupScreen({required this.state});
 
   Future<User> _ensureCloudUser() async {
+    // Firebase only used for Android backup
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      throw StateError('iOS uses iCloud backup, not Firebase.');
+    }
     final auth = FirebaseAuth.instance;
     final existing = auth.currentUser;
     if (existing != null) return existing;
@@ -10393,6 +10779,10 @@ class _BackupScreen extends StatelessWidget {
   }
 
   Future<Map<String, dynamic>?> _latestCloudBackupMeta() async {
+    // Firebase only used for Android backup
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      return null; // iOS uses iCloud backup, not Firebase
+    }
     final user = await _ensureCloudUser();
     final doc = await FirebaseFirestore.instance.collection('cloud_backups').doc(user.uid).get();
     return doc.data();
@@ -10434,49 +10824,6 @@ class _BackupScreen extends StatelessWidget {
       ),
     );
   }
-
-  
-  void _showExportText(BuildContext context, String title, String text) {
-  showDialog(
-    context: context,
-    builder: (_) => AlertDialog(
-      title: Text(title),
-      content: SizedBox(
-        width: 520,
-        child: SingleChildScrollView(
-          child: SelectableText(text),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () {
-            Clipboard.setData(ClipboardData(text: text));
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Copied to clipboard')),
-            );
-          },
-          child: const Text('Copy'),
-        ),
-        if (kIsWeb)
-          TextButton(
-            onPressed: () {
-              final safe = title
-                  .toLowerCase()
-                  .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
-                  .replaceAll(RegExp(r'_+'), '_')
-                  .replaceAll(RegExp(r'^_|_$'), '');
-              final ext = title.toLowerCase().contains('csv') ? 'csv' : 'txt';
-              _downloadTextFileWeb('cold_bore_${safe.isEmpty ? 'export' : safe}.$ext', text,
-                  mimeType: ext == 'csv' ? 'text/csv' : 'text/plain');
-            },
-            child: const Text('Download'),
-          ),
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close')),
-      ],
-    ),
-  );
-}
-
 
   Future<void> _exportBackupFile(BuildContext context) async {
     try {
