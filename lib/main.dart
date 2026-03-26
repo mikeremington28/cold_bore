@@ -10509,7 +10509,7 @@ class _BackupScreen extends StatelessWidget {
 
   Future<void> _backupToCloud(BuildContext context) async {
     try {
-      // iOS: Uses iCloud, Android/Web: Uses Firebase
+      // iOS: Uses iCloud (CloudKit), Android/Web: Uses Firebase
       if (defaultTargetPlatform == TargetPlatform.iOS) {
         await _backupToiCloud(context);
       } else {
@@ -10524,10 +10524,24 @@ class _BackupScreen extends StatelessWidget {
   }
 
   Future<void> _backupToiCloud(BuildContext context) async {
-    // TODO: Implement CloudKit for native iCloud backup
-    // This would use native iOS code or a CloudKit package
-    // For now, fallback to Firebase
-    await _backupToFirebase(context);
+    const platform = MethodChannel('com.remington.coldbore/icloud');
+    try {
+      final json = state.exportBackupJson();
+      final result = await platform.invokeMethod('backupToiCloud', {
+        'backupData': json,
+        'timestamp': DateTime.now().toUtc().toIso8601String(),
+      });
+      
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result ?? 'Cloud backup uploaded to iCloud.')),
+      );
+    } on PlatformException catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('iCloud backup failed: ${e.message}')),
+      );
+    }
   }
 
   Future<void> _backupToFirebase(BuildContext context) async {
@@ -10573,7 +10587,7 @@ class _BackupScreen extends StatelessWidget {
 
   Future<void> _restoreFromCloud(BuildContext context) async {
     try {
-      // iOS: Uses iCloud, Android/Web: Uses Firebase
+      // iOS: Uses iCloud (CloudKit), Android/Web: Uses Firebase
       if (defaultTargetPlatform == TargetPlatform.iOS) {
         await _restoreFromiCloud(context);
       } else {
@@ -10588,10 +10602,36 @@ class _BackupScreen extends StatelessWidget {
   }
 
   Future<void> _restoreFromiCloud(BuildContext context) async {
-    // TODO: Implement CloudKit for native iCloud restore
-    // This would use native iOS code or a CloudKit package
-    // For now, fallback to Firebase
-    await _restoreFromFirebase(context);
+    const platform = MethodChannel('com.remington.coldbore/icloud');
+    try {
+      final mode = await _pickImportMode(context);
+      if (mode == null) return;
+
+      final result = await platform.invokeMethod<String>('restoreFromiCloud');
+      if (result == null || result.isEmpty) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No iCloud backup found.')),
+        );
+        return;
+      }
+
+      if (mode == _ImportMode.merge) {
+        state.mergeBackupJson(result, overwriteScope: true);
+      } else {
+        state.importBackupJson(result, replaceExisting: true);
+      }
+      
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cloud restore complete from iCloud.')),
+      );
+    } on PlatformException catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('iCloud restore failed: ${e.message}')),
+      );
+    }
   }
 
   Future<void> _restoreFromFirebase(BuildContext context) async {
