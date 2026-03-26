@@ -3663,6 +3663,17 @@ class _AudioCounterScreenState extends State<AudioCounterScreen> {
     setState(() => _totalShotsDetected = 0);
   }
 
+  String _rifleDropdownLabel(Rifle rifle) {
+    final name = (rifle.name ?? '').trim();
+    if (name.isNotEmpty) return name;
+    final modelBits = [
+      (rifle.manufacturer ?? '').trim(),
+      (rifle.model ?? '').trim(),
+    ].where((v) => v.isNotEmpty).toList();
+    if (modelBits.isNotEmpty) return modelBits.join(' ');
+    return rifle.caliber.trim().isEmpty ? 'Rifle' : rifle.caliber.trim();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -3712,7 +3723,7 @@ class _AudioCounterScreenState extends State<AudioCounterScreen> {
                           value: _selectedRifleId,
                           decoration: const InputDecoration(labelText: 'Target Rifle'),
                           items: widget.state.rifles
-                              .map((rifle) => DropdownMenuItem(value: rifle.id, child: Text(rifle.name ?? rifle.caliber)))
+                              .map((rifle) => DropdownMenuItem(value: rifle.id, child: Text(_rifleDropdownLabel(rifle))))
                               .toList(),
                           onChanged: (val) => setState(() => _selectedRifleId = val),
                         ),
@@ -4545,6 +4556,8 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
   double _latestDb = 0;
   DateTime? _lastAudioShotAt;
   String? _audioAssistMessage;
+  String? _selectedRifleId;
+  int _audioShotCount = 0;
 
   bool get _isRunning => _stopwatch.isRunning;
   bool get _isActive => _isRunning || _isArmed;
@@ -4584,6 +4597,12 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
       for (final split in session?.shotTimerSplitMs ?? const <int>[])
         if (split > 0) split,
     ];
+    if (_selectedRifleId == null) {
+      _selectedRifleId = session?.rifleId ?? widget.state.shotTimerSelectedRifleId;
+      if (_selectedRifleId == null && widget.state.rifles.isNotEmpty) {
+        _selectedRifleId = widget.state.rifles.first.id;
+      }
+    }
   }
 
   int _currentElapsedMs() {
@@ -4762,6 +4781,11 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
             if (shouldMark) {
               _lastAudioShotAt = now;
               _recordShotAt(_currentElapsedMs());
+              if (widget.state.shotTimerApplyAudioShotCountToRifle && _selectedRifleId != null) {
+                widget.state.addRifleRounds(rifleId: _selectedRifleId!, roundCount: 1);
+              } else {
+                _audioShotCount += 1;
+              }
             }
           });
           if (shouldMark) {
@@ -4899,6 +4923,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
       _firstShotMs = null;
       _splitMs = const [];
       _goalAlertPlayed = false;
+      _audioShotCount = 0;
     });
     widget.state.clearSessionTimer(sessionId: widget.sessionId);
   }
@@ -4912,6 +4937,28 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
       return '$minutes:${seconds.toString().padLeft(2, '0')}.${hundredths.toString().padLeft(2, '0')}';
     }
     return '$seconds.${hundredths.toString().padLeft(2, '0')}';
+  }
+
+  String _rifleDropdownLabel(Rifle rifle) {
+    final name = (rifle.name ?? '').trim();
+    if (name.isNotEmpty) return name;
+    final modelBits = [
+      (rifle.manufacturer ?? '').trim(),
+      (rifle.model ?? '').trim(),
+    ].where((v) => v.isNotEmpty).toList();
+    if (modelBits.isNotEmpty) return modelBits.join(' ');
+    return rifle.caliber.trim().isEmpty ? 'Rifle' : rifle.caliber.trim();
+  }
+
+  String _rifleDropdownLabel(Rifle rifle) {
+    final name = (rifle.name ?? '').trim();
+    if (name.isNotEmpty) return name;
+    final modelBits = [
+      (rifle.manufacturer ?? '').trim(),
+      (rifle.model ?? '').trim(),
+    ].where((v) => v.isNotEmpty).toList();
+    if (modelBits.isNotEmpty) return modelBits.join(' ');
+    return rifle.caliber.trim().isEmpty ? 'Rifle' : rifle.caliber.trim();
   }
 
   String _runSummary(SessionTimerRun run) {
@@ -5076,6 +5123,46 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
               value: _audioAssistEnabled,
               onChanged: isEnded ? null : (value) => _setAudioAssist(value),
             ),
+            if (widget.state.rifles.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                value: _selectedRifleId,
+                decoration: const InputDecoration(labelText: 'Apply to Rifle'),
+                items: widget.state.rifles
+                    .map((rifle) => DropdownMenuItem(value: rifle.id, child: Text(_rifleDropdownLabel(rifle))))
+                    .toList(),
+                onChanged: isEnded
+                    ? null
+                    : (val) {
+                        if (val != null) {
+                          setState(() => _selectedRifleId = val);
+                          widget.state.setShotTimerSelectedRifleId(val);
+                        }
+                      },
+              ),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Auto-apply audio shot count to rifle'),
+                subtitle: const Text('Increment selected rifle round count for auto-marked audio shots'),
+                value: widget.state.shotTimerApplyAudioShotCountToRifle,
+                onChanged: isEnded ? null : (v) => widget.state.setShotTimerApplyAudioShotCountToRifle(v),
+              ),
+              if (_audioShotCount > 0 && _selectedRifleId != null)
+                FilledButton.icon(
+                  onPressed: isEnded
+                      ? null
+                      : () {
+                          widget.state.addRifleRounds(rifleId: _selectedRifleId!, roundCount: _audioShotCount);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Applied $_audioShotCount shots to rifle')),
+                          );
+                          setState(() => _audioShotCount = 0);
+                        },
+                  icon: const Icon(Icons.check_circle_outline),
+                  label: Text('Apply $_audioShotCount audio shots to rifle now'),
+                ),
+              Text('Audio-shot detections: $_audioShotCount', style: const TextStyle(fontSize: 13)),
+            ],
             Row(
               children: [
                 Expanded(
@@ -5661,7 +5748,7 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
                 value: _selectedRifleId,
                 decoration: const InputDecoration(labelText: 'Apply to Rifle'),
                 items: widget.state.rifles
-                    .map((rifle) => DropdownMenuItem(value: rifle.id, child: Text(rifle.name ?? rifle.caliber)))
+                    .map((rifle) => DropdownMenuItem(value: rifle.id, child: Text(_rifleDropdownLabel(rifle))))
                     .toList(),
                 onChanged: (val) {
                   if (val != null) {
@@ -8243,7 +8330,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                               .map(
                                 (a) => ListTile(
                                   leading: const Icon(Icons.inventory_2_outlined),
-                                  title: Text('${a.caliber} • ${a.grain}gr • ${a.bullet}${((a.name ?? '').trim().isEmpty) ? '' : ' (${(a.name ?? '').trim()})'}'.trim()),
+                                  title: Text('${a.caliber} - ${a.grain}gr - ${a.bullet}${((a.name ?? '').trim().isEmpty) ? '' : ' (${(a.name ?? '').trim()})'}'.trim()),
                                   subtitle: Text(
                                     ((a.manufacturer == null || a.manufacturer!.isEmpty) ? '' : '${a.manufacturer!} • ') +
                                         ((a.lotNumber == null || a.lotNumber!.isEmpty) ? '' : 'Lot ${a.lotNumber!} • ') +
