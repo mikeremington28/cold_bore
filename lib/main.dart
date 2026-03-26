@@ -797,34 +797,94 @@ class ColdBoreApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!firebaseReady) {
-      return MaterialApp(
-        title: 'Cold Bore',
-        debugShowCheckedModeBanner: false,
-        theme: _buildTacticalTheme(),
-        home: Scaffold(
-          backgroundColor: Colors.black,
-          body: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: SingleChildScrollView(
-                child: Text(
-                  'Firebase failed to start.\n\n'
-                  'Error:\n${firebaseError ?? "Unknown"}',
-                  style: const TextStyle(color: Colors.white),
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
     return MaterialApp(
       title: 'Cold Bore',
       debugShowCheckedModeBanner: false,
       theme: _buildTacticalTheme(),
-      home: const _AppRoot(),
+      home: _LaunchSplashGate(
+        child: firebaseReady
+            ? const _AppRoot()
+            : Scaffold(
+                backgroundColor: Colors.black,
+                body: SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: SingleChildScrollView(
+                      child: Text(
+                        'Firebase failed to start.\n\n'
+                        'Error:\n${firebaseError ?? "Unknown"}',
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+      ),
+    );
+  }
+}
+
+class _LaunchSplashGate extends StatefulWidget {
+  final Widget child;
+
+  const _LaunchSplashGate({required this.child});
+
+  @override
+  State<_LaunchSplashGate> createState() => _LaunchSplashGateState();
+}
+
+class _LaunchSplashGateState extends State<_LaunchSplashGate> {
+  bool _showSplash = true;
+
+  @override
+  void initState() {
+    super.initState();
+    Timer(const Duration(seconds: 2), () {
+      if (!mounted) return;
+      setState(() => _showSplash = false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_showSplash) return widget.child;
+
+    return Scaffold(
+      body: Container(
+        width: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFFE3E0D2), Color(0xFFF1EDDF)],
+          ),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: Image.asset(
+                  'assets/icon/app_icon.png',
+                  width: 112,
+                  height: 112,
+                  fit: BoxFit.cover,
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Cold Bore',
+                style: TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.4,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -4950,17 +5010,6 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
     return rifle.caliber.trim().isEmpty ? 'Rifle' : rifle.caliber.trim();
   }
 
-  String _rifleDropdownLabel(Rifle rifle) {
-    final name = (rifle.name ?? '').trim();
-    if (name.isNotEmpty) return name;
-    final modelBits = [
-      (rifle.manufacturer ?? '').trim(),
-      (rifle.model ?? '').trim(),
-    ].where((v) => v.isNotEmpty).toList();
-    if (modelBits.isNotEmpty) return modelBits.join(' ');
-    return rifle.caliber.trim().isEmpty ? 'Rifle' : rifle.caliber.trim();
-  }
-
   String _runSummary(SessionTimerRun run) {
     final parts = <String>['total ${_fmtMs(run.elapsedMs)}'];
     if (run.firstShotMs > 0) {
@@ -5610,6 +5659,17 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
       return '$minutes:${seconds.toString().padLeft(2, '0')}.${hundredths.toString().padLeft(2, '0')}';
     }
     return '$seconds.${hundredths.toString().padLeft(2, '0')}';
+  }
+
+  String _rifleDropdownLabel(Rifle rifle) {
+    final name = (rifle.name ?? '').trim();
+    if (name.isNotEmpty) return name;
+    final modelBits = [
+      (rifle.manufacturer ?? '').trim(),
+      (rifle.model ?? '').trim(),
+    ].where((v) => v.isNotEmpty).toList();
+    if (modelBits.isNotEmpty) return modelBits.join(' ');
+    return rifle.caliber.trim().isEmpty ? 'Rifle' : rifle.caliber.trim();
   }
 
   @override
