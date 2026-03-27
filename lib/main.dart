@@ -1012,7 +1012,8 @@ class AppState extends ChangeNotifier {
         _seedData();
       }
       _didHydrate = true;
-    } catch (_) {
+    } catch (e, st) {
+      debugPrint('loadPersistedState failed: $e\n$st');
       if (_users.isEmpty) {
         _seedData();
       }
@@ -1038,7 +1039,9 @@ class AppState extends ChangeNotifier {
     _persistTimer = Timer(const Duration(milliseconds: 250), () async {
       try {
         await saveNow();
-      } catch (_) {}
+      } catch (e, st) {
+        debugPrint('saveNow failed during scheduled persist: $e\n$st');
+      }
     });
   }
 
@@ -1143,6 +1146,8 @@ class AppState extends ChangeNotifier {
         memberUserIds: [u.id],
         dateTime: DateTime.now(),
         locationName: '',
+        folderName: '',
+        archived: false,
         notes: '',
         latitude: null,
         longitude: null,
@@ -1583,6 +1588,7 @@ class AppState extends ChangeNotifier {
   TrainingSession? addSession({
     required String locationName,
     required DateTime dateTime,
+    String folderName = '',
     String notes = '',
     double? latitude,
     double? longitude,
@@ -1601,6 +1607,8 @@ class AppState extends ChangeNotifier {
       memberUserIds: [user.id],
       dateTime: dateTime,
       locationName: locationName.trim(),
+      folderName: folderName.trim(),
+      archived: false,
       notes: notes.trim(),
       latitude: latitude,
       longitude: longitude,
@@ -1804,6 +1812,28 @@ class AppState extends ChangeNotifier {
     if (idx < 0) return;
     final s = _sessions[idx];
     _sessions[idx] = s.copyWith(notes: notes.trim());
+    notifyListeners();
+  }
+
+  void updateSessionFolder({
+    required String sessionId,
+    required String folderName,
+  }) {
+    final idx = _sessions.indexWhere((s) => s.id == sessionId);
+    if (idx < 0) return;
+    final s = _sessions[idx];
+    _sessions[idx] = s.copyWith(folderName: folderName.trim());
+    notifyListeners();
+  }
+
+  void setSessionArchived({
+    required String sessionId,
+    required bool archived,
+  }) {
+    final idx = _sessions.indexWhere((s) => s.id == sessionId);
+    if (idx < 0) return;
+    final s = _sessions[idx];
+    _sessions[idx] = s.copyWith(archived: archived);
     notifyListeners();
   }
 
@@ -2853,8 +2883,7 @@ class AppState extends ChangeNotifier {
       _ammoLots[idx] = updated;
     }
 
-    // Persist (if available in this app) and refresh UI
-    try {} catch (_) {}
+    // Refresh UI after merge completes.
     notifyListeners();
   }
 }
@@ -3162,6 +3191,8 @@ Map<String, dynamic> _trainingSessionToMap(TrainingSession session) =>
       'memberUserIds': session.memberUserIds,
       'dateTime': session.dateTime.toIso8601String(),
       'locationName': session.locationName,
+      'folderName': session.folderName,
+      'archived': session.archived,
       'notes': session.notes,
       'latitude': session.latitude,
       'longitude': session.longitude,
@@ -3201,6 +3232,8 @@ TrainingSession _trainingSessionFromMap(
       .toList(),
   dateTime: _parseDateTime(map['dateTime']),
   locationName: (map['locationName'] ?? '').toString(),
+  folderName: (map['folderName'] ?? '').toString(),
+  archived: map['archived'] == true,
   notes: (map['notes'] ?? '').toString(),
   latitude: _toNullableDouble(map['latitude']),
   longitude: _toNullableDouble(map['longitude']),
@@ -3513,6 +3546,8 @@ class TrainingSession {
   final List<String> memberUserIds;
   final DateTime dateTime;
   final String locationName;
+  final String folderName;
+  final bool archived;
   final String notes;
 
   // Optional GPS (saved only if user taps Use GPS)
@@ -3552,6 +3587,8 @@ class TrainingSession {
     required this.memberUserIds,
     required this.dateTime,
     required this.locationName,
+    this.folderName = '',
+    this.archived = false,
     required this.notes,
     this.latitude,
     this.longitude,
@@ -3581,6 +3618,8 @@ class TrainingSession {
     List<String>? memberUserIds,
     DateTime? dateTime,
     String? locationName,
+    String? folderName,
+    bool? archived,
     String? notes,
     double? latitude,
     double? longitude,
@@ -3611,6 +3650,8 @@ class TrainingSession {
       memberUserIds: memberUserIds ?? this.memberUserIds,
       dateTime: dateTime ?? this.dateTime,
       locationName: locationName ?? this.locationName,
+      folderName: folderName ?? this.folderName,
+      archived: archived ?? this.archived,
       notes: notes ?? this.notes,
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
@@ -4588,16 +4629,34 @@ class _DataScreenState extends State<DataScreen> {
                             'Working DOPE Chart',
                             style: Theme.of(context).textTheme.titleMedium,
                           ),
-                          const Spacer(),
-                          const Text('Rifle only'),
-                          Switch(
-                            value: _rifleOnly,
-                            onChanged: (v) => setState(() => _rifleOnly = v),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 6,
+                        children: [
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text('Rifle only'),
+                              Switch(
+                                value: _rifleOnly,
+                                onChanged: (v) =>
+                                    setState(() => _rifleOnly = v),
+                              ),
+                            ],
                           ),
-                          const Text('All distances'),
-                          Switch(
-                            value: _allDistances,
-                            onChanged: (v) => setState(() => _allDistances = v),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text('All distances'),
+                              Switch(
+                                value: _allDistances,
+                                onChanged: (v) =>
+                                    setState(() => _allDistances = v),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -4786,9 +4845,55 @@ class _UsersScreenState extends State<UsersScreen> {
   }
 }
 
-class SessionsScreen extends StatelessWidget {
+class SessionsScreen extends StatefulWidget {
   final AppState state;
   const SessionsScreen({super.key, required this.state});
+
+  @override
+  State<SessionsScreen> createState() => _SessionsScreenState();
+}
+
+class _SessionsScreenState extends State<SessionsScreen> {
+  bool _showArchived = false;
+  String _groupBy = 'none';
+  int? _yearFilter;
+  String? _monthFilter;
+  String? _folderFilter;
+
+  String _monthKey(DateTime dt) {
+    return '${dt.year}-${dt.month.toString().padLeft(2, '0')}';
+  }
+
+  String _monthLabel(String monthKey) {
+    final parts = monthKey.split('-');
+    if (parts.length != 2) return monthKey;
+    final month = int.tryParse(parts[1]) ?? 1;
+    const names = <String>[
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    final name = (month >= 1 && month <= 12) ? names[month - 1] : parts[1];
+    return '$name ${parts[0]}';
+  }
+
+  String _joinNonEmpty(List<String?> parts) {
+    final out = <String>[];
+    for (final p in parts) {
+      final v = (p ?? '').trim();
+      if (v.isNotEmpty) out.add(v);
+    }
+    return out.join(' • ');
+  }
 
   Future<void> _newSession(BuildContext context) async {
     final res = await showDialog<_NewSessionResult>(
@@ -4796,31 +4901,267 @@ class SessionsScreen extends StatelessWidget {
       builder: (_) => const _NewSessionDialog(),
     );
     if (res == null) return;
-    final created = state.addSession(
+    final created = widget.state.addSession(
       locationName: res.locationName,
+      folderName: res.folderName,
       dateTime: res.dateTime,
-      notes: res.notes ?? '',
+      notes: res.notes,
     );
 
     if (created == null) return;
-    // Automatically open the newly created session.
-    if (context.mounted) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) =>
-              SessionDetailScreen(state: state, sessionId: created.id),
+    if (!context.mounted) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) =>
+            SessionDetailScreen(state: widget.state, sessionId: created.id),
+      ),
+    );
+  }
+
+  Future<void> _editFolder(BuildContext context, TrainingSession session) async {
+    final existingFolders = widget.state.sessions
+        .map((s) => s.folderName.trim())
+        .where((name) => name.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    final ctrl = TextEditingController(text: session.folderName.trim());
+    try {
+      final next = await showDialog<String>(
+        context: context,
+        builder: (_) => StatefulBuilder(
+          builder: (context, setLocalState) => AlertDialog(
+            title: const Text('Session folder'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (existingFolders.isNotEmpty) ...[
+                  const Text(
+                    'Quick pick',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: existingFolders
+                        .map(
+                          (name) => ActionChip(
+                            label: Text(name),
+                            onPressed: () {
+                              ctrl.text = name;
+                              setLocalState(() {});
+                            },
+                          ),
+                        )
+                        .toList(),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                TextField(
+                  textCapitalization: TextCapitalization.none,
+                  controller: ctrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Folder name',
+                    helperText: 'Leave empty to remove folder assignment.',
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(ctrl.text.trim()),
+                child: const Text('Save'),
+              ),
+            ],
+          ),
         ),
       );
+      if (next == null) return;
+      widget.state.updateSessionFolder(sessionId: session.id, folderName: next);
+    } finally {
+      ctrl.dispose();
     }
+  }
+
+  Future<void> _bulkArchive(
+    BuildContext context,
+    List<TrainingSession> sessions,
+    bool archived,
+  ) async {
+    if (sessions.isEmpty) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(archived ? 'Archive sessions?' : 'Unarchive sessions?'),
+        content: Text(
+          'This will ${archived ? 'archive' : 'unarchive'} ${sessions.length} filtered session${sessions.length == 1 ? '' : 's'}.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(archived ? 'Archive' : 'Unarchive'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    for (final session in sessions) {
+      widget.state.setSessionArchived(sessionId: session.id, archived: archived);
+    }
+  }
+
+  Future<void> _bulkMoveToFolder(
+    BuildContext context,
+    List<TrainingSession> sessions,
+  ) async {
+    if (sessions.isEmpty) return;
+    final existingFolders = widget.state.sessions
+        .map((s) => s.folderName.trim())
+        .where((name) => name.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    final ctrl = TextEditingController();
+    try {
+      final next = await showDialog<String>(
+        context: context,
+        builder: (_) => StatefulBuilder(
+          builder: (context, setLocalState) => AlertDialog(
+            title: Text('Move ${sessions.length} session${sessions.length == 1 ? '' : 's'}'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (existingFolders.isNotEmpty) ...[
+                  const Text(
+                    'Quick pick',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: existingFolders
+                        .map(
+                          (name) => ActionChip(
+                            label: Text(name),
+                            onPressed: () {
+                              ctrl.text = name;
+                              setLocalState(() {});
+                            },
+                          ),
+                        )
+                        .toList(),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                TextField(
+                  textCapitalization: TextCapitalization.none,
+                  controller: ctrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Folder name',
+                    helperText: 'Leave empty to remove folder assignment.',
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(ctrl.text.trim()),
+                child: const Text('Apply'),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (next == null) return;
+      for (final session in sessions) {
+        widget.state.updateSessionFolder(sessionId: session.id, folderName: next);
+      }
+    } finally {
+      ctrl.dispose();
+    }
+  }
+
+  Widget _sessionTile(BuildContext context, TrainingSession s) {
+    final rifle = widget.state.rifleById(s.rifleId);
+    final ammo = widget.state.ammoById(s.ammoLotId);
+    final subtitleBits = <String?>[
+      _fmtDateTime(s.dateTime),
+      if (s.folderName.trim().isNotEmpty) 'Folder: ${s.folderName.trim()}',
+      if (rifle != null) rifle.name,
+      if (ammo != null) ammo.name,
+      if (s.archived) 'Archived',
+    ];
+
+    return ListTile(
+      title: Text(
+        s.locationName.trim().isEmpty ? '(No location)' : s.locationName,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Text(
+        _cleanText(_joinNonEmpty(subtitleBits)),
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      ),
+      leading: s.shots.any((x) => x.isColdBore)
+          ? const Icon(Icons.ac_unit_outlined)
+          : const Icon(Icons.event_note_outlined),
+      trailing: PopupMenuButton<String>(
+        onSelected: (value) async {
+          if (value == 'folder') {
+            await _editFolder(context, s);
+            return;
+          }
+          if (value == 'archive') {
+            widget.state.setSessionArchived(sessionId: s.id, archived: true);
+            return;
+          }
+          if (value == 'unarchive') {
+            widget.state.setSessionArchived(sessionId: s.id, archived: false);
+          }
+        },
+        itemBuilder: (_) => [
+          const PopupMenuItem(value: 'folder', child: Text('Set folder')),
+          PopupMenuItem(
+            value: s.archived ? 'unarchive' : 'archive',
+            child: Text(s.archived ? 'Unarchive' : 'Archive'),
+          ),
+        ],
+      ),
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) =>
+                SessionDetailScreen(state: widget.state, sessionId: s.id),
+          ),
+        );
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: state,
+      animation: widget.state,
       builder: (context, _) {
-        final user = state.activeUser;
-        final sessions = [...state.sessions]
+        final user = widget.state.activeUser;
+        final sessions = [...widget.state.sessions]
           ..sort((a, b) => b.dateTime.compareTo(a.dateTime));
 
         if (user == null) {
@@ -4841,59 +5182,227 @@ class SessionsScreen extends StatelessWidget {
           );
         }
 
+        final availableYears = sessions.map((s) => s.dateTime.year).toSet().toList()
+          ..sort((a, b) => b.compareTo(a));
+        final availableMonths = sessions.map((s) => _monthKey(s.dateTime)).toSet().toList()
+          ..sort((a, b) => b.compareTo(a));
+        final availableFolders = sessions
+            .map((s) => s.folderName.trim())
+            .where((f) => f.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+
+        final filtered = sessions.where((s) {
+          if (!_showArchived && s.archived) return false;
+          if (_yearFilter != null && s.dateTime.year != _yearFilter) {
+            return false;
+          }
+          if (_monthFilter != null && _monthKey(s.dateTime) != _monthFilter) {
+            return false;
+          }
+          if (_folderFilter != null) {
+            final folder = s.folderName.trim();
+            if (_folderFilter == '__unfiled__') {
+              if (folder.isNotEmpty) return false;
+            } else if (folder != _folderFilter) {
+              return false;
+            }
+          }
+          return true;
+        }).toList();
+
+        final grouped = <String, List<TrainingSession>>{};
+        for (final s in filtered) {
+          String key;
+          switch (_groupBy) {
+            case 'year':
+              key = '${s.dateTime.year}';
+              break;
+            case 'month':
+              key = _monthLabel(_monthKey(s.dateTime));
+              break;
+            case 'folder':
+              key = s.folderName.trim().isEmpty ? 'Unfiled' : s.folderName.trim();
+              break;
+            default:
+              key = 'Sessions';
+          }
+          grouped.putIfAbsent(key, () => <TrainingSession>[]).add(s);
+        }
+
         return Scaffold(
           floatingActionButton: FloatingActionButton.extended(
             onPressed: () => _newSession(context),
             icon: const Icon(Icons.add),
             label: const Text('New Session'),
           ),
-          body: ListView.separated(
-            itemCount: sessions.length,
-            separatorBuilder: (_, __) => const Divider(height: 1),
-            itemBuilder: (context, index) {
-              final s = sessions[index];
-              final rifle = state.rifleById(s.rifleId);
-              final ammo = state.ammoById(s.ammoLotId);
-
-              String joinNonEmpty(List<String?> parts) {
-                final out = <String>[];
-                for (final p in parts) {
-                  final v = (p ?? '').trim();
-                  if (v.isNotEmpty) out.add(v);
-                }
-                return out.join(' • ');
-              }
-
-              final subtitleBits = <String>[
-                _fmtDateTime(s.dateTime),
-                if (rifle != null) rifle.name ?? '',
-                if (ammo != null) ammo.name ?? '',
-              ];
-
-              return ListTile(
-                title: Text(
-                  s.locationName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+          body: ListView(
+            padding: const EdgeInsets.all(12),
+            children: [
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Organize Sessions',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 8),
+                      FilterChip(
+                        label: const Text('Show archived'),
+                        selected: _showArchived,
+                        onSelected: (value) =>
+                            setState(() => _showArchived = value),
+                      ),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<String>(
+                        initialValue: _groupBy,
+                        decoration: const InputDecoration(
+                          labelText: 'Group by',
+                        ),
+                        items: const [
+                          DropdownMenuItem(value: 'none', child: Text('Newest first')),
+                          DropdownMenuItem(value: 'year', child: Text('Year')),
+                          DropdownMenuItem(value: 'month', child: Text('Month')),
+                          DropdownMenuItem(value: 'folder', child: Text('Folder')),
+                        ],
+                        onChanged: (value) =>
+                            setState(() => _groupBy = value ?? 'none'),
+                      ),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<int?>(
+                        initialValue: _yearFilter,
+                        decoration: const InputDecoration(labelText: 'Year filter'),
+                        items: [
+                          const DropdownMenuItem<int?>(
+                            value: null,
+                            child: Text('All years'),
+                          ),
+                          ...availableYears.map(
+                            (year) => DropdownMenuItem<int?>(
+                              value: year,
+                              child: Text('$year'),
+                            ),
+                          ),
+                        ],
+                        onChanged: (value) => setState(() => _yearFilter = value),
+                      ),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<String?>(
+                        initialValue: _monthFilter,
+                        decoration: const InputDecoration(labelText: 'Month filter'),
+                        items: [
+                          const DropdownMenuItem<String?>(
+                            value: null,
+                            child: Text('All months'),
+                          ),
+                          ...availableMonths.map(
+                            (month) => DropdownMenuItem<String?>(
+                              value: month,
+                              child: Text(_monthLabel(month)),
+                            ),
+                          ),
+                        ],
+                        onChanged: (value) => setState(() => _monthFilter = value),
+                      ),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<String?>(
+                        initialValue: _folderFilter,
+                        decoration: const InputDecoration(labelText: 'Folder filter'),
+                        items: [
+                          const DropdownMenuItem<String?>(
+                            value: null,
+                            child: Text('All folders'),
+                          ),
+                          const DropdownMenuItem<String?>(
+                            value: '__unfiled__',
+                            child: Text('Unfiled only'),
+                          ),
+                          ...availableFolders.map(
+                            (folder) => DropdownMenuItem<String?>(
+                              value: folder,
+                              child: Text(folder),
+                            ),
+                          ),
+                        ],
+                        onChanged: (value) => setState(() => _folderFilter = value),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          FilledButton.tonalIcon(
+                            onPressed: filtered.isEmpty
+                                ? null
+                                : () => _bulkMoveToFolder(context, filtered),
+                            icon: const Icon(Icons.drive_file_move_outline),
+                            label: Text('Move ${filtered.length} to folder'),
+                          ),
+                          FilledButton.tonalIcon(
+                            onPressed: filtered.isEmpty
+                                ? null
+                                : () => _bulkArchive(context, filtered, true),
+                            icon: const Icon(Icons.archive_outlined),
+                            label: Text('Archive ${filtered.length}'),
+                          ),
+                          FilledButton.tonalIcon(
+                            onPressed: filtered.isEmpty
+                                ? null
+                                : () => _bulkArchive(context, filtered, false),
+                            icon: const Icon(Icons.unarchive_outlined),
+                            label: Text('Unarchive ${filtered.length}'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-                subtitle: Text(
-                  _cleanText(subtitleBits.join(' • ')),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                trailing: s.shots.any((x) => x.isColdBore)
-                    ? const Icon(Icons.ac_unit_outlined)
-                    : null,
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          SessionDetailScreen(state: state, sessionId: s.id),
+              ),
+              const SizedBox(height: 8),
+              if (filtered.isEmpty)
+                const _HintCard(
+                  icon: Icons.folder_open_outlined,
+                  title: 'No sessions match current filters',
+                  message: 'Adjust year/month/folder or include archived sessions.',
+                )
+              else
+                ...grouped.entries.expand((entry) {
+                  final children = <Widget>[];
+                  if (_groupBy != 'none') {
+                    children.add(
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(4, 6, 4, 6),
+                        child: Text(
+                          entry.key,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+                  children.add(
+                    Card(
+                      child: Column(
+                        children: [
+                          for (var i = 0; i < entry.value.length; i++) ...[
+                            _sessionTile(context, entry.value[i]),
+                            if (i < entry.value.length - 1)
+                              const Divider(height: 1),
+                          ],
+                        ],
+                      ),
                     ),
                   );
-                },
-              );
-            },
+                  children.add(const SizedBox(height: 8));
+                  return children;
+                }),
+            ],
           ),
         );
       },
@@ -4997,7 +5506,7 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
             Row(
               children: [
                 Expanded(
-                  child: TextField(
+                  child: TextField(textCapitalization: TextCapitalization.none, 
                     controller: _distanceCtrl,
                     decoration: const InputDecoration(labelText: 'Distance'),
                     keyboardType: TextInputType.number,
@@ -5078,7 +5587,7 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
                     ),
                   ],
                 ),
-                TextField(
+                TextField(textCapitalization: TextCapitalization.none, 
                   controller: _elevationNotesCtrl,
                   decoration: const InputDecoration(
                     labelText: 'Elevation notes (optional)',
@@ -5284,13 +5793,9 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
       for (final split in session?.shotTimerSplitMs ?? const <int>[])
         if (split > 0) split,
     ];
-    if (_selectedRifleId == null) {
-      _selectedRifleId =
-          session?.rifleId ?? widget.state.shotTimerSelectedRifleId;
-      if (_selectedRifleId == null && widget.state.rifles.isNotEmpty) {
-        _selectedRifleId = widget.state.rifles.first.id;
-      }
-    }
+    _selectedRifleId ??=
+      session?.rifleId ?? widget.state.shotTimerSelectedRifleId;
+    _audioThresholdDb = widget.state.audioThresholdDb;
   }
 
   int _currentElapsedMs() {
@@ -5772,7 +6277,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
             Row(
               children: [
                 Expanded(
-                  child: TextFormField(
+                  child: TextFormField(textCapitalization: TextCapitalization.none, 
                     controller: _delayCtrl,
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
@@ -5786,7 +6291,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: TextFormField(
+                  child: TextFormField(textCapitalization: TextCapitalization.none, 
                     controller: _goalCtrl,
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
@@ -5868,34 +6373,40 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
             ),
             if (widget.state.rifles.isNotEmpty) ...[
               const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
+              DropdownButtonFormField<String?>(
                 initialValue: _selectedRifleId,
                 decoration: const InputDecoration(labelText: 'Apply to Rifle'),
-                items: widget.state.rifles
-                    .map(
-                      (rifle) => DropdownMenuItem(
-                        value: rifle.id,
-                        child: Text(_rifleDropdownLabel(rifle)),
-                      ),
-                    )
-                    .toList(),
+                items: [
+                  const DropdownMenuItem<String?>(
+                    value: null,
+                    child: Text('No firearm selected'),
+                  ),
+                  ...widget.state.rifles.map(
+                    (rifle) => DropdownMenuItem<String?>(
+                      value: rifle.id,
+                      child: Text(_rifleDropdownLabel(rifle)),
+                    ),
+                  ),
+                ],
                 onChanged: isEnded
                     ? null
                     : (val) {
-                        if (val != null) {
-                          setState(() => _selectedRifleId = val);
-                          widget.state.setShotTimerSelectedRifleId(val);
-                        }
+                        setState(() => _selectedRifleId = val);
+                        widget.state.setShotTimerSelectedRifleId(val);
                       },
               ),
               SwitchListTile.adaptive(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('Auto-apply audio shot count to rifle'),
-                subtitle: const Text(
-                  'Increment selected rifle round count for auto-marked audio shots',
+                subtitle: Text(
+                  _selectedRifleId == null
+                      ? 'Pick a rifle first, or leave No firearm selected to use timer only.'
+                      : 'Increment selected rifle round count for auto-marked audio shots',
                 ),
                 value: widget.state.shotTimerApplyAudioShotCountToRifle,
                 onChanged: isEnded
+                    ? null
+                    : (_selectedRifleId == null)
                     ? null
                     : (v) => widget.state
                           .setShotTimerApplyAudioShotCountToRifle(v),
@@ -5938,7 +6449,10 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
                     divisions: 50,
                     label: '${_audioThresholdDb.toStringAsFixed(0)} dB',
                     onChanged: (_audioAssistEnabled && _audioAssistSupported)
-                        ? (value) => setState(() => _audioThresholdDb = value)
+                        ? (value) {
+                            setState(() => _audioThresholdDb = value);
+                            widget.state.setAudioThresholdDb(value);
+                          }
                         : null,
                   ),
                 ),
@@ -6100,11 +6614,8 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
   @override
   void initState() {
     super.initState();
-    if (widget.state.rifles.isNotEmpty) {
-      _selectedRifleId =
-          widget.state.shotTimerSelectedRifleId ?? widget.state.rifles.first.id;
-      widget.state.setShotTimerSelectedRifleId(_selectedRifleId);
-    }
+    _selectedRifleId = widget.state.shotTimerSelectedRifleId;
+    widget.state.setShotTimerSelectedRifleId(_selectedRifleId);
     _audioThresholdDb = widget.state.audioThresholdDb;
   }
 
@@ -6508,7 +7019,7 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
             Row(
               children: [
                 Expanded(
-                  child: TextFormField(
+                  child: TextFormField(textCapitalization: TextCapitalization.none, 
                     controller: _delayCtrl,
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
@@ -6522,7 +7033,7 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: TextFormField(
+                  child: TextFormField(textCapitalization: TextCapitalization.none, 
                     controller: _goalCtrl,
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
@@ -6602,34 +7113,39 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
             ),
             if (widget.state.rifles.isNotEmpty) ...[
               const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
+              DropdownButtonFormField<String?>(
                 initialValue: _selectedRifleId,
                 decoration: const InputDecoration(labelText: 'Apply to Rifle'),
-                items: widget.state.rifles
-                    .map(
-                      (rifle) => DropdownMenuItem(
-                        value: rifle.id,
-                        child: Text(_rifleDropdownLabel(rifle)),
-                      ),
-                    )
-                    .toList(),
+                items: [
+                  const DropdownMenuItem<String?>(
+                    value: null,
+                    child: Text('No firearm selected'),
+                  ),
+                  ...widget.state.rifles.map(
+                    (rifle) => DropdownMenuItem<String?>(
+                      value: rifle.id,
+                      child: Text(_rifleDropdownLabel(rifle)),
+                    ),
+                  ),
+                ],
                 onChanged: (val) {
-                  if (val != null) {
-                    setState(() => _selectedRifleId = val);
-                    widget.state.setShotTimerSelectedRifleId(val);
-                  }
+                  setState(() => _selectedRifleId = val);
+                  widget.state.setShotTimerSelectedRifleId(val);
                 },
               ),
             ],
             SwitchListTile.adaptive(
               contentPadding: EdgeInsets.zero,
               title: const Text('Auto-apply audio shot count to rifle'),
-              subtitle: const Text(
-                'Increment selected rifle round count for auto-marked audio shots',
+              subtitle: Text(
+                _selectedRifleId == null
+                    ? 'Pick a rifle first, or leave No firearm selected to use timer only.'
+                    : 'Increment selected rifle round count for auto-marked audio shots',
               ),
               value: widget.state.shotTimerApplyAudioShotCountToRifle,
-              onChanged: (v) =>
-                  widget.state.setShotTimerApplyAudioShotCountToRifle(v),
+              onChanged: _selectedRifleId == null
+                  ? null
+                  : (v) => widget.state.setShotTimerApplyAudioShotCountToRifle(v),
             ),
             if (_audioShotCount > 0 && _selectedRifleId != null)
               FilledButton.icon(
@@ -9399,7 +9915,7 @@ class _EndSessionDialogState extends State<_EndSessionDialog> {
                         style: Theme.of(context).textTheme.titleSmall,
                       ),
                       const SizedBox(height: 6),
-                      TextField(
+                      TextField(textCapitalization: TextCapitalization.none, 
                         controller: _shotCountCtrls[index],
                         keyboardType: TextInputType.number,
                         inputFormatters: [
@@ -9889,6 +10405,9 @@ class _PdfExportOptions {
   final List<String> selectedSessionIds;
   final DateTime? startDate;
   final DateTime? endDate;
+  final String? folderFilter;
+  final int? yearFilter;
+  final String? monthFilter;
 
   const _PdfExportOptions({
     required this.includeSummary,
@@ -9903,6 +10422,9 @@ class _PdfExportOptions {
     this.selectedSessionIds = const [],
     this.startDate,
     this.endDate,
+    this.folderFilter,
+    this.yearFilter,
+    this.monthFilter,
   });
 
   Map<String, dynamic> toMap() => <String, dynamic>{
@@ -9918,6 +10440,9 @@ class _PdfExportOptions {
     'selectedSessionIds': selectedSessionIds,
     'startDate': startDate?.toIso8601String(),
     'endDate': endDate?.toIso8601String(),
+    'folderFilter': folderFilter,
+    'yearFilter': yearFilter,
+    'monthFilter': monthFilter,
   };
 
   factory _PdfExportOptions.fromMap(Map<String, dynamic> map) {
@@ -9943,6 +10468,9 @@ class _PdfExportOptions {
       endDate: map['endDate'] == null
           ? null
           : DateTime.tryParse(map['endDate'].toString()),
+        folderFilter: map['folderFilter']?.toString(),
+        yearFilter: _toNullableInt(map['yearFilter']),
+        monthFilter: map['monthFilter']?.toString(),
     );
   }
 }
@@ -10054,7 +10582,9 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
           .toList();
       if (!mounted) return;
       setState(() => _savedPdfPresets = presets);
-    } catch (_) {}
+    } catch (e, st) {
+      debugPrint('Failed to load PDF export presets: $e\n$st');
+    }
   }
 
   Future<void> _savePdfPresets() async {
@@ -10070,42 +10600,47 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
     _PdfExportOptions options,
   ) async {
     final controller = TextEditingController();
-    final name = await showDialog<String>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Save PDF preset'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(labelText: 'Preset name'),
-          textInputAction: TextInputAction.done,
+    try {
+      final name = await showDialog<String>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Save PDF preset'),
+          content: TextField(
+            textCapitalization: TextCapitalization.none,
+            controller: controller,
+            decoration: const InputDecoration(labelText: 'Preset name'),
+            textInputAction: TextInputAction.done,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+              child: const Text('Save'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-    if (name == null || name.trim().isEmpty) return;
+      );
+      if (name == null || name.trim().isEmpty) return;
 
-    final preset = _PdfExportPreset(name: name.trim(), options: options);
-    final next = [
-      ..._savedPdfPresets.where(
-        (p) => p.name.toLowerCase() != preset.name.toLowerCase(),
-      ),
-      preset,
-    ]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-    setState(() => _savedPdfPresets = next);
-    await _savePdfPresets();
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('Saved PDF preset: ${preset.name}')));
+      final preset = _PdfExportPreset(name: name.trim(), options: options);
+      final next = [
+        ..._savedPdfPresets.where(
+          (p) => p.name.toLowerCase() != preset.name.toLowerCase(),
+        ),
+        preset,
+      ]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      setState(() => _savedPdfPresets = next);
+      await _savePdfPresets();
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Saved PDF preset: ${preset.name}')),
+      );
+    } finally {
+      controller.dispose();
+    }
   }
 
   String _pdfAmmoLabel(String? ammoId) {
@@ -10161,6 +10696,50 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
     DateTime? endDate;
     final availableSessions = [...widget.state.allSessions]
       ..sort((a, b) => b.dateTime.compareTo(a.dateTime));
+    String? folderFilter;
+    int? yearFilter;
+    String? monthFilter;
+    final availableFolders = availableSessions
+        .map((s) => s.folderName.trim())
+        .where((name) => name.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    final availableYears = availableSessions
+        .map((s) => s.dateTime.year)
+        .toSet()
+        .toList()
+      ..sort((a, b) => b.compareTo(a));
+    final availableMonths = availableSessions
+        .map(
+          (s) =>
+              '${s.dateTime.year}-${s.dateTime.month.toString().padLeft(2, '0')}',
+        )
+        .toSet()
+        .toList()
+      ..sort((a, b) => b.compareTo(a));
+
+    String monthLabel(String monthKey) {
+      final parts = monthKey.split('-');
+      if (parts.length != 2) return monthKey;
+      final month = int.tryParse(parts[1]) ?? 1;
+      const names = <String>[
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
+      ];
+      final name = (month >= 1 && month <= 12) ? names[month - 1] : parts[1];
+      return '$name ${parts[0]}';
+    }
 
     void applyPreset(
       _PdfExportOptions options,
@@ -10181,6 +10760,9 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
           ..addAll(options.selectedSessionIds);
         startDate = options.startDate;
         endDate = options.endDate;
+        folderFilter = options.folderFilter;
+        yearFilter = options.yearFilter;
+        monthFilter = options.monthFilter;
       });
     }
 
@@ -10435,6 +11017,69 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                   ),
                 ],
                 const SizedBox(height: 8),
+                const Text(
+                  'Additional Session Filters',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String?>(
+                  initialValue: folderFilter,
+                  decoration: const InputDecoration(labelText: 'Folder'),
+                  items: [
+                    const DropdownMenuItem<String?>(
+                      value: null,
+                      child: Text('All folders'),
+                    ),
+                    const DropdownMenuItem<String?>(
+                      value: '__unfiled__',
+                      child: Text('Unfiled only'),
+                    ),
+                    ...availableFolders.map(
+                      (folder) => DropdownMenuItem<String?>(
+                        value: folder,
+                        child: Text(folder),
+                      ),
+                    ),
+                  ],
+                  onChanged: (value) => setLocalState(() => folderFilter = value),
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<int?>(
+                  initialValue: yearFilter,
+                  decoration: const InputDecoration(labelText: 'Year'),
+                  items: [
+                    const DropdownMenuItem<int?>(
+                      value: null,
+                      child: Text('All years'),
+                    ),
+                    ...availableYears.map(
+                      (year) => DropdownMenuItem<int?>(
+                        value: year,
+                        child: Text('$year'),
+                      ),
+                    ),
+                  ],
+                  onChanged: (value) => setLocalState(() => yearFilter = value),
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String?>(
+                  initialValue: monthFilter,
+                  decoration: const InputDecoration(labelText: 'Month'),
+                  items: [
+                    const DropdownMenuItem<String?>(
+                      value: null,
+                      child: Text('All months'),
+                    ),
+                    ...availableMonths.map(
+                      (monthKey) => DropdownMenuItem<String?>(
+                        value: monthKey,
+                        child: Text(monthLabel(monthKey)),
+                      ),
+                    ),
+                  ],
+                  onChanged: (value) => setLocalState(() => monthFilter = value),
+                ),
+                const SizedBox(height: 8),
                 Row(
                   children: [
                     TextButton(
@@ -10466,6 +11111,9 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                                     _PdfSessionFilterMode.dateRange
                                 ? endDate
                                 : null,
+                            folderFilter: folderFilter,
+                            yearFilter: yearFilter,
+                            monthFilter: monthFilter,
                           ),
                         );
                         if (!context.mounted) return;
@@ -10506,6 +11154,9 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                                     _PdfSessionFilterMode.dateRange
                                 ? endDate
                                 : null,
+                            folderFilter: folderFilter,
+                            yearFilter: yearFilter,
+                            monthFilter: monthFilter,
                           ),
                         );
                       },
@@ -10641,6 +11292,168 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
     );
   }
 
+  List<_ColdBoreRow> _coldBoreRowsForSessions(List<TrainingSession> sessions) {
+    final out = <_ColdBoreRow>[];
+    for (final session in sessions) {
+      final sessionRifle = session.rifleId == null
+          ? null
+          : widget.state.findRifleById(session.rifleId!);
+      final sessionAmmo = session.ammoLotId == null
+          ? null
+          : widget.state.findAmmoLotById(session.ammoLotId!);
+      for (final shot in session.shots.where((s) => s.isColdBore)) {
+        out.add(
+          _ColdBoreRow(
+            session: session,
+            shot: shot,
+            rifle: sessionRifle,
+            ammo: sessionAmmo,
+            stringId: null,
+          ),
+        );
+      }
+    }
+    out.sort((a, b) => a.shot.time.compareTo(b.shot.time));
+    return out;
+  }
+
+  pw.Widget _pdfColdBoreTargetPlot(List<_ColdBoreRow> rows) {
+    const size = 240.0;
+    const halfSpanInches = 6.0;
+    const fullSpanInches = halfSpanInches * 2;
+
+    final plottedRows = rows
+        .where((row) => row.shot.offsetX != null && row.shot.offsetY != null)
+        .toList();
+    final hiddenCount = rows.length - plottedRows.length;
+
+    if (plottedRows.isEmpty) {
+      return pw.Container(
+        padding: const pw.EdgeInsets.all(10),
+        decoration: pw.BoxDecoration(
+          border: pw.Border.all(color: PdfColors.grey400, width: 0.7),
+          borderRadius: pw.BorderRadius.circular(6),
+        ),
+        child: pw.Text('No plotted cold bore impacts yet.'),
+      );
+    }
+
+    final step = size / fullSpanInches;
+    final center = size / 2;
+
+    pw.Positioned point(_ColdBoreRow row) {
+      final xInches = _shotOffsetToInches(row.shot, row.shot.offsetX!).clamp(
+        -halfSpanInches,
+        halfSpanInches,
+      );
+      final yInches = _shotOffsetToInches(row.shot, row.shot.offsetY!).clamp(
+        -halfSpanInches,
+        halfSpanInches,
+      );
+      final nx = (xInches + halfSpanInches) / fullSpanInches;
+      final ny = (halfSpanInches - yInches) / fullSpanInches;
+      final x = nx * size;
+      final y = ny * size;
+      return pw.Positioned(
+        left: x - 3.5,
+        top: y - 3.5,
+        child: pw.Container(
+          width: 7,
+          height: 7,
+          decoration: pw.BoxDecoration(
+            shape: pw.BoxShape.circle,
+            color: row.shot.isBaseline ? PdfColors.amber700 : PdfColors.blue900,
+            border: pw.Border.all(color: PdfColors.white, width: 0.8),
+          ),
+        ),
+      );
+    }
+
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Row(
+          children: [
+            pw.Text(
+              'Cold-bore target (${plottedRows.length} plotted)',
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+            ),
+            if (hiddenCount > 0)
+              pw.Text(
+                '  •  $hiddenCount missing offsets',
+                style: const pw.TextStyle(fontSize: 9),
+              ),
+          ],
+        ),
+        pw.SizedBox(height: 6),
+        pw.Center(
+          child: pw.SizedBox(
+            width: size,
+            height: size,
+            child: pw.Stack(
+              children: [
+                pw.Positioned.fill(
+                  child: pw.Container(
+                    decoration: pw.BoxDecoration(
+                      color: PdfColors.grey100,
+                      border: pw.Border.all(color: PdfColors.grey700, width: 1),
+                    ),
+                  ),
+                ),
+                for (var i = 1; i < fullSpanInches; i++) ...[
+                  if ((i * step - center).abs() > 0.01)
+                    pw.Positioned(
+                      left: i * step,
+                      top: 0,
+                      bottom: 0,
+                      child: pw.Container(width: 0.7, color: PdfColors.grey400),
+                    ),
+                  if ((i * step - center).abs() > 0.01)
+                    pw.Positioned(
+                      top: i * step,
+                      left: 0,
+                      right: 0,
+                      child: pw.Container(height: 0.7, color: PdfColors.grey400),
+                    ),
+                ],
+                pw.Positioned(
+                  left: center,
+                  top: 0,
+                  bottom: 0,
+                  child: pw.Container(width: 1.2, color: PdfColors.grey800),
+                ),
+                pw.Positioned(
+                  top: center,
+                  left: 0,
+                  right: 0,
+                  child: pw.Container(height: 1.2, color: PdfColors.grey800),
+                ),
+                pw.Positioned(
+                  left: center - 2,
+                  top: center - 2,
+                  child: pw.Container(
+                    width: 4,
+                    height: 4,
+                    decoration: const pw.BoxDecoration(
+                      shape: pw.BoxShape.circle,
+                      color: PdfColors.red700,
+                    ),
+                  ),
+                ),
+                ...plottedRows.map(point),
+              ],
+            ),
+          ),
+        ),
+        pw.SizedBox(height: 4),
+        pw.Text(
+          'Grid spacing is 1 inch. Baseline points are gold.',
+          style: const pw.TextStyle(fontSize: 9),
+        ),
+      ],
+    );
+  }
+
   Future<void> _exportPdfReport(BuildContext context) async {
     try {
       final options = await _pickPdfOptions(context);
@@ -10663,7 +11476,7 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
       final allSessions = [...widget.state.allSessions]
         ..sort((a, b) => b.dateTime.compareTo(a.dateTime));
 
-      final sessions = switch (options.sessionFilterMode) {
+      final modeFilteredSessions = switch (options.sessionFilterMode) {
         _PdfSessionFilterMode.all => allSessions,
         _PdfSessionFilterMode.selected =>
           allSessions
@@ -10698,7 +11511,30 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
         }).toList(),
       };
 
-      if (sessions.isEmpty) {
+      final scopedSessions = modeFilteredSessions.where((session) {
+        if (options.folderFilter != null) {
+          final folder = session.folderName.trim();
+          if (options.folderFilter == '__unfiled__') {
+            if (folder.isNotEmpty) return false;
+          } else if (folder != options.folderFilter) {
+            return false;
+          }
+        }
+        if (options.yearFilter != null &&
+            session.dateTime.year != options.yearFilter) {
+          return false;
+        }
+        if (options.monthFilter != null) {
+          final monthKey =
+              '${session.dateTime.year}-${session.dateTime.month.toString().padLeft(2, '0')}';
+          if (monthKey != options.monthFilter) {
+            return false;
+          }
+        }
+        return true;
+      }).toList();
+
+      if (scopedSessions.isEmpty) {
         if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -10723,6 +11559,7 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
         final coldBoreShots = session.shots
             .where((shot) => shot.isColdBore)
             .toList();
+        final coldBoreRows = _coldBoreRowsForSessions([session]);
         final widgets = <pw.Widget>[
           pw.Container(
             margin: const pw.EdgeInsets.only(top: 16, bottom: 8),
@@ -10831,6 +11668,8 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
               style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
             ),
             pw.SizedBox(height: 6),
+            _pdfColdBoreTargetPlot(coldBoreRows),
+            pw.SizedBox(height: 8),
             for (final shot in coldBoreShots)
               pw.Container(
                 margin: const pw.EdgeInsets.only(bottom: 10),
@@ -10896,6 +11735,7 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
         return widgets;
       }
 
+      final sessions = scopedSessions;
       final totalSessions = sessions.length;
       final totalShots = sessions.fold<int>(
         0,
@@ -12125,7 +12965,7 @@ class _NewUserDialogState extends State<_NewUserDialog> {
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          TextField(
+          TextField(textCapitalization: TextCapitalization.none, 
             controller: _id,
             decoration: const InputDecoration(labelText: 'Identifier *'),
             textInputAction: TextInputAction.next,
@@ -12154,7 +12994,7 @@ class _NewUserDialogState extends State<_NewUserDialog> {
             ],
           ),
 
-          TextField(
+          TextField(textCapitalization: TextCapitalization.none, 
             controller: _name,
             decoration: const InputDecoration(labelText: 'Name (optional)'),
           ),
@@ -12189,6 +13029,7 @@ class _NewUserDialogState extends State<_NewUserDialog> {
 
 class _NewSessionResult {
   final String locationName;
+  final String folderName;
   final DateTime dateTime;
   final String notes;
   final double? latitude;
@@ -12198,6 +13039,7 @@ class _NewSessionResult {
   final int? windDirectionDeg;
   _NewSessionResult({
     required this.locationName,
+    required this.folderName,
     required this.dateTime,
     required this.notes,
     this.latitude,
@@ -12217,6 +13059,7 @@ class _NewSessionDialog extends StatefulWidget {
 
 class _NewSessionDialogState extends State<_NewSessionDialog> {
   final _location = TextEditingController();
+  final _folder = TextEditingController();
   final _notes = TextEditingController();
   final _tempF = TextEditingController();
   final _windMph = TextEditingController();
@@ -12238,6 +13081,7 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
   @override
   void dispose() {
     _location.dispose();
+    _folder.dispose();
     _notes.dispose();
     _tempF.dispose();
     _windMph.dispose();
@@ -12349,14 +13193,24 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(
+            TextField(textCapitalization: TextCapitalization.none, 
               controller: _location,
               decoration: const InputDecoration(labelText: 'Location *'),
               maxLines: 1,
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 8),
-            TextField(
+            TextField(textCapitalization: TextCapitalization.none, 
+              controller: _folder,
+              decoration: const InputDecoration(
+                labelText: 'Folder (optional)',
+                helperText: 'Examples: 2026 Season, PRS Matches, Load Dev',
+              ),
+              maxLines: 1,
+              textInputAction: TextInputAction.next,
+            ),
+            const SizedBox(height: 8),
+            TextField(textCapitalization: TextCapitalization.none, 
               controller: _notes,
               decoration: const InputDecoration(labelText: 'Notes (optional)'),
               maxLines: 2,
@@ -12406,7 +13260,7 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
             Row(
               children: [
                 Expanded(
-                  child: TextField(
+                  child: TextField(textCapitalization: TextCapitalization.none, 
                     controller: _tempF,
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
@@ -12416,7 +13270,7 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: TextField(
+                  child: TextField(textCapitalization: TextCapitalization.none, 
                     controller: _windMph,
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
@@ -12426,7 +13280,7 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: TextField(
+                  child: TextField(textCapitalization: TextCapitalization.none, 
                     controller: _windDir,
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(
@@ -12451,6 +13305,7 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
             Navigator.of(context).pop(
               _NewSessionResult(
                 locationName: loc,
+                folderName: _folder.text.trim(),
                 dateTime: _dateTime,
                 notes: _notes.text,
                 latitude: _lat,
@@ -12561,8 +13416,8 @@ class _ColdBoreDialogState extends State<_ColdBoreDialog> {
       final bytes = await x.readAsBytes();
       if (!mounted) return;
       setState(() => _photoBytes = bytes);
-    } catch (_) {
-      // ignore
+    } catch (e, st) {
+      debugPrint('Photo pick failed: $e\n$st');
     }
   }
 
@@ -12613,12 +13468,12 @@ class _ColdBoreDialogState extends State<_ColdBoreDialog> {
                   TextButton(onPressed: _pickTime, child: const Text('Edit')),
                 ],
               ),
-              TextField(
+              TextField(textCapitalization: TextCapitalization.none, 
                 controller: _distance,
                 decoration: const InputDecoration(labelText: 'Distance'),
                 textInputAction: TextInputAction.next,
               ),
-              TextField(
+              TextField(textCapitalization: TextCapitalization.none, 
                 controller: _result,
                 decoration: const InputDecoration(
                   labelText: 'Result',
@@ -12644,7 +13499,7 @@ class _ColdBoreDialogState extends State<_ColdBoreDialog> {
                   }).toList(),
                 ),
               ),
-              TextField(
+              TextField(textCapitalization: TextCapitalization.none, 
                 controller: _notes,
                 decoration: const InputDecoration(
                   labelText: 'Notes (optional)',
@@ -12718,83 +13573,67 @@ class _ColdBoreDialogState extends State<_ColdBoreDialog> {
                   decoration: const InputDecoration(labelText: 'Units'),
                 ),
                 const SizedBox(height: 12),
-                Row(
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Horizontal'),
-                          const SizedBox(height: 6),
-                          Wrap(
-                            spacing: 8,
-                            children: [
-                              ChoiceChip(
-                                label: const Text('Left'),
-                                selected: !_horizontalRight,
-                                onSelected: (_) =>
-                                    setState(() => _horizontalRight = false),
-                              ),
-                              ChoiceChip(
-                                label: const Text('Right'),
-                                selected: _horizontalRight,
-                                onSelected: (_) =>
-                                    setState(() => _horizontalRight = true),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: _hOffsetCtrl,
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            decoration: InputDecoration(
-                              labelText:
-                                  'Amount (${_offsetUnit.toUpperCase()})',
-                              helperText: 'Type the horizontal amount',
-                            ),
-                          ),
-                        ],
+                    const Text('Horizontal'),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        ChoiceChip(
+                          label: const Text('Left'),
+                          selected: !_horizontalRight,
+                          onSelected: (_) =>
+                              setState(() => _horizontalRight = false),
+                        ),
+                        ChoiceChip(
+                          label: const Text('Right'),
+                          selected: _horizontalRight,
+                          onSelected: (_) =>
+                              setState(() => _horizontalRight = true),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(textCapitalization: TextCapitalization.none, 
+                      controller: _hOffsetCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: 'Amount (${_offsetUnit.toUpperCase()})',
+                        helperText: 'Type the horizontal amount',
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Vertical'),
-                          const SizedBox(height: 6),
-                          Wrap(
-                            spacing: 8,
-                            children: [
-                              ChoiceChip(
-                                label: const Text('Up'),
-                                selected: _verticalUp,
-                                onSelected: (_) =>
-                                    setState(() => _verticalUp = true),
-                              ),
-                              ChoiceChip(
-                                label: const Text('Down'),
-                                selected: !_verticalUp,
-                                onSelected: (_) =>
-                                    setState(() => _verticalUp = false),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: _vOffsetCtrl,
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            decoration: InputDecoration(
-                              labelText:
-                                  'Amount (${_offsetUnit.toUpperCase()})',
-                              helperText: 'Type the vertical amount',
-                            ),
-                          ),
-                        ],
+                    const SizedBox(height: 12),
+                    const Text('Vertical'),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        ChoiceChip(
+                          label: const Text('Up'),
+                          selected: _verticalUp,
+                          onSelected: (_) => setState(() => _verticalUp = true),
+                        ),
+                        ChoiceChip(
+                          label: const Text('Down'),
+                          selected: !_verticalUp,
+                          onSelected: (_) =>
+                              setState(() => _verticalUp = false),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(textCapitalization: TextCapitalization.none, 
+                      controller: _vOffsetCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: 'Amount (${_offsetUnit.toUpperCase()})',
+                        helperText: 'Type the vertical amount',
                       ),
                     ),
                   ],
@@ -12889,7 +13728,7 @@ class _EditNotesDialogState extends State<_EditNotesDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(
+            TextField(textCapitalization: TextCapitalization.none, 
               controller: _c,
               decoration: const InputDecoration(
                 labelText: 'Session notes (optional)',
@@ -12939,7 +13778,7 @@ class _PhotoNoteDialogState extends State<_PhotoNoteDialog> {
       title: const Text('Photo caption'),
       content: SizedBox(
         width: 520,
-        child: TextField(
+        child: TextField(textCapitalization: TextCapitalization.none, 
           controller: _c,
           decoration: const InputDecoration(labelText: 'Caption (optional)'),
           textInputAction: TextInputAction.done,
@@ -12988,7 +13827,7 @@ class _EditDopeDialogState extends State<_EditDopeDialog> {
       title: const Text('Edit DOPE'),
       content: SizedBox(
         width: 520,
-        child: TextField(
+        child: TextField(textCapitalization: TextCapitalization.none, 
           controller: _c,
           decoration: const InputDecoration(labelText: 'DOPE notes'),
           maxLines: 6,
@@ -13230,7 +14069,7 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(
+            TextField(textCapitalization: TextCapitalization.none, 
               controller: _caliber,
               decoration: const InputDecoration(
                 labelText: 'Caliber (ex: .308) *',
@@ -13238,19 +14077,19 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
-            TextField(
+            TextField(textCapitalization: TextCapitalization.none, 
               controller: _manufacturer,
               decoration: const InputDecoration(labelText: 'Manufacturer *'),
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
-            TextField(
+            TextField(textCapitalization: TextCapitalization.none, 
               controller: _model,
               decoration: const InputDecoration(labelText: 'Model *'),
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
-            TextField(
+            TextField(textCapitalization: TextCapitalization.none, 
               controller: _name,
               decoration: const InputDecoration(labelText: 'Name (optional)'),
               textInputAction: TextInputAction.next,
@@ -13262,7 +14101,7 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
               title: const Text('Other details'),
               children: [
                 const SizedBox(height: 8),
-                TextField(
+                TextField(textCapitalization: TextCapitalization.none, 
                   controller: _serialNumber,
                   decoration: const InputDecoration(
                     labelText: 'Serial number (optional)',
@@ -13273,7 +14112,7 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
                 Row(
                   children: [
                     Expanded(
-                      child: TextField(
+                      child: TextField(textCapitalization: TextCapitalization.none, 
                         controller: _barrelLength,
                         decoration: const InputDecoration(
                           labelText: 'Barrel length (optional)',
@@ -13283,7 +14122,7 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: TextField(
+                      child: TextField(textCapitalization: TextCapitalization.none, 
                         controller: _twistRate,
                         decoration: const InputDecoration(
                           labelText: 'Twist rate (optional)',
@@ -13320,7 +14159,7 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                TextField(
+                TextField(textCapitalization: TextCapitalization.none, 
                   controller: _purchasePrice,
                   decoration: const InputDecoration(
                     labelText: 'Purchase price (optional)',
@@ -13329,7 +14168,7 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
                   textInputAction: TextInputAction.next,
                 ),
                 const SizedBox(height: 12),
-                TextField(
+                TextField(textCapitalization: TextCapitalization.none, 
                   controller: _purchaseLocation,
                   decoration: const InputDecoration(
                     labelText: 'Purchase location (optional)',
@@ -13337,7 +14176,7 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
                   textInputAction: TextInputAction.next,
                 ),
                 const SizedBox(height: 12),
-                TextField(
+                TextField(textCapitalization: TextCapitalization.none, 
                   controller: _notes,
                   decoration: const InputDecoration(
                     labelText: 'Notes (optional)',
@@ -13375,7 +14214,7 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
                       setState(() => _scopeUnit = v ?? ScopeUnit.mil),
                 ),
                 const SizedBox(height: 12),
-                TextField(
+                TextField(textCapitalization: TextCapitalization.none, 
                   controller: _scopeMake,
                   decoration: const InputDecoration(
                     labelText: 'Scope make (optional)',
@@ -13383,7 +14222,7 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
                   textInputAction: TextInputAction.next,
                 ),
                 const SizedBox(height: 12),
-                TextField(
+                TextField(textCapitalization: TextCapitalization.none, 
                   controller: _scopeModel,
                   decoration: const InputDecoration(
                     labelText: 'Scope model (optional)',
@@ -13391,7 +14230,7 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
                   textInputAction: TextInputAction.next,
                 ),
                 const SizedBox(height: 12),
-                TextField(
+                TextField(textCapitalization: TextCapitalization.none, 
                   controller: _scopeSerial,
                   decoration: const InputDecoration(
                     labelText: 'Scope serial (optional)',
@@ -13399,7 +14238,7 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
                   textInputAction: TextInputAction.next,
                 ),
                 const SizedBox(height: 12),
-                TextField(
+                TextField(textCapitalization: TextCapitalization.none, 
                   controller: _scopeMount,
                   decoration: const InputDecoration(
                     labelText: 'Mount/rings (optional)',
@@ -13407,7 +14246,7 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
                   textInputAction: TextInputAction.next,
                 ),
                 const SizedBox(height: 12),
-                TextField(
+                TextField(textCapitalization: TextCapitalization.none, 
                   controller: _scopeNotes,
                   decoration: const InputDecoration(
                     labelText: 'Scope notes (optional)',
@@ -13572,7 +14411,7 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(
+            TextField(textCapitalization: TextCapitalization.none, 
               controller: _caliber,
               decoration: const InputDecoration(
                 labelText: 'Caliber (ex: .308) *',
@@ -13580,7 +14419,7 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
-            TextField(
+            TextField(textCapitalization: TextCapitalization.none, 
               controller: _bullet,
               decoration: const InputDecoration(
                 labelText: 'Bullet (ex: SMK) *',
@@ -13588,7 +14427,7 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
-            TextField(
+            TextField(textCapitalization: TextCapitalization.none, 
               controller: _grain,
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
@@ -13597,7 +14436,7 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
-            TextField(
+            TextField(textCapitalization: TextCapitalization.none, 
               controller: _bc,
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
@@ -13608,13 +14447,13 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
-            TextField(
+            TextField(textCapitalization: TextCapitalization.none, 
               controller: _manufacturer,
               decoration: const InputDecoration(labelText: 'Manufacturer *'),
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
-            TextField(
+            TextField(textCapitalization: TextCapitalization.none, 
               controller: _lot,
               decoration: const InputDecoration(
                 labelText: 'Lot number (optional)',
@@ -13622,7 +14461,7 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
-            TextField(
+            TextField(textCapitalization: TextCapitalization.none, 
               controller: _name,
               decoration: const InputDecoration(labelText: 'Name (optional)'),
               textInputAction: TextInputAction.next,
@@ -13661,7 +14500,7 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
               ],
             ),
             const SizedBox(height: 12),
-            TextField(
+            TextField(textCapitalization: TextCapitalization.none, 
               controller: _purchasePrice,
               decoration: const InputDecoration(
                 labelText: 'Purchase price (optional)',
@@ -13670,7 +14509,7 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
-            TextField(
+            TextField(textCapitalization: TextCapitalization.none, 
               controller: _notes,
               decoration: const InputDecoration(labelText: 'Notes (optional)'),
               minLines: 2,
@@ -13925,24 +14764,24 @@ class _RifleDopeEntryDialogState extends State<_RifleDopeEntryDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(
+            TextField(textCapitalization: TextCapitalization.none, 
               controller: _distance,
               decoration: const InputDecoration(labelText: 'Distance (yd/m)'),
             ),
             const SizedBox(height: 10),
-            TextField(
+            TextField(textCapitalization: TextCapitalization.none, 
               controller: _elev,
               decoration: const InputDecoration(labelText: 'Elevation (dial)'),
             ),
             const SizedBox(height: 10),
-            TextField(
+            TextField(textCapitalization: TextCapitalization.none, 
               controller: _wind,
               decoration: const InputDecoration(
                 labelText: 'Windage (e.g., R0.2 / L0.1 / 0)',
               ),
             ),
             const SizedBox(height: 10),
-            TextField(
+            TextField(textCapitalization: TextCapitalization.none, 
               controller: _notes,
               maxLines: 3,
               decoration: const InputDecoration(labelText: 'Notes (optional)'),
@@ -14221,13 +15060,13 @@ class _AddRifleServiceDialogState extends State<_AddRifleServiceDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(
+            TextField(textCapitalization: TextCapitalization.none, 
               controller: _serviceCtrl,
               decoration: const InputDecoration(labelText: 'Service'),
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 8),
-            TextField(
+            TextField(textCapitalization: TextCapitalization.none, 
               controller: _notesCtrl,
               decoration: const InputDecoration(labelText: 'Notes (optional)'),
               textInputAction: TextInputAction.next,
@@ -14259,7 +15098,7 @@ class _AddRifleServiceDialogState extends State<_AddRifleServiceDialog> {
               onChanged: (v) => setState(() => _useCurrentRounds = v),
             ),
             if (!_useCurrentRounds)
-              TextField(
+              TextField(textCapitalization: TextCapitalization.none, 
                 controller: _roundsCtrl,
                 decoration: const InputDecoration(
                   labelText: 'Rounds at service',
@@ -14365,7 +15204,7 @@ class _ResetBarrelDialogState extends State<_ResetBarrelDialog> {
               },
             ),
             const SizedBox(height: 8),
-            TextField(
+            TextField(textCapitalization: TextCapitalization.none, 
               controller: _notesCtrl,
               maxLines: 3,
               decoration: const InputDecoration(
@@ -14445,7 +15284,8 @@ class _BackupScreen extends StatelessWidget {
           .doc(user.uid)
           .get();
       return doc.data();
-    } catch (_) {
+    } catch (e, st) {
+      debugPrint('Cloud backup metadata lookup failed: $e\n$st');
       return null;
     }
   }
@@ -14926,7 +15766,7 @@ class _ImportBackupDialogState extends State<_ImportBackupDialog> {
               ),
             ),
             const SizedBox(height: 8),
-            TextField(
+            TextField(textCapitalization: TextCapitalization.none, 
               controller: _ctrl,
               decoration: const InputDecoration(
                 labelText: 'Paste backup JSON',
@@ -14957,3 +15797,4 @@ class _ImportBackupDialogState extends State<_ImportBackupDialog> {
     );
   }
 }
+
