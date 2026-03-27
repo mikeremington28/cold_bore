@@ -17,6 +17,9 @@ import 'package:noise_meter/noise_meter.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:universal_html/html.dart' as html;
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import 'dart:io';
 
 import 'firebase_options.dart';
@@ -24,6 +27,7 @@ import 'firebase_options.dart';
 import 'package:file_picker/file_picker.dart';
 const String kBackupSchemaVersion = '2026-02-05';
 const String kLocalStatePrefsKey = 'cold_bore.local_state.v1';
+const String kPdfExportPresetsPrefsKey = 'cold_bore.pdf_export_presets.v1';
 final AudioPlayer _shotTimerBeepPlayer = AudioPlayer();
 
 Uint8List _buildShotTimerBeepWav({
@@ -343,7 +347,7 @@ String _sessionEvidenceId(TrainingSession s) {
 }
 
 
-String _buildCasePacket(AppState state, {
+String _buildSessionReportText(AppState state, {
   required TrainingSession s,
   bool redactLocation = true,
   bool includePhotoBase64 = false,
@@ -370,7 +374,7 @@ String _buildCasePacket(AppState state, {
   }
 
   final b = StringBuffer();
-  b.writeln('COLD BORE - CASE PACKET');
+  b.writeln('COLD BORE - SESSION REPORT');
   b.writeln('Schema: $kExportSchemaVersion');
   b.writeln('Generated: ${_fmtDateTimeIso(DateTime.now())}');
   if (s.timerRuns.isNotEmpty) {
@@ -474,56 +478,10 @@ String _buildCasePacket(AppState state, {
   }
 
   b.writeln('');
-  b.writeln('END OF CASE PACKET');
+  b.writeln('END OF SESSION REPORT');
   return _cleanText(b.toString());
 }
 
-
-String _buildCourtReport(AppState state, {required bool redactLocation}) {
-  final now = DateTime.now();
-  final b = StringBuffer();
-  b.writeln('COLD BORE - DATA EXPORT (TEXT)');
-  b.writeln('Schema: $kExportSchemaVersion');
-  b.writeln('Generated: ${_fmtDateTimeIso(now)}');
-  b.writeln('Active user: ${state.activeUser?.name ?? '-'} (${state.activeUser?.identifier ?? '-'})');
-  b.writeln('Users: ${state.users.length} | Rifles: ${state.rifles.length} | Ammo lots: ${state.ammoLots.length} | Sessions: ${state.allSessions.length}');
-  b.writeln('');
-  for (final sess in state.allSessions) {
-    b.writeln('SESSION ${sess.id} | ${_fmtDateTimeIso(sess.dateTime)} | user ${sess.userId}');
-    b.writeln('Evidence ID: ${_sessionEvidenceId(sess)}');
-    b.writeln('Location: ${redactLocation ? '[REDACTED]' : sess.locationName}');
-    final rifle = state.rifleById(sess.rifleId);
-    final ammo = state.ammoById(sess.ammoLotId);
-    final rifleLabel = rifle == null
-        ? (sess.rifleId == null ? '-' : 'Deleted (${sess.rifleId})')
-        : '${(rifle.name ?? 'Rifle').trim()} (${rifle.caliber})';
-    final ammoLabel = ammo == null
-        ? (sess.ammoLotId == null ? '-' : 'Deleted (${sess.ammoLotId})')
-        : '${(ammo.name ?? 'Ammo').trim()} (${ammo.caliber})';
-    b.writeln('Rifle: $rifleLabel');
-    b.writeln('Ammo: $ammoLabel');
-    b.writeln('Ended: ${sess.endedAt == null ? '-' : _fmtDateTimeIso(sess.endedAt!)}');
-    b.writeln('Confirmed shot count: ${sess.confirmedShotCount ?? sess.shots.length}');
-    b.writeln('Cold bore entries: ${sess.shots.where((shot) => shot.isColdBore).length}');
-    b.writeln('Saved timer runs: ${sess.timerRuns.length}');
-    b.writeln('Strings: ${sess.strings.length}');
-    if (sess.trainingDope.isNotEmpty) b.writeln('Training DOPE count: ${sess.trainingDope.length}');
-    if (sess.shots.isNotEmpty) b.writeln('Shots count: ${sess.shots.length}');
-    if (sess.timerRuns.isNotEmpty) {
-      for (final run in sess.timerRuns) {
-        b.writeln(
-          '  - Timer ${_fmtDateTimeIso(run.time)} | total ${run.elapsedMs} ms | first ${run.firstShotMs} ms | '
-          'splits ${run.splitMs.isEmpty ? "-" : run.splitMs.join(", ")}',
-        );
-      }
-    }
-    b.writeln('');
-  }
-
-  final bytes = Uint8List.fromList(utf8.encode(b.toString()));
-  b.writeln('CRC32(export_text): ${_crc32(bytes).toRadixString(16).padLeft(8, '0')}');
-  return b.toString();
-}
 
 String _buildCsvBundle(AppState state, {required bool redactLocation}) {
   final b = StringBuffer();
@@ -1042,7 +1000,7 @@ class AppState extends ChangeNotifier {
   List<TrainingSession> get sessions => List.unmodifiable(
         _sessions.where((s) => s.memberUserIds.contains(_activeUser?.id)),
       );
-  /// Convenience lookups used by exports/case packets.
+  /// Convenience lookups used by exports/session reports.
   Rifle? findRifleById(String id) {
     try {
       return _rifles.firstWhere((r) => r.id == id);
@@ -3972,6 +3930,31 @@ class _DataScreenState extends State<DataScreen> {
         final withDope = rifles.where((r) => r.dope.trim().isNotEmpty).toList();
         final wmap = _rifleOnly ? widget.state.workingDopeRifleOnly : widget.state.workingDopeRifleAmmo;
 
+        String rifleTitle(String? rifleId) {
+          if (rifleId == null) return 'Unknown Rifle';
+          final rifle = widget.state.rifleById(rifleId);
+          if (rifle == null) return 'Deleted rifle';
+          final name = (rifle.name ?? '').trim();
+          if (name.isNotEmpty) return name;
+          final model = [
+            (rifle.manufacturer ?? '').trim(),
+            (rifle.model ?? '').trim(),
+          ].where((v) => v.isNotEmpty).join(' ');
+          if (model.isNotEmpty) return model;
+          return rifle.caliber.trim().isEmpty ? 'Rifle' : rifle.caliber.trim();
+        }
+
+        String ammoTitle(String? ammoId) {
+          if (ammoId == null) return 'Unknown Ammo';
+          final ammo = widget.state.ammoById(ammoId);
+          if (ammo == null) return 'Deleted ammo';
+          final name = (ammo.name ?? '').trim();
+          if (name.isNotEmpty) return name;
+          final bullet = '${ammo.grain > 0 ? '${ammo.grain}gr ' : ''}${ammo.bullet}'.trim();
+          if (bullet.isNotEmpty) return bullet;
+          return ammo.caliber.trim().isEmpty ? 'Ammo' : ammo.caliber.trim();
+        }
+
         final workingSections = <Widget>[];
         if (wmap.isNotEmpty) {
           final sortedKeys = wmap.keys.toList()..sort();
@@ -3985,13 +3968,26 @@ class _DataScreenState extends State<DataScreen> {
 
             String title;
             if (_rifleOnly) {
-              final rifle = widget.state.rifleById(key);
-              title = rifle?.name ?? 'Unknown Rifle';
+              title = rifleTitle(key);
             } else {
-              final parts = key.split('_');
-              final rifle = widget.state.rifleById(parts[0]);
-              final ammo = widget.state.ammoById(parts[1]);
-              title = '${rifle?.name ?? 'Unknown'} / ${ammo?.name ?? 'Unknown'}';
+              String? rifleId;
+              String? ammoId;
+              if (inner.isNotEmpty) {
+                final sample = inner.values.first;
+                rifleId = sample.rifleId;
+                ammoId = sample.ammoLotId;
+              }
+
+              // Backward-compatible fallback for old persisted keys.
+              if (rifleId == null || ammoId == null) {
+                final sep = key.indexOf('_');
+                if (sep > 0 && sep < key.length - 1) {
+                  rifleId ??= key.substring(0, sep);
+                  ammoId ??= key.substring(sep + 1);
+                }
+              }
+
+              title = '${rifleTitle(rifleId)} / ${ammoTitle(ammoId)}';
             }
 
             workingSections.add(
@@ -5908,8 +5904,11 @@ class SessionDetailScreen extends StatelessWidget {
       counts.update(rifleId, (value) => value + shotCount, ifAbsent: () => shotCount);
     }
 
-    if (session.rifleId != null) {
-      counts.putIfAbsent(session.rifleId!, () => session.confirmedShotCount ?? session.shots.length);
+    final fallbackTotal = session.confirmedShotCount ?? session.shots.length;
+    final countedTotal = counts.values.fold<int>(0, (sum, value) => sum + value);
+    if (session.rifleId != null && fallbackTotal > countedTotal) {
+      final missing = fallbackTotal - countedTotal;
+      counts.update(session.rifleId!, (value) => value + missing, ifAbsent: () => missing);
     }
     return counts;
   }
@@ -6099,7 +6098,7 @@ class SessionDetailScreen extends StatelessWidget {
   }
 
   
-  Future<void> _exportCasePacket(BuildContext context, TrainingSession s) async {
+  Future<void> _exportSessionReport(BuildContext context, TrainingSession s) async {
     bool redact = true;
     bool includeB64 = false;
 
@@ -6108,7 +6107,7 @@ class SessionDetailScreen extends StatelessWidget {
       builder: (dialogCtx) {
         return StatefulBuilder(
           builder: (context, setState) {
-            final packet = _buildCasePacket(
+            final packet = _buildSessionReportText(
               state,
               s: s,
               redactLocation: redact,
@@ -6116,7 +6115,7 @@ class SessionDetailScreen extends StatelessWidget {
             );
 
             return AlertDialog(
-              title: const Text('Case packet'),
+              title: const Text('Session report'),
               content: SizedBox(
                 width: 720,
                 child: Column(
@@ -6150,7 +6149,7 @@ class SessionDetailScreen extends StatelessWidget {
                       Navigator.of(dialogCtx).pop();
                     }
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Case packet copied to clipboard.')),
+                      const SnackBar(content: Text('Session report copied to clipboard.')),
                     );
                   },
                   child: const Text('Copy'),
@@ -6396,15 +6395,15 @@ class SessionDetailScreen extends StatelessWidget {
                 itemBuilder: (context) => [
                   if (s.endedAt == null)
                     const PopupMenuItem(value: 'end_session', child: Text('End session')),
-                  const PopupMenuItem(value: 'case_packet', child: Text('Export case packet')),
+                  const PopupMenuItem(value: 'session_report', child: Text('Export session report')),
                 ],
                 onSelected: (v) async {
                   if (v == 'end_session') {
                     await _endSession(context, s);
                     return;
                   }
-                  if (v == 'case_packet') {
-                    await _exportCasePacket(context, s);
+                  if (v == 'session_report') {
+                    await _exportSessionReport(context, s);
                   }
                 },
               ),
@@ -8466,8 +8465,865 @@ class ExportPlaceholderScreen extends StatefulWidget {
   State<ExportPlaceholderScreen> createState() => _ExportPlaceholderScreenState();
 }
 
+class _PdfExportOptions {
+  final bool includeSummary;
+  final bool includeCharts;
+  final bool includeRecentSessions;
+  final bool includeUsedRifles;
+  final bool includeUsedAmmo;
+  final bool includeMaintenance;
+  final bool includeEverything;
+
+  const _PdfExportOptions({
+    required this.includeSummary,
+    required this.includeCharts,
+    required this.includeRecentSessions,
+    required this.includeUsedRifles,
+    required this.includeUsedAmmo,
+    required this.includeMaintenance,
+    required this.includeEverything,
+  });
+
+  Map<String, dynamic> toMap() => <String, dynamic>{
+        'includeSummary': includeSummary,
+        'includeCharts': includeCharts,
+        'includeRecentSessions': includeRecentSessions,
+        'includeUsedRifles': includeUsedRifles,
+        'includeUsedAmmo': includeUsedAmmo,
+        'includeMaintenance': includeMaintenance,
+        'includeEverything': includeEverything,
+      };
+
+  factory _PdfExportOptions.fromMap(Map<String, dynamic> map) {
+    return _PdfExportOptions(
+      includeSummary: map['includeSummary'] != false,
+      includeCharts: map['includeCharts'] != false,
+      includeRecentSessions: map['includeRecentSessions'] != false,
+      includeUsedRifles: map['includeUsedRifles'] != false,
+      includeUsedAmmo: map['includeUsedAmmo'] != false,
+      includeMaintenance: map['includeMaintenance'] != false,
+      includeEverything: map['includeEverything'] == true,
+    );
+  }
+}
+
+class _PdfExportPreset {
+  final String name;
+  final _PdfExportOptions options;
+
+  const _PdfExportPreset({required this.name, required this.options});
+
+  Map<String, dynamic> toMap() => <String, dynamic>{
+        'name': name,
+        'options': options.toMap(),
+      };
+
+  factory _PdfExportPreset.fromMap(Map<String, dynamic> map) {
+    return _PdfExportPreset(
+      name: (map['name'] ?? 'Preset').toString(),
+      options: _PdfExportOptions.fromMap(
+        Map<String, dynamic>.from((map['options'] as Map?) ?? const <String, dynamic>{}),
+      ),
+    );
+  }
+}
+
 class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
-  bool _redactLocation = true;
+  bool _redactLocation = false;
+  List<_PdfExportPreset> _savedPdfPresets = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadPdfPresets());
+  }
+
+  List<_PdfExportPreset> get _builtinPdfPresets => const [
+        _PdfExportPreset(
+          name: 'Professional',
+          options: _PdfExportOptions(
+            includeSummary: true,
+            includeCharts: false,
+            includeRecentSessions: true,
+            includeUsedRifles: true,
+            includeUsedAmmo: true,
+            includeMaintenance: true,
+            includeEverything: false,
+          ),
+        ),
+        _PdfExportPreset(
+          name: 'Personal Log',
+          options: _PdfExportOptions(
+            includeSummary: true,
+            includeCharts: true,
+            includeRecentSessions: true,
+            includeUsedRifles: true,
+            includeUsedAmmo: true,
+            includeMaintenance: false,
+            includeEverything: false,
+          ),
+        ),
+        _PdfExportPreset(
+          name: 'Maintenance',
+          options: _PdfExportOptions(
+            includeSummary: true,
+            includeCharts: false,
+            includeRecentSessions: false,
+            includeUsedRifles: true,
+            includeUsedAmmo: false,
+            includeMaintenance: true,
+            includeEverything: false,
+          ),
+        ),
+        _PdfExportPreset(
+          name: 'Complete',
+          options: _PdfExportOptions(
+            includeSummary: true,
+            includeCharts: true,
+            includeRecentSessions: true,
+            includeUsedRifles: true,
+            includeUsedAmmo: true,
+            includeMaintenance: true,
+            includeEverything: true,
+          ),
+        ),
+      ];
+
+  Future<void> _loadPdfPresets() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(kPdfExportPresetsPrefsKey);
+      if (raw == null || raw.trim().isEmpty) return;
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return;
+      final presets = decoded
+          .map((e) => _PdfExportPreset.fromMap(Map<String, dynamic>.from(e as Map)))
+          .toList();
+      if (!mounted) return;
+      setState(() => _savedPdfPresets = presets);
+    } catch (_) {}
+  }
+
+  Future<void> _savePdfPresets() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      kPdfExportPresetsPrefsKey,
+      jsonEncode(_savedPdfPresets.map((p) => p.toMap()).toList()),
+    );
+  }
+
+  Future<void> _saveCurrentOptionsAsPreset(BuildContext context, _PdfExportOptions options) async {
+    final controller = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Save PDF preset'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(labelText: 'Preset name'),
+          textInputAction: TextInputAction.done,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (name == null || name.trim().isEmpty) return;
+
+    final preset = _PdfExportPreset(name: name.trim(), options: options);
+    final next = [..._savedPdfPresets.where((p) => p.name.toLowerCase() != preset.name.toLowerCase()), preset]
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    setState(() => _savedPdfPresets = next);
+    await _savePdfPresets();
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Saved PDF preset: ${preset.name}')),
+    );
+  }
+
+  String _pdfAmmoLabel(String? ammoId) {
+    if (ammoId == null) return '-';
+    final ammo = widget.state.findAmmoLotById(ammoId);
+    if (ammo == null) return 'Deleted ($ammoId)';
+    final parts = <String>[];
+    if ((ammo.name ?? '').trim().isNotEmpty) parts.add((ammo.name ?? '').trim());
+    if ((ammo.manufacturer ?? '').trim().isNotEmpty) parts.add((ammo.manufacturer ?? '').trim());
+    if (ammo.caliber.trim().isNotEmpty) parts.add(ammo.caliber.trim());
+    if (ammo.grain > 0) parts.add('${ammo.grain}gr');
+    if (ammo.bullet.trim().isNotEmpty) parts.add(ammo.bullet.trim());
+    return parts.isEmpty ? 'Ammo' : parts.join(' ');
+  }
+
+  Future<_PdfExportOptions?> _pickPdfOptions(BuildContext context) async {
+    var includeSummary = true;
+    var includeCharts = true;
+    var includeRecentSessions = true;
+    var includeUsedRifles = true;
+    var includeUsedAmmo = true;
+    var includeMaintenance = true;
+    var includeEverything = false;
+
+    void applyPreset(_PdfExportOptions options, void Function(void Function()) setLocalState) {
+      setLocalState(() {
+        includeSummary = options.includeSummary;
+        includeCharts = options.includeCharts;
+        includeRecentSessions = options.includeRecentSessions;
+        includeUsedRifles = options.includeUsedRifles;
+        includeUsedAmmo = options.includeUsedAmmo;
+        includeMaintenance = options.includeMaintenance;
+        includeEverything = options.includeEverything;
+      });
+    }
+
+    return showModalBottomSheet<_PdfExportOptions>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => StatefulBuilder(
+        builder: (context, setLocalState) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('PDF Export Options', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 10),
+                if (_builtinPdfPresets.isNotEmpty || _savedPdfPresets.isNotEmpty) ...[
+                  const Text('Presets', style: TextStyle(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final preset in _builtinPdfPresets)
+                        ActionChip(
+                          label: Text(preset.name),
+                          onPressed: () => applyPreset(preset.options, setLocalState),
+                        ),
+                      for (final preset in _savedPdfPresets)
+                        ActionChip(
+                          avatar: const Icon(Icons.bookmark_outline, size: 18),
+                          label: Text(preset.name),
+                          onPressed: () => applyPreset(preset.options, setLocalState),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                CheckboxListTile(
+                  value: includeSummary,
+                  onChanged: (v) => setLocalState(() => includeSummary = v ?? false),
+                  title: const Text('Summary cards (sessions, shots, average)'),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  contentPadding: EdgeInsets.zero,
+                ),
+                CheckboxListTile(
+                  value: includeCharts,
+                  onChanged: (v) => setLocalState(() => includeCharts = v ?? false),
+                  title: const Text('Charts (top rifles and monthly shots)'),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  contentPadding: EdgeInsets.zero,
+                ),
+                CheckboxListTile(
+                  value: includeRecentSessions,
+                  onChanged: (v) => setLocalState(() => includeRecentSessions = v ?? false),
+                  title: const Text('Recent sessions table (with location)'),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  contentPadding: EdgeInsets.zero,
+                ),
+                CheckboxListTile(
+                  value: includeUsedRifles,
+                  onChanged: (v) => setLocalState(() => includeUsedRifles = v ?? false),
+                  title: const Text('Rifles used in sessions'),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  contentPadding: EdgeInsets.zero,
+                ),
+                CheckboxListTile(
+                  value: includeUsedAmmo,
+                  onChanged: (v) => setLocalState(() => includeUsedAmmo = v ?? false),
+                  title: const Text('Ammo lots used in sessions'),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  contentPadding: EdgeInsets.zero,
+                ),
+                CheckboxListTile(
+                  value: includeMaintenance,
+                  onChanged: (v) => setLocalState(() => includeMaintenance = v ?? false),
+                  title: const Text('Maintenance / service history'),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  contentPadding: EdgeInsets.zero,
+                ),
+                CheckboxListTile(
+                  value: includeEverything,
+                  onChanged: (v) => setLocalState(() => includeEverything = v ?? false),
+                  title: const Text('Complete app-data appendix (all sessions, strings, DOPE, rifles, ammo)'),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  contentPadding: EdgeInsets.zero,
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    TextButton(
+                      onPressed: () async {
+                        await _saveCurrentOptionsAsPreset(
+                          context,
+                          _PdfExportOptions(
+                            includeSummary: includeSummary,
+                            includeCharts: includeCharts,
+                            includeRecentSessions: includeRecentSessions,
+                            includeUsedRifles: includeUsedRifles,
+                            includeUsedAmmo: includeUsedAmmo,
+                            includeMaintenance: includeMaintenance,
+                            includeEverything: includeEverything,
+                          ),
+                        );
+                        if (!context.mounted) return;
+                      },
+                      child: const Text('Save as preset'),
+                    ),
+                    const SizedBox(width: 8),
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Cancel'),
+                    ),
+                    const Spacer(),
+                    FilledButton(
+                      onPressed: () {
+                        Navigator.of(context).pop(
+                          _PdfExportOptions(
+                            includeSummary: includeSummary,
+                            includeCharts: includeCharts,
+                            includeRecentSessions: includeRecentSessions,
+                            includeUsedRifles: includeUsedRifles,
+                            includeUsedAmmo: includeUsedAmmo,
+                            includeMaintenance: includeMaintenance,
+                            includeEverything: includeEverything,
+                          ),
+                        );
+                      },
+                      child: const Text('Generate PDF'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _pdfDate(DateTime d) {
+    final y = d.year.toString().padLeft(4, '0');
+    final m = d.month.toString().padLeft(2, '0');
+    final day = d.day.toString().padLeft(2, '0');
+    return '$y-$m-$day';
+  }
+
+  String _distanceUnitLabel(DistanceUnit unit) {
+    switch (unit) {
+      case DistanceUnit.yards:
+        return 'y';
+      case DistanceUnit.meters:
+        return 'm';
+    }
+  }
+
+  String _elevationUnitLabel(ElevationUnit unit) {
+    switch (unit) {
+      case ElevationUnit.mil:
+        return 'mil';
+      case ElevationUnit.moa:
+        return 'moa';
+      case ElevationUnit.inches:
+        return 'in';
+    }
+  }
+
+  String _windTypeLabel(WindType type) {
+    switch (type) {
+      case WindType.fullValue:
+        return 'full';
+      case WindType.clock:
+        return 'clock';
+    }
+  }
+
+  String _pdfDateTime(DateTime d) {
+    final y = d.year.toString().padLeft(4, '0');
+    final m = d.month.toString().padLeft(2, '0');
+    final day = d.day.toString().padLeft(2, '0');
+    final hh = d.hour.toString().padLeft(2, '0');
+    final mm = d.minute.toString().padLeft(2, '0');
+    return '$y-$m-$day $hh:$mm';
+  }
+
+  String _pdfRifleLabel(String? rifleId) {
+    if (rifleId == null) return '-';
+    final rifle = widget.state.findRifleById(rifleId);
+    if (rifle == null) return 'Deleted ($rifleId)';
+    final name = (rifle.name ?? '').trim();
+    if (name.isNotEmpty) return name;
+    final model = [
+      (rifle.manufacturer ?? '').trim(),
+      (rifle.model ?? '').trim(),
+    ].where((v) => v.isNotEmpty).join(' ');
+    if (model.isNotEmpty) return model;
+    return rifle.caliber.trim().isEmpty ? 'Rifle' : rifle.caliber.trim();
+  }
+
+  pw.Widget _pdfBarChart({
+    required String title,
+    required List<MapEntry<String, int>> entries,
+    PdfColor color = PdfColors.blueGrey700,
+  }) {
+    if (entries.isEmpty) {
+      return pw.Container(
+        padding: const pw.EdgeInsets.all(10),
+        decoration: pw.BoxDecoration(
+          border: pw.Border.all(color: PdfColors.grey400),
+          borderRadius: pw.BorderRadius.circular(8),
+        ),
+        child: pw.Text('$title: no data yet'),
+      );
+    }
+
+    var maxValue = 1;
+    for (final e in entries) {
+      if (e.value > maxValue) maxValue = e.value;
+    }
+
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Text(title, style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 13)),
+        pw.SizedBox(height: 8),
+        ...entries.map((e) {
+          final width = 220 * (e.value / maxValue);
+          return pw.Padding(
+            padding: const pw.EdgeInsets.only(bottom: 7),
+            child: pw.Row(
+              children: [
+                pw.SizedBox(
+                  width: 125,
+                  child: pw.Text(e.key, maxLines: 1),
+                ),
+                pw.Container(
+                  width: width,
+                  height: 10,
+                  decoration: pw.BoxDecoration(
+                    color: color,
+                    borderRadius: pw.BorderRadius.circular(4),
+                  ),
+                ),
+                pw.SizedBox(width: 8),
+                pw.Text('${e.value}'),
+              ],
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
+  Future<void> _exportPdfReport(BuildContext context) async {
+    try {
+      final options = await _pickPdfOptions(context);
+      if (options == null) return;
+
+      await _exportPdfReportWithOptions(context, options);
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('PDF export failed: $e')),
+      );
+    }
+  }
+
+  Future<void> _exportPdfReportWithOptions(BuildContext context, _PdfExportOptions options) async {
+    try {
+
+      final sessions = [...widget.state.allSessions]
+        ..sort((a, b) => b.dateTime.compareTo(a.dateTime));
+
+      final totalSessions = sessions.length;
+      final totalShots = sessions.fold<int>(
+        0,
+        (total, s) => total + (s.confirmedShotCount ?? s.shots.length),
+      );
+      final avgShots = totalSessions == 0 ? 0.0 : totalShots / totalSessions;
+
+      final byRifle = <String, int>{};
+      for (final s in sessions) {
+        final rifleId = s.rifleId;
+        if (rifleId == null) continue;
+        final count = s.confirmedShotCount ?? s.shots.length;
+        byRifle.update(rifleId, (v) => v + count, ifAbsent: () => count);
+      }
+
+      final topRifles = byRifle.entries
+          .map((e) => MapEntry(_pdfRifleLabel(e.key), e.value))
+          .toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+
+      final monthShots = <String, int>{};
+      for (final s in sessions) {
+        final key = '${s.dateTime.year}-${s.dateTime.month.toString().padLeft(2, '0')}';
+        monthShots.update(key, (v) => v + (s.confirmedShotCount ?? s.shots.length), ifAbsent: () => (s.confirmedShotCount ?? s.shots.length));
+      }
+      final monthSeries = monthShots.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
+      final recentMonths = monthSeries.length > 6 ? monthSeries.sublist(monthSeries.length - 6) : monthSeries;
+
+      final usedRifleIds = <String>{};
+      final usedAmmoIds = <String>{};
+      for (final s in sessions) {
+        if (s.rifleId != null) usedRifleIds.add(s.rifleId!);
+        if (s.ammoLotId != null) usedAmmoIds.add(s.ammoLotId!);
+        for (final st in s.strings) {
+          if (st.rifleId != null) usedRifleIds.add(st.rifleId!);
+          if (st.ammoLotId != null) usedAmmoIds.add(st.ammoLotId!);
+        }
+      }
+      final usedRifles = widget.state.rifles.where((r) => usedRifleIds.contains(r.id)).toList();
+      final usedAmmo = widget.state.ammoLots.where((a) => usedAmmoIds.contains(a.id)).toList();
+      final allRifles = [...widget.state.rifles]..sort((a, b) => _pdfRifleLabel(a.id).compareTo(_pdfRifleLabel(b.id)));
+      final allAmmo = [...widget.state.ammoLots]..sort((a, b) => _pdfAmmoLabel(a.id).compareTo(_pdfAmmoLabel(b.id)));
+
+      final doc = pw.Document();
+
+      doc.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(24),
+          build: (_) => [
+            pw.Text('Cold Bore - Range Report', style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 4),
+            pw.Text('Generated ${_pdfDateTime(DateTime.now())}'),
+            if (options.includeSummary) ...[
+              pw.SizedBox(height: 14),
+              pw.Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  pw.Container(
+                    width: 165,
+                    padding: const pw.EdgeInsets.all(10),
+                    decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey400), borderRadius: pw.BorderRadius.circular(8)),
+                    child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+                      pw.Text('Sessions', style: const pw.TextStyle(fontSize: 10)),
+                      pw.SizedBox(height: 4),
+                      pw.Text('$totalSessions', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
+                    ]),
+                  ),
+                  pw.Container(
+                    width: 165,
+                    padding: const pw.EdgeInsets.all(10),
+                    decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey400), borderRadius: pw.BorderRadius.circular(8)),
+                    child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+                      pw.Text('Total shots', style: const pw.TextStyle(fontSize: 10)),
+                      pw.SizedBox(height: 4),
+                      pw.Text('$totalShots', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
+                    ]),
+                  ),
+                  pw.Container(
+                    width: 165,
+                    padding: const pw.EdgeInsets.all(10),
+                    decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey400), borderRadius: pw.BorderRadius.circular(8)),
+                    child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+                      pw.Text('Average shots/session', style: const pw.TextStyle(fontSize: 10)),
+                      pw.SizedBox(height: 4),
+                      pw.Text(avgShots.toStringAsFixed(1), style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
+                    ]),
+                  ),
+                ],
+              ),
+            ],
+            if (options.includeCharts) ...[
+              pw.SizedBox(height: 16),
+              _pdfBarChart(
+                title: 'Top Rifles by Shots',
+                entries: topRifles.take(6).toList(),
+              ),
+              pw.SizedBox(height: 14),
+              _pdfBarChart(
+                title: 'Shots per Month',
+                entries: recentMonths,
+                color: PdfColors.teal700,
+              ),
+            ],
+            if (options.includeRecentSessions) ...[
+              pw.SizedBox(height: 16),
+              pw.Text('Recent Sessions', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 6),
+              pw.Table.fromTextArray(
+                border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.5),
+                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                cellStyle: const pw.TextStyle(fontSize: 9),
+                headers: const ['Date', 'Location', 'Rifle', 'Ammo', 'Shots'],
+                data: sessions.take(30).map((s) {
+                  final location = s.locationName.isEmpty ? '-' : s.locationName;
+                  return [
+                    _pdfDate(s.dateTime),
+                    location,
+                    _pdfRifleLabel(s.rifleId),
+                    _pdfAmmoLabel(s.ammoLotId),
+                    '${s.confirmedShotCount ?? s.shots.length}',
+                  ];
+                }).toList(),
+              ),
+            ],
+            if (options.includeUsedRifles) ...[
+              pw.SizedBox(height: 16),
+              pw.Text('Rifles Used', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 6),
+              pw.Table.fromTextArray(
+                border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.5),
+                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                cellStyle: const pw.TextStyle(fontSize: 9),
+                headers: const ['Name', 'Caliber', 'Rounds', 'Barrel Rounds', 'Serial'],
+                data: usedRifles.map((r) {
+                  final display = (r.name ?? '').trim().isNotEmpty
+                      ? (r.name ?? '').trim()
+                      : [
+                          (r.manufacturer ?? '').trim(),
+                          (r.model ?? '').trim(),
+                        ].where((v) => v.isNotEmpty).join(' ');
+                  return [
+                    display.isEmpty ? 'Rifle' : display,
+                    r.caliber,
+                    '${r.manualRoundCount}',
+                    '${r.barrelRoundCount}',
+                    (r.serialNumber ?? '').trim().isEmpty ? '-' : (r.serialNumber ?? '').trim(),
+                  ];
+                }).toList(),
+              ),
+            ],
+            if (options.includeUsedAmmo) ...[
+              pw.SizedBox(height: 16),
+              pw.Text('Ammo Used', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 6),
+              pw.Table.fromTextArray(
+                border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.5),
+                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                cellStyle: const pw.TextStyle(fontSize: 9),
+                headers: const ['Name', 'Caliber', 'Bullet', 'Lot', 'BC'],
+                data: usedAmmo.map((a) {
+                  final display = (a.name ?? '').trim().isEmpty ? 'Ammo lot' : (a.name ?? '').trim();
+                  return [
+                    display,
+                    a.caliber,
+                    '${a.grain}gr ${a.bullet}',
+                    ((a.lotNumber ?? '').trim().isEmpty) ? '-' : (a.lotNumber ?? '').trim(),
+                    a.ballisticCoefficient?.toStringAsFixed(3) ?? '-',
+                  ];
+                }).toList(),
+              ),
+            ],
+            if (options.includeMaintenance) ...[
+              pw.SizedBox(height: 16),
+              pw.Text('Maintenance / Service History', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 6),
+              for (final r in usedRifles)
+                ...[
+                  pw.Text(
+                    _pdfRifleLabel(r.id),
+                    style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold),
+                  ),
+                  pw.SizedBox(height: 4),
+                  if (r.services.isEmpty)
+                    pw.Text('No service entries logged.')
+                  else
+                    pw.Table.fromTextArray(
+                      border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.5),
+                      headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                      headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                      cellStyle: const pw.TextStyle(fontSize: 9),
+                      headers: const ['Date', 'Service', 'Rounds', 'Notes'],
+                      data: r.services
+                          .map((svc) => [
+                                _pdfDate(svc.date),
+                                svc.service,
+                                '${svc.roundsAtService}',
+                                svc.notes.isEmpty ? '-' : svc.notes,
+                              ])
+                          .toList(),
+                    ),
+                  pw.SizedBox(height: 8),
+                ],
+            ],
+            if (options.includeEverything) ...[
+              pw.SizedBox(height: 18),
+              pw.Text('Complete App Data Appendix', style: pw.TextStyle(fontSize: 15, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 8),
+              pw.Text('All Rifles', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 6),
+              pw.Table.fromTextArray(
+                border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.5),
+                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                cellStyle: const pw.TextStyle(fontSize: 9),
+                headers: const ['Name', 'Caliber', 'Round Count', 'Barrel Rounds', 'Serial'],
+                data: allRifles.map((r) => [
+                      _pdfRifleLabel(r.id),
+                      r.caliber,
+                      '${r.manualRoundCount}',
+                      '${r.barrelRoundCount}',
+                      (r.serialNumber ?? '').trim().isEmpty ? '-' : (r.serialNumber ?? '').trim(),
+                    ]).toList(),
+              ),
+              pw.SizedBox(height: 12),
+              pw.Text('All Ammo Lots', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 6),
+              pw.Table.fromTextArray(
+                border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.5),
+                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                cellStyle: const pw.TextStyle(fontSize: 9),
+                headers: const ['Name', 'Caliber', 'Bullet', 'Lot', 'BC'],
+                data: allAmmo.map((a) => [
+                      _pdfAmmoLabel(a.id),
+                      a.caliber,
+                      '${a.grain}gr ${a.bullet}'.trim(),
+                      ((a.lotNumber ?? '').trim().isEmpty) ? '-' : (a.lotNumber ?? '').trim(),
+                      a.ballisticCoefficient?.toStringAsFixed(3) ?? '-',
+                    ]).toList(),
+              ),
+              pw.SizedBox(height: 12),
+              pw.Text('All Sessions', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 6),
+              pw.Table.fromTextArray(
+                border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.5),
+                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                cellStyle: const pw.TextStyle(fontSize: 9),
+                headers: const ['Date', 'Location', 'Rifle', 'Ammo', 'Shots', 'Strings', 'DOPE'],
+                data: sessions.map((s) => [
+                      _pdfDate(s.dateTime),
+                      s.locationName.isEmpty ? '-' : s.locationName,
+                      _pdfRifleLabel(s.rifleId),
+                      _pdfAmmoLabel(s.ammoLotId),
+                      '${s.confirmedShotCount ?? s.shots.length}',
+                      '${s.strings.length}',
+                      '${s.trainingDope.length}',
+                    ]).toList(),
+              ),
+              pw.SizedBox(height: 12),
+              pw.Text('All Session Strings', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 6),
+              pw.Table.fromTextArray(
+                border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.5),
+                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                cellStyle: const pw.TextStyle(fontSize: 9),
+                headers: const ['Session Date', 'String #', 'Rifle', 'Ammo', 'Shots', 'DOPE Entries'],
+                data: [
+                  for (final s in sessions)
+                    for (var i = 0; i < s.strings.length; i++)
+                      [
+                        _pdfDate(s.dateTime),
+                        '${i + 1}',
+                        _pdfRifleLabel(s.strings[i].rifleId),
+                        _pdfAmmoLabel(s.strings[i].ammoLotId),
+                        '${(s.shotsByString[s.strings[i].id] ?? const <ShotEntry>[]).length}',
+                        '${(s.trainingDopeByString[s.strings[i].id] ?? const <DopeEntry>[]).length}',
+                      ],
+                ],
+              ),
+              pw.SizedBox(height: 12),
+              pw.Text('Cold Bore Entries', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 6),
+              pw.Table.fromTextArray(
+                border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.5),
+                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                cellStyle: const pw.TextStyle(fontSize: 9),
+                headers: const ['Session Date', 'Shot Time', 'Rifle', 'Ammo', 'Distance', 'Result', 'Baseline', 'Notes'],
+                data: [
+                  for (final s in sessions)
+                    for (final shot in s.shots.where((x) => x.isColdBore))
+                      [
+                        _pdfDate(s.dateTime),
+                        _pdfDateTime(shot.time),
+                        _pdfRifleLabel(s.rifleId),
+                        _pdfAmmoLabel(s.ammoLotId),
+                        shot.distance.trim().isEmpty ? '-' : shot.distance.trim(),
+                        shot.result.trim().isEmpty ? '-' : shot.result.trim(),
+                        shot.isBaseline ? 'Yes' : 'No',
+                        shot.notes.trim().isEmpty ? '-' : shot.notes.trim(),
+                      ],
+                ],
+              ),
+              pw.SizedBox(height: 12),
+              pw.Text('Working DOPE (Rifle + Ammo)', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 6),
+              pw.Table.fromTextArray(
+                border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.5),
+                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                cellStyle: const pw.TextStyle(fontSize: 9),
+                headers: const ['Rifle', 'Ammo', 'Distance', 'Elevation', 'Wind', 'L', 'R'],
+                data: [
+                  for (final bucket in widget.state.workingDopeRifleAmmo.values)
+                    for (final dope in bucket.values)
+                      [
+                        _pdfRifleLabel(dope.rifleId),
+                        _pdfAmmoLabel(dope.ammoLotId),
+                        '${dope.distance} ${_distanceUnitLabel(dope.distanceUnit)}',
+                        '${dope.elevation} ${_elevationUnitLabel(dope.elevationUnit)}',
+                        '${_windTypeLabel(dope.windType)} ${dope.windValue}'.trim(),
+                        dope.windageLeft.toStringAsFixed(2),
+                        dope.windageRight.toStringAsFixed(2),
+                      ],
+                ],
+              ),
+              pw.SizedBox(height: 12),
+              pw.Text('Working DOPE (Rifle Only)', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 6),
+              pw.Table.fromTextArray(
+                border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.5),
+                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                cellStyle: const pw.TextStyle(fontSize: 9),
+                headers: const ['Rifle', 'Distance', 'Elevation', 'Wind', 'L', 'R'],
+                data: [
+                  for (final bucket in widget.state.workingDopeRifleOnly.values)
+                    for (final dope in bucket.values)
+                      [
+                        _pdfRifleLabel(dope.rifleId),
+                        '${dope.distance} ${_distanceUnitLabel(dope.distanceUnit)}',
+                        '${dope.elevation} ${_elevationUnitLabel(dope.elevationUnit)}',
+                        '${_windTypeLabel(dope.windType)} ${dope.windValue}'.trim(),
+                        dope.windageLeft.toStringAsFixed(2),
+                        dope.windageRight.toStringAsFixed(2),
+                      ],
+                ],
+              ),
+            ],
+          ],
+        ),
+      );
+
+      final bytes = await doc.save();
+      final filename = 'cold_bore_report_${_pdfDate(DateTime.now())}.pdf';
+      await Printing.sharePdf(bytes: bytes, filename: filename);
+
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('PDF report generated.')),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('PDF export failed: $e')),
+      );
+    }
+  }
 
   Future<void> _showExportText(String title, String text) async {
     await showDialog<void>(
@@ -8521,21 +9377,11 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
             padding: const EdgeInsets.all(16),
             child: ListView(
               children: [
-                const _SectionTitle('Export for review / court'),
+                const _SectionTitle('Export'),
                 SwitchListTile(
                   value: _redactLocation,
-                  title: const Text('Redact location & GPS'),
+                  title: const Text('Redact location & GPS (text/CSV only)'),
                   onChanged: (v) => setState(() => _redactLocation = v),
-                ),
-                Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.article_outlined),
-                    title: const Text('Court-style report (text)'),
-                    onTap: () => _showExportText(
-                      'Court-style report',
-                      _buildCourtReport(widget.state, redactLocation: _redactLocation),
-                    ),
-                  ),
                 ),
                 Card(
                   child: ListTile(
@@ -8547,6 +9393,36 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                     ),
                   ),
                 ),
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.picture_as_pdf_outlined),
+                    title: const Text('PDF report (choose sections)'),
+                    subtitle: const Text('Select what to include: charts, sessions, rifles, ammo, maintenance.'),
+                    onTap: () => _exportPdfReport(context),
+                  ),
+                ),
+                if (_builtinPdfPresets.isNotEmpty || _savedPdfPresets.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  const Text('Quick PDF presets', style: TextStyle(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final preset in _builtinPdfPresets)
+                        ActionChip(
+                          label: Text(preset.name),
+                          onPressed: () => _exportPdfReportWithOptions(context, preset.options),
+                        ),
+                      for (final preset in _savedPdfPresets)
+                        ActionChip(
+                          avatar: const Icon(Icons.bookmark, size: 18),
+                          label: Text(preset.name),
+                          onPressed: () => _exportPdfReportWithOptions(context, preset.options),
+                        ),
+                    ],
+                  ),
+                ],
                 Card(
                   child: ListTile(
                     leading: const Icon(Icons.swap_vert),
@@ -10914,11 +11790,20 @@ class _BackupScreen extends StatelessWidget {
   final AppState state;
   const _BackupScreen({required this.state});
 
+  Future<void> _ensureFirebaseInitializedForCloud() async {
+    if (defaultTargetPlatform == TargetPlatform.iOS) return;
+    if (Firebase.apps.isNotEmpty) return;
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  }
+
   Future<User> _ensureCloudUser() async {
     // Firebase only used for Android backup
     if (defaultTargetPlatform == TargetPlatform.iOS) {
       throw StateError('iOS uses iCloud backup, not Firebase.');
     }
+    await _ensureFirebaseInitializedForCloud();
     final auth = FirebaseAuth.instance;
     final existing = auth.currentUser;
     if (existing != null) return existing;
@@ -10935,9 +11820,13 @@ class _BackupScreen extends StatelessWidget {
     if (defaultTargetPlatform == TargetPlatform.iOS) {
       return null; // iOS uses iCloud backup, not Firebase
     }
-    final user = await _ensureCloudUser();
-    final doc = await FirebaseFirestore.instance.collection('cloud_backups').doc(user.uid).get();
-    return doc.data();
+    try {
+      final user = await _ensureCloudUser();
+      final doc = await FirebaseFirestore.instance.collection('cloud_backups').doc(user.uid).get();
+      return doc.data();
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<String?> _pickJsonFile() async {
@@ -11044,6 +11933,7 @@ class _BackupScreen extends StatelessWidget {
   }
 
   Future<void> _backupToFirebase(BuildContext context) async {
+    await _ensureFirebaseInitializedForCloud();
     final firebaseUser = await _ensureCloudUser();
     final appUser = state.activeUser;
     final json = state.exportBackupJson();
@@ -11134,6 +12024,7 @@ class _BackupScreen extends StatelessWidget {
   }
 
   Future<void> _restoreFromFirebase(BuildContext context) async {
+    await _ensureFirebaseInitializedForCloud();
     final mode = await _pickImportMode(context);
     if (mode == null) return;
 
@@ -11262,8 +12153,9 @@ class _BackupScreen extends StatelessWidget {
               final meta = snapshot.data;
               final activeUserName = (meta?['activeUserName'] ?? '').toString();
               final latestBackupId = (meta?['latestBackupId'] ?? '').toString();
+                final cloudProvider = defaultTargetPlatform == TargetPlatform.iOS ? 'iCloud' : 'Firebase cloud storage';
               final cloudSubtitle = latestBackupId.isEmpty
-                  ? 'Upload the full app backup to Firebase cloud storage'
+                  ? 'Upload the full app backup to $cloudProvider'
                   : 'Latest: ${latestBackupId.split(".").first}${activeUserName.isEmpty ? "" : " | $activeUserName"}';
               return Column(
                 children: [

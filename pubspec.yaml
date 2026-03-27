@@ -1,7 +1,7 @@
 name: cold_bore
 description: A new Flutter project.
 publish_to: none
-version: 1.0.0+79
+version: 1.0.0+80
 environment:
   sdk: ^3.10.4
 dependencies:
@@ -23,6 +23,8 @@ dependencies:
   file_picker: ^10.3.10
   package_info_plus: ^9.0.0
   noise_meter: ^5.1.0
+  pdf: ^3.11.1
+  printing: ^5.13.4
 dev_dependencies:
   flutter_test:
     sdk: flutter
