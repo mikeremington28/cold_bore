@@ -1,8 +1,13 @@
+// ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:html' as html;
 
-Future<bool> saveTextFile({required String filename, required String content}) async {
+Future<bool> saveTextFile({
+  required String filename,
+  required String content,
+}) async {
   final bytes = utf8.encode(content);
   final blob = html.Blob([bytes], 'application/json');
   final url = html.Url.createObjectUrlFromBlob(blob);
@@ -25,7 +30,9 @@ Future<String?> pickTextFile({List<String> accept = const ['.json']}) async {
   final completer = Completer<String?>();
   input.onChange.first.then((_) async {
     try {
-      final file = (input.files?.isNotEmpty == true) ? input.files!.first : null;
+      final file = (input.files?.isNotEmpty == true)
+          ? input.files!.first
+          : null;
       if (file == null) {
         completer.complete(null);
         return;

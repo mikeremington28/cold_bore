@@ -1,3 +1,5 @@
+// ignore_for_file: avoid_types_as_parameter_names, curly_braces_in_flow_control_structures, dead_code, dead_null_aware_expression, deprecated_member_use, library_private_types_in_public_api, unnecessary_underscores, unused_element, unused_element_parameter, unused_local_variable, use_build_context_synchronously
+
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -12,7 +14,6 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:noise_meter/noise_meter.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -20,11 +21,11 @@ import 'package:universal_html/html.dart' as html;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import 'dart:io';
 
 import 'firebase_options.dart';
 
 import 'package:file_picker/file_picker.dart';
+
 const String kBackupSchemaVersion = '2026-02-05';
 const String kLocalStatePrefsKey = 'cold_bore.local_state.v1';
 const String kPdfExportPresetsPrefsKey = 'cold_bore.pdf_export_presets.v1';
@@ -64,14 +65,19 @@ Uint8List _buildShotTimerBeepWav({
     final fadeIn = math.min(1.0, i / (sampleRate * 0.01));
     final fadeOut = math.min(1.0, (sampleCount - i) / (sampleRate * 0.02));
     final envelope = math.min(fadeIn, fadeOut);
-    final sample = (math.sin(2 * math.pi * frequencyHz * t) * 0.9 * envelope * 32767).round();
+    final sample =
+        (math.sin(2 * math.pi * frequencyHz * t) * 0.9 * envelope * 32767)
+            .round();
     byteData.setInt16(44 + (i * 2), sample.clamp(-32768, 32767), Endian.little);
   }
 
   return byteData.buffer.asUint8List();
 }
 
-Future<void> _playShotTimerBeep({double volume = 1.0, double frequencyHz = 1750.0}) async {
+Future<void> _playShotTimerBeep({
+  double volume = 1.0,
+  double frequencyHz = 1750.0,
+}) async {
   await _shotTimerBeepPlayer.setVolume(volume);
   await _shotTimerBeepPlayer.stop();
   final bytes = _buildShotTimerBeepWav(frequencyHz: frequencyHz);
@@ -130,14 +136,20 @@ ThemeData _buildTacticalTheme() {
       indicatorColor: primary.withValues(alpha: 0.16),
       labelTextStyle: WidgetStateProperty.resolveWith(
         (states) => TextStyle(
-          color: states.contains(WidgetState.selected) ? primary : onSurface.withValues(alpha: 0.78),
-          fontWeight: states.contains(WidgetState.selected) ? FontWeight.w700 : FontWeight.w500,
+          color: states.contains(WidgetState.selected)
+              ? primary
+              : onSurface.withValues(alpha: 0.78),
+          fontWeight: states.contains(WidgetState.selected)
+              ? FontWeight.w700
+              : FontWeight.w500,
           fontSize: 10,
         ),
       ),
       iconTheme: WidgetStateProperty.resolveWith(
         (states) => IconThemeData(
-          color: states.contains(WidgetState.selected) ? primary : onSurface.withValues(alpha: 0.72),
+          color: states.contains(WidgetState.selected)
+              ? primary
+              : onSurface.withValues(alpha: 0.72),
         ),
       ),
     ),
@@ -182,11 +194,12 @@ ThemeData _buildTacticalTheme() {
   );
 }
 
-
-
-
 // --- Web-only: download a text file (no-op on mobile/desktop) ---
-void _downloadTextFileWeb(String filename, String content, {String mimeType = 'text/plain'}) {
+void _downloadTextFileWeb(
+  String filename,
+  String content, {
+  String mimeType = 'text/plain',
+}) {
   if (!kIsWeb) return;
   final bytes = utf8.encode(content);
   final blob = html.Blob([bytes], mimeType);
@@ -199,7 +212,6 @@ void _downloadTextFileWeb(String filename, String content, {String mimeType = 't
   a.remove();
   html.Url.revokeObjectUrl(url);
 }
-
 
 Future<String?> _pickWebJsonFile() async {
   if (!kIsWeb) return null;
@@ -236,7 +248,6 @@ String _cleanText(String s) {
       .replaceAll('→', '->');
 }
 
-
 // --- Export helpers (no extra packages required) -----------------------------
 
 int _crc32(Uint8List bytes) {
@@ -252,26 +263,29 @@ int _crc32(Uint8List bytes) {
 }
 
 String _csvEscape(String v) {
-  final needs = v.contains(',') || v.contains('"') || v.contains('\n') || v.contains('\r');
+  final needs =
+      v.contains(',') ||
+      v.contains('"') ||
+      v.contains('\n') ||
+      v.contains('\r');
   if (!needs) return v;
   return '"${v.replaceAll('"', '""')}"';
 }
 
 String _fmtDateIso(DateTime d) {
-  final y = d.year.toString().padLeft(4, '0');
   final m = d.month.toString().padLeft(2, '0');
   final day = d.day.toString().padLeft(2, '0');
-  return '$y-$m-$day';
+  final y = d.year.toString().padLeft(4, '0');
+  return '$m/$day/$y';
 }
 
 String _fmtDateTimeIso(DateTime d) {
-  final ymd = _fmtDateIso(d);
+  final mdy = _fmtDateIso(d);
   final hh = d.hour.toString().padLeft(2, '0');
   final mm = d.minute.toString().padLeft(2, '0');
   final ss = d.second.toString().padLeft(2, '0');
-  return '$ymd $hh:$mm:$ss';
+  return '$mdy $hh:$mm:$ss';
 }
-
 
 const String kExportSchemaVersion = '2026-01-22';
 
@@ -296,49 +310,57 @@ String _sessionEvidenceId(TrainingSession s) {
     'shotTimerFirstShotMs': s.shotTimerFirstShotMs,
     'shotTimerSplitMs': s.shotTimerSplitMs,
     'timerRuns': s.timerRuns
-        .map((run) => {
-              'id': run.id,
-              'time': _fmtDateTimeIso(run.time),
-              'elapsedMs': run.elapsedMs,
-              'firstShotMs': run.firstShotMs,
-              'splitMs': run.splitMs,
-            })
+        .map(
+          (run) => {
+            'id': run.id,
+            'time': _fmtDateTimeIso(run.time),
+            'elapsedMs': run.elapsedMs,
+            'firstShotMs': run.firstShotMs,
+            'splitMs': run.splitMs,
+          },
+        )
         .toList(),
     'shots': s.shots
-        .map((x) => {
-              'id': x.id,
-              'time': _fmtDateTimeIso(x.time),
-              'isColdBore': x.isColdBore,
-              'isBaseline': x.isBaseline,
-              'distance': x.distance,
-              'result': x.result,
-              'notes': x.notes,
-              'photos': x.photos
-                  .map((p) => {
-                        'id': p.id,
-                        'time': _fmtDateTimeIso(p.time),
-                        'caption': p.caption,
-                      })
-                  .toList(),
-            })
+        .map(
+          (x) => {
+            'id': x.id,
+            'time': _fmtDateTimeIso(x.time),
+            'isColdBore': x.isColdBore,
+            'isBaseline': x.isBaseline,
+            'distance': x.distance,
+            'result': x.result,
+            'notes': x.notes,
+            'photos': x.photos
+                .map(
+                  (p) => {
+                    'id': p.id,
+                    'time': _fmtDateTimeIso(p.time),
+                    'caption': p.caption,
+                  },
+                )
+                .toList(),
+          },
+        )
         .toList(),
     'trainingDope': s.trainingDope
-        .map((d) => {
-              'id': d.id,
-              'time': _fmtDateTimeIso(d.time),
-              'rifleId': d.rifleId,
-              'ammoLotId': d.ammoLotId,
-              'distance': d.distance,
-              'distanceUnit': d.distanceUnit.name,
-              'elevation': d.elevation,
-              'elevationUnit': d.elevationUnit.name,
-              'elevationNotes': d.elevationNotes,
-              'windType': d.windType.name,
-              'windValue': d.windValue,
-              'windNotes': d.windNotes,
-              'windageLeft': d.windageLeft,
-              'windageRight': d.windageRight,
-            })
+        .map(
+          (d) => {
+            'id': d.id,
+            'time': _fmtDateTimeIso(d.time),
+            'rifleId': d.rifleId,
+            'ammoLotId': d.ammoLotId,
+            'distance': d.distance,
+            'distanceUnit': d.distanceUnit.name,
+            'elevation': d.elevation,
+            'elevationUnit': d.elevationUnit.name,
+            'elevationNotes': d.elevationNotes,
+            'windType': d.windType.name,
+            'windValue': d.windValue,
+            'windNotes': d.windNotes,
+            'windageLeft': d.windageLeft,
+            'windageRight': d.windageRight,
+          },
+        )
         .toList(),
   };
 
@@ -346,8 +368,8 @@ String _sessionEvidenceId(TrainingSession s) {
   return _crc32(bytes).toRadixString(16).padLeft(8, '0');
 }
 
-
-String _buildSessionReportText(AppState state, {
+String _buildSessionReportText(
+  AppState state, {
   required TrainingSession s,
   bool redactLocation = true,
   bool includePhotoBase64 = false,
@@ -380,7 +402,10 @@ String _buildSessionReportText(AppState state, {
   if (s.timerRuns.isNotEmpty) {
     b.writeln('Saved timer runs: ${s.timerRuns.length}');
     for (final run in s.timerRuns) {
-      final marks = <int>[if (run.firstShotMs > 0) run.firstShotMs, ...run.splitMs];
+      final marks = <int>[
+        if (run.firstShotMs > 0) run.firstShotMs,
+        ...run.splitMs,
+      ];
       b.writeln(
         '  - ${_fmtDateTimeIso(run.time)} | total ${run.elapsedMs} ms | first ${run.firstShotMs} ms | '
         'marks ${marks.isEmpty ? "-" : marks.join(", ")}'
@@ -389,10 +414,14 @@ String _buildSessionReportText(AppState state, {
       );
     }
   }
-  if ((s.shotTimerElapsedMs ?? 0) > 0 || (s.shotTimerFirstShotMs ?? 0) > 0 || s.shotTimerSplitMs.isNotEmpty) {
+  if ((s.shotTimerElapsedMs ?? 0) > 0 ||
+      (s.shotTimerFirstShotMs ?? 0) > 0 ||
+      s.shotTimerSplitMs.isNotEmpty) {
     b.writeln('â€¢ Shot timer total (ms): ${s.shotTimerElapsedMs ?? 0}');
     b.writeln('â€¢ First shot (ms): ${s.shotTimerFirstShotMs ?? 0}');
-    b.writeln('â€¢ Split times (ms): ${s.shotTimerSplitMs.isEmpty ? '-' : s.shotTimerSplitMs.join(', ')}');
+    b.writeln(
+      'â€¢ Split times (ms): ${s.shotTimerSplitMs.isEmpty ? '-' : s.shotTimerSplitMs.join(', ')}',
+    );
   }
 
   b.writeln('');
@@ -401,20 +430,28 @@ String _buildSessionReportText(AppState state, {
   b.writeln('• Evidence ID (CRC32): $evidenceId');
   b.writeln('• User ID: ${s.userId}');
   b.writeln('• Date/Time: ${_fmtDateTimeIso(s.dateTime)}');
-  b.writeln('• Location: ${redactLocation ? '[REDACTED]' : (s.locationName.isEmpty ? '-' : s.locationName)}');
+  b.writeln(
+    '• Location: ${redactLocation ? '[REDACTED]' : (s.locationName.isEmpty ? '-' : s.locationName)}',
+  );
   if (!redactLocation) {
-    b.writeln('• GPS: ${s.latitude?.toStringAsFixed(6) ?? '-'}, ${s.longitude?.toStringAsFixed(6) ?? '-'}');
+    b.writeln(
+      '• GPS: ${s.latitude?.toStringAsFixed(6) ?? '-'}, ${s.longitude?.toStringAsFixed(6) ?? '-'}',
+    );
   } else {
     b.writeln('• GPS: [REDACTED]');
   }
   b.writeln('• Rifle: ${rifleLabel()}');
   b.writeln('• Ammo: ${ammoLabel()}');
 
-  if (s.temperatureF != null || s.windSpeedMph != null || s.windDirectionDeg != null) {
-    b.writeln('• Weather: '
-        '${s.temperatureF != null ? '${s.temperatureF!.toStringAsFixed(1)}°F' : '-'}; '
-        '${s.windSpeedMph != null ? '${s.windSpeedMph!.toStringAsFixed(1)} mph' : '-'} '
-        '${s.windDirectionDeg != null ? '@ ${s.windDirectionDeg}°' : ''}');
+  if (s.temperatureF != null ||
+      s.windSpeedMph != null ||
+      s.windDirectionDeg != null) {
+    b.writeln(
+      '• Weather: '
+      '${s.temperatureF != null ? '${s.temperatureF!.toStringAsFixed(1)}°F' : '-'}; '
+      '${s.windSpeedMph != null ? '${s.windSpeedMph!.toStringAsFixed(1)} mph' : '-'} '
+      '${s.windDirectionDeg != null ? '@ ${s.windDirectionDeg}°' : ''}',
+    );
   }
 
   b.writeln('');
@@ -439,10 +476,12 @@ String _buildSessionReportText(AppState state, {
     b.writeln('-');
   } else {
     for (final d in s.trainingDope) {
-      b.writeln('• ${d.distance} - Elev: ${d.elevation} ${d.elevationUnit.name} '
-          '(notes: ${d.elevationNotes.isEmpty ? '-' : d.elevationNotes}); '
-          'Wind: ${d.windType.name}: ${d.windValue} '
-          '(notes: ${d.windNotes.isEmpty ? '-' : d.windNotes})');
+      b.writeln(
+        '• ${d.distance} - Elev: ${d.elevation} ${d.elevationUnit.name} '
+        '(notes: ${d.elevationNotes.isEmpty ? '-' : d.elevationNotes}); '
+        'Wind: ${d.windType.name}: ${d.windValue} '
+        '(notes: ${d.windNotes.isEmpty ? '-' : d.windNotes})',
+      );
     }
   }
 
@@ -453,12 +492,16 @@ String _buildSessionReportText(AppState state, {
     b.writeln('-');
   } else {
     for (final sh in s.shots) {
-      b.writeln('• ${_fmtDateTimeIso(sh.time)}'
-          '${sh.isColdBore ? ' [COLD]' : ''}'
-          '${sh.isBaseline ? ' [BASELINE]' : ''}');
+      b.writeln(
+        '• ${_fmtDateTimeIso(sh.time)}'
+        '${sh.isColdBore ? ' [COLD]' : ''}'
+        '${sh.isBaseline ? ' [BASELINE]' : ''}',
+      );
       b.writeln('  - Distance: ${sh.distance}');
       b.writeln('  - Result: ${sh.result}');
-      b.writeln('  - Notes: ${sh.notes.trim().isEmpty ? '-' : sh.notes.trim()}');
+      b.writeln(
+        '  - Notes: ${sh.notes.trim().isEmpty ? '-' : sh.notes.trim()}',
+      );
 
       if (sh.photos.isEmpty) {
         b.writeln('  - Photos: -');
@@ -466,8 +509,10 @@ String _buildSessionReportText(AppState state, {
         b.writeln('  - Photos (${sh.photos.length}):');
         for (final ph in sh.photos) {
           final crc = _crc32(ph.bytes);
-          b.writeln('    • ${_fmtDateTimeIso(ph.time)} - ${ph.caption} '
-              '(id: ${ph.id}; bytes: ${ph.bytes.length}; crc32: 0x${crc.toRadixString(16).padLeft(8, '0')})');
+          b.writeln(
+            '    • ${_fmtDateTimeIso(ph.time)} - ${ph.caption} '
+            '(id: ${ph.id}; bytes: ${ph.bytes.length}; crc32: 0x${crc.toRadixString(16).padLeft(8, '0')})',
+          );
           if (includePhotoBase64) {
             final b64 = base64Encode(ph.bytes);
             b.writeln('      base64: $b64');
@@ -482,49 +527,58 @@ String _buildSessionReportText(AppState state, {
   return _cleanText(b.toString());
 }
 
-
 String _buildCsvBundle(AppState state, {required bool redactLocation}) {
   final b = StringBuffer();
   b.writeln('### rifles.csv');
-  b.writeln('rifle_id,caliber,nickname,manufacturer,model,serial_number,barrel_length,twist_rate,purchase_date,purchase_price,purchase_location,notes,dope');
+  b.writeln(
+    'rifle_id,caliber,nickname,manufacturer,model,serial_number,barrel_length,twist_rate,purchase_date,purchase_price,purchase_location,notes,dope',
+  );
   for (final r in state.rifles) {
-    b.writeln([
-      r.id,
-      r.caliber,
-      r.name ?? '',
-      r.manufacturer ?? '',
-      r.model ?? '',
-      r.serialNumber ?? '',
-      r.barrelLength ?? '',
-      r.twistRate ?? '',
-      r.purchaseDate == null ? '' : _fmtDateIso(r.purchaseDate!),
-      r.purchasePrice ?? '',
-      r.purchaseLocation ?? '',
-      r.notes,
-      r.dope,
-    ].map((x) => _csvEscape(x.toString())).join(','));
+    b.writeln(
+      [
+        r.id,
+        r.caliber,
+        r.name ?? '',
+        r.manufacturer ?? '',
+        r.model ?? '',
+        r.serialNumber ?? '',
+        r.barrelLength ?? '',
+        r.twistRate ?? '',
+        r.purchaseDate == null ? '' : _fmtDateIso(r.purchaseDate!),
+        r.purchasePrice ?? '',
+        r.purchaseLocation ?? '',
+        r.notes,
+        r.dope,
+      ].map((x) => _csvEscape(x.toString())).join(','),
+    );
   }
   b.writeln('');
   b.writeln('### ammo_lots.csv');
-  b.writeln('ammo_lot_id,caliber,grain,name,bullet,bc,manufacturer,lot_number,purchase_date,purchase_price,notes');
+  b.writeln(
+    'ammo_lot_id,caliber,grain,name,bullet,bc,manufacturer,lot_number,purchase_date,purchase_price,notes',
+  );
   for (final a in state.ammoLots) {
-    b.writeln([
-      a.id,
-      a.caliber,
-      a.grain.toString(),
-      a.name ?? '',
-      a.bullet,
-      a.ballisticCoefficient?.toString() ?? '',
-      a.manufacturer ?? '',
-      a.lotNumber ?? '',
-      a.purchaseDate == null ? '' : _fmtDateIso(a.purchaseDate!),
-      a.purchasePrice ?? '',
-      a.notes,
-    ].map((x) => _csvEscape(x.toString())).join(','));
+    b.writeln(
+      [
+        a.id,
+        a.caliber,
+        a.grain.toString(),
+        a.name ?? '',
+        a.bullet,
+        a.ballisticCoefficient?.toString() ?? '',
+        a.manufacturer ?? '',
+        a.lotNumber ?? '',
+        a.purchaseDate == null ? '' : _fmtDateIso(a.purchaseDate!),
+        a.purchasePrice ?? '',
+        a.notes,
+      ].map((x) => _csvEscape(x.toString())).join(','),
+    );
   }
   b.writeln('');
   b.writeln('### sessions.csv');
-  b.writeln('session_id,evidence_id,user_id,datetime,location_name,latitude,longitude,temperature_f,wind_speed_mph,wind_direction_deg,rifle_id,rifle_label,ammo_lot_id,ammo_label,notes');
+  b.writeln(
+    'session_id,evidence_id,user_id,datetime,location_name,latitude,longitude,temperature_f,wind_speed_mph,wind_direction_deg,rifle_id,rifle_label,ammo_lot_id,ammo_label,notes',
+  );
   for (final sess in state.allSessions) {
     final rifle = state.rifleById(sess.rifleId);
     final ammo = state.ammoById(sess.ammoLotId);
@@ -534,78 +588,89 @@ String _buildCsvBundle(AppState state, {required bool redactLocation}) {
     final ammoLabel = ammo == null
         ? (sess.ammoLotId == null ? '' : 'Deleted (${sess.ammoLotId})')
         : '${(ammo.name ?? 'Ammo').trim()} (${ammo.caliber})';
-    b.writeln([
-      sess.id,
-      _sessionEvidenceId(sess),
-      sess.userId,
-      _fmtDateTimeIso(sess.dateTime),
-      redactLocation ? '[REDACTED]' : sess.locationName,
-      redactLocation ? '' : (sess.latitude?.toString() ?? ''),
-      redactLocation ? '' : (sess.longitude?.toString() ?? ''),
-      sess.temperatureF?.toString() ?? '',
-      sess.windSpeedMph?.toString() ?? '',
-      sess.windDirectionDeg?.toString() ?? '',
-      sess.rifleId ?? '',
-      rifleLabel,
-      sess.ammoLotId ?? '',
-      ammoLabel,
-      sess.notes,
-    ].map((x) => _csvEscape(x.toString())).join(','));
+    b.writeln(
+      [
+        sess.id,
+        _sessionEvidenceId(sess),
+        sess.userId,
+        _fmtDateTimeIso(sess.dateTime),
+        redactLocation ? '[REDACTED]' : sess.locationName,
+        redactLocation ? '' : (sess.latitude?.toString() ?? ''),
+        redactLocation ? '' : (sess.longitude?.toString() ?? ''),
+        sess.temperatureF?.toString() ?? '',
+        sess.windSpeedMph?.toString() ?? '',
+        sess.windDirectionDeg?.toString() ?? '',
+        sess.rifleId ?? '',
+        rifleLabel,
+        sess.ammoLotId ?? '',
+        ammoLabel,
+        sess.notes,
+      ].map((x) => _csvEscape(x.toString())).join(','),
+    );
   }
 
-b.writeln('');
-b.writeln('### shots.csv');
-b.writeln('shot_id,session_id,session_evidence_id,time,is_cold_bore,is_baseline,distance,result,notes,photo_count');
-for (final sess in state.allSessions) {
-  final evid = _sessionEvidenceId(sess);
-  for (final shot in sess.shots) {
-    b.writeln([
-      shot.id,
-      sess.id,
-      evid,
-      _fmtDateTimeIso(shot.time),
-      shot.isColdBore ? '1' : '0',
-      shot.isBaseline ? '1' : '0',
-      shot.distance,
-      shot.result,
-      shot.notes,
-      shot.photos.length.toString(),
-    ].map((x) => _csvEscape(x.toString())).join(','));
+  b.writeln('');
+  b.writeln('### shots.csv');
+  b.writeln(
+    'shot_id,session_id,session_evidence_id,time,is_cold_bore,is_baseline,distance,result,notes,photo_count',
+  );
+  for (final sess in state.allSessions) {
+    final evid = _sessionEvidenceId(sess);
+    for (final shot in sess.shots) {
+      b.writeln(
+        [
+          shot.id,
+          sess.id,
+          evid,
+          _fmtDateTimeIso(shot.time),
+          shot.isColdBore ? '1' : '0',
+          shot.isBaseline ? '1' : '0',
+          shot.distance,
+          shot.result,
+          shot.notes,
+          shot.photos.length.toString(),
+        ].map((x) => _csvEscape(x.toString())).join(','),
+      );
+    }
   }
-}
 
-b.writeln('');
-b.writeln('### training_dope.csv');
-b.writeln('dope_id,session_id,session_evidence_id,time,rifle_id,ammo_lot_id,distance,distance_unit,elevation,elevation_unit,elevation_notes,wind_type,wind_value,wind_notes,windage_left,windage_right');
-for (final sess in state.allSessions) {
-  final evid = _sessionEvidenceId(sess);
-  for (final d in sess.trainingDope) {
-    b.writeln([
-      d.id,
-      sess.id,
-      evid,
-      _fmtDateTimeIso(d.time),
-      d.rifleId ?? '',
-      d.ammoLotId ?? '',
-      d.distance.toString(),
-      d.distanceUnit.name,
-      d.elevation.toString(),
-      d.elevationUnit.name,
-      d.elevationNotes,
-      d.windType.name,
-      d.windValue,
-      d.windNotes,
-      d.windageLeft.toString(),
-      d.windageRight.toString(),
-    ].map((x) => _csvEscape(x.toString())).join(','));
+  b.writeln('');
+  b.writeln('### training_dope.csv');
+  b.writeln(
+    'dope_id,session_id,session_evidence_id,time,rifle_id,ammo_lot_id,distance,distance_unit,elevation,elevation_unit,elevation_notes,wind_type,wind_value,wind_notes,windage_left,windage_right',
+  );
+  for (final sess in state.allSessions) {
+    final evid = _sessionEvidenceId(sess);
+    for (final d in sess.trainingDope) {
+      b.writeln(
+        [
+          d.id,
+          sess.id,
+          evid,
+          _fmtDateTimeIso(d.time),
+          d.rifleId ?? '',
+          d.ammoLotId ?? '',
+          d.distance.toString(),
+          d.distanceUnit.name,
+          d.elevation.toString(),
+          d.elevationUnit.name,
+          d.elevationNotes,
+          d.windType.name,
+          d.windValue,
+          d.windNotes,
+          d.windageLeft.toString(),
+          d.windageRight.toString(),
+        ].map((x) => _csvEscape(x.toString())).join(','),
+      );
+    }
   }
-}
-
 
   final bytes = Uint8List.fromList(utf8.encode(b.toString()));
   b.writeln('');
   b.writeln('### integrity');
-  b.writeln('crc32_csv_bundle,${_crc32(bytes).toRadixString(16).padLeft(8, '0')}');
+  b.writeln(
+    'crc32_csv_bundle,${_crc32(bytes).toRadixString(16).padLeft(8, '0')}',
+  );
   return b.toString();
 }
 
@@ -665,7 +730,6 @@ class DopeEntry {
   });
 }
 
-
 // Separate DOPE entry model for Rifle DOPE list (simple text fields).
 // This avoids colliding with the main DopeEntry model used for working/training DOPE.
 class RifleDopeEntry {
@@ -683,20 +747,20 @@ class RifleDopeEntry {
   });
 
   Map<String, dynamic> toMap() => {
-        'id': id,
-        'distance': distance,
-        'elevation': elevation,
-        'windage': windage,
-        'notes': notes,
-      };
+    'id': id,
+    'distance': distance,
+    'elevation': elevation,
+    'windage': windage,
+    'notes': notes,
+  };
 
   static RifleDopeEntry fromMap(Map<String, dynamic> m) => RifleDopeEntry(
-        id: (m['id'] ?? '').toString(),
-        distance: (m['distance'] ?? '').toString(),
-        elevation: (m['elevation'] ?? '').toString(),
-        windage: (m['windage'] ?? '').toString(),
-        notes: (m['notes'] ?? '').toString(),
-      );
+    id: (m['id'] ?? '').toString(),
+    distance: (m['distance'] ?? '').toString(),
+    elevation: (m['elevation'] ?? '').toString(),
+    windage: (m['windage'] ?? '').toString(),
+    notes: (m['notes'] ?? '').toString(),
+  );
 
   RifleDopeEntry copyWith({
     String? id,
@@ -714,6 +778,7 @@ class RifleDopeEntry {
     );
   }
 }
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -721,7 +786,8 @@ Future<void> main() async {
   String? firebaseError;
 
   // Initialize Firebase where options are configured for this app.
-  final shouldInitializeFirebase = kIsWeb || defaultTargetPlatform == TargetPlatform.iOS;
+  final shouldInitializeFirebase =
+      kIsWeb || defaultTargetPlatform == TargetPlatform.iOS;
 
   if (shouldInitializeFirebase) {
     try {
@@ -744,14 +810,20 @@ Future<void> main() async {
     firebaseReady = true;
   }
 
-  runApp(ColdBoreApp(firebaseReady: firebaseReady, firebaseError: firebaseError));
+  runApp(
+    ColdBoreApp(firebaseReady: firebaseReady, firebaseError: firebaseError),
+  );
 }
 
 class ColdBoreApp extends StatelessWidget {
   final bool firebaseReady;
   final String? firebaseError;
 
-  const ColdBoreApp({super.key, this.firebaseReady = false, this.firebaseError});
+  const ColdBoreApp({
+    super.key,
+    this.firebaseReady = false,
+    this.firebaseError,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -806,7 +878,6 @@ class _LaunchSplashGateState extends State<_LaunchSplashGate> {
   @override
   Widget build(BuildContext context) {
     if (!_showSplash) return widget.child;
-
     return Scaffold(
       body: Container(
         width: double.infinity,
@@ -873,17 +944,12 @@ class _AppRootState extends State<_AppRoot> {
   @override
   Widget build(BuildContext context) {
     if (!_ready) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    // Usable-now mode: skip biometrics/unlock screen (local_auth removed for iOS 26 stability).
     return HomeShell(state: _state);
   }
-
 }
 
-/// Simple in-memory state (replace with DB later).
 class AppState extends ChangeNotifier {
   final List<UserProfile> _users = [];
   final List<Rifle> _rifles = [];
@@ -897,14 +963,12 @@ class AppState extends ChangeNotifier {
 
   UserProfile? _activeUser;
 
-  // Shot timer settings
   double _shotTimerBeepFrequencyHz = 1750.0;
   double _shotTimerBeepVolume = 1.0;
   bool _shotTimerApplyAudioShotCountToRifle = false;
   String? _shotTimerSelectedRifleId;
   double _audioThresholdDb = 92.0;
 
-  // Current environment (optional)
   double? _latitude;
   double? _longitude;
   double? _temperatureF;
@@ -998,8 +1062,9 @@ class AppState extends ChangeNotifier {
   List<AmmoLot> get ammoLots => List.unmodifiable(_ammoLots);
 
   List<TrainingSession> get sessions => List.unmodifiable(
-        _sessions.where((s) => s.memberUserIds.contains(_activeUser?.id)),
-      );
+    _sessions.where((s) => s.memberUserIds.contains(_activeUser?.id)),
+  );
+
   /// Convenience lookups used by exports/session reports.
   Rifle? findRifleById(String id) {
     try {
@@ -1017,18 +1082,19 @@ class AppState extends ChangeNotifier {
     }
   }
 
-
-
   UserProfile? get activeUser => _activeUser;
 
   double get shotTimerBeepFrequencyHz => _shotTimerBeepFrequencyHz;
   double get shotTimerBeepVolume => _shotTimerBeepVolume;
-  bool get shotTimerApplyAudioShotCountToRifle => _shotTimerApplyAudioShotCountToRifle;
+  bool get shotTimerApplyAudioShotCountToRifle =>
+      _shotTimerApplyAudioShotCountToRifle;
   String? get shotTimerSelectedRifleId => _shotTimerSelectedRifleId;
   double get audioThresholdDb => _audioThresholdDb;
 
-  Map<String, Map<DistanceKey, DopeEntry>> get workingDopeRifleOnly => _workingDopeRifleOnly;
-  Map<String, Map<DistanceKey, DopeEntry>> get workingDopeRifleAmmo => _workingDopeRifleAmmo;
+  Map<String, Map<DistanceKey, DopeEntry>> get workingDopeRifleOnly =>
+      _workingDopeRifleOnly;
+  Map<String, Map<DistanceKey, DopeEntry>> get workingDopeRifleAmmo =>
+      _workingDopeRifleAmmo;
 
   void setShotTimerBeepFrequencyHz(double value) {
     _shotTimerBeepFrequencyHz = value.clamp(400.0, 3000.0);
@@ -1064,11 +1130,7 @@ class AppState extends ChangeNotifier {
   }
 
   void _seedData() {
-    final u = UserProfile(
-      id: _newId(),
-      name: 'Demo User',
-      identifier: 'DEMO',
-    );
+    final u = UserProfile(id: _newId(), name: 'Demo User', identifier: 'DEMO');
     _users.add(u);
     _activeUser = u;
 
@@ -1131,16 +1193,12 @@ class AppState extends ChangeNotifier {
       'ammoLots': _ammoLots.map(_ammoLotToMap).toList(),
       'sessions': _sessions.map(_trainingSessionToMap).toList(),
       'workingDopeRifleOnly': _workingDopeRifleOnly.map(
-        (key, value) => MapEntry(
-          key,
-          value.values.map(_dopeEntryToMap).toList(),
-        ),
+        (key, value) =>
+            MapEntry(key, value.values.map(_dopeEntryToMap).toList()),
       ),
       'workingDopeRifleAmmo': _workingDopeRifleAmmo.map(
-        (key, value) => MapEntry(
-          key,
-          value.values.map(_dopeEntryToMap).toList(),
-        ),
+        (key, value) =>
+            MapEntry(key, value.values.map(_dopeEntryToMap).toList()),
       ),
     };
   }
@@ -1149,26 +1207,30 @@ class AppState extends ChangeNotifier {
     _users
       ..clear()
       ..addAll(
-        ((map['users'] as List?) ?? const [])
-            .map((x) => _userFromMap(Map<String, dynamic>.from(x as Map))),
+        ((map['users'] as List?) ?? const []).map(
+          (x) => _userFromMap(Map<String, dynamic>.from(x as Map)),
+        ),
       );
     _rifles
       ..clear()
       ..addAll(
-        ((map['rifles'] as List?) ?? const [])
-            .map((x) => _rifleFromMap(Map<String, dynamic>.from(x as Map))),
+        ((map['rifles'] as List?) ?? const []).map(
+          (x) => _rifleFromMap(Map<String, dynamic>.from(x as Map)),
+        ),
       );
     _ammoLots
       ..clear()
       ..addAll(
-        ((map['ammoLots'] as List?) ?? const [])
-            .map((x) => _ammoLotFromMap(Map<String, dynamic>.from(x as Map))),
+        ((map['ammoLots'] as List?) ?? const []).map(
+          (x) => _ammoLotFromMap(Map<String, dynamic>.from(x as Map)),
+        ),
       );
     _sessions
       ..clear()
       ..addAll(
-        ((map['sessions'] as List?) ?? const [])
-            .map((x) => _trainingSessionFromMap(Map<String, dynamic>.from(x as Map))),
+        ((map['sessions'] as List?) ?? const []).map(
+          (x) => _trainingSessionFromMap(Map<String, dynamic>.from(x as Map)),
+        ),
       );
 
     _workingDopeRifleOnly
@@ -1191,11 +1253,16 @@ class AppState extends ChangeNotifier {
     final shotTimerSettings = map['shotTimerSettings'];
     if (shotTimerSettings is Map) {
       final stMap = Map<String, dynamic>.from(shotTimerSettings);
-      _shotTimerBeepFrequencyHz = _toNullableDouble(stMap['beepFrequencyHz']) ?? _shotTimerBeepFrequencyHz;
-      _shotTimerBeepVolume = _toNullableDouble(stMap['beepVolume']) ?? _shotTimerBeepVolume;
-      _shotTimerApplyAudioShotCountToRifle = stMap['applyAudioShotCountToRifle'] == true;
+      _shotTimerBeepFrequencyHz =
+          _toNullableDouble(stMap['beepFrequencyHz']) ??
+          _shotTimerBeepFrequencyHz;
+      _shotTimerBeepVolume =
+          _toNullableDouble(stMap['beepVolume']) ?? _shotTimerBeepVolume;
+      _shotTimerApplyAudioShotCountToRifle =
+          stMap['applyAudioShotCountToRifle'] == true;
       _shotTimerSelectedRifleId = stMap['selectedRifleId']?.toString();
-      _audioThresholdDb = _toNullableDouble(stMap['audioThresholdDb']) ?? _audioThresholdDb;
+      _audioThresholdDb =
+          _toNullableDouble(stMap['audioThresholdDb']) ?? _audioThresholdDb;
     }
 
     final activeUserId = map['activeUserId']?.toString();
@@ -1265,34 +1332,52 @@ class AppState extends ChangeNotifier {
     String? purchaseLocation,
   }) {
     _rifles.add(
-      Rifle(id: _newId(),
-      scopeUnit: scopeUnit ?? ScopeUnit.mil,
+      Rifle(
+        id: _newId(),
+        scopeUnit: scopeUnit ?? ScopeUnit.mil,
         manualRoundCount: manualRoundCount,
         barrelRoundCount: barrelRoundCount ?? manualRoundCount,
         barrelInstalledDate: barrelInstalledDate,
         barrelNotes: barrelNotes.trim(),
         scopeMake: scopeMake?.trim().isEmpty == true ? null : scopeMake?.trim(),
-        scopeModel: scopeModel?.trim().isEmpty == true ? null : scopeModel?.trim(),
-        scopeSerial: scopeSerial?.trim().isEmpty == true ? null : scopeSerial?.trim(),
-        scopeMount: scopeMount?.trim().isEmpty == true ? null : scopeMount?.trim(),
-        scopeNotes: scopeNotes?.trim().isEmpty == true ? null : scopeNotes?.trim(),
+        scopeModel: scopeModel?.trim().isEmpty == true
+            ? null
+            : scopeModel?.trim(),
+        scopeSerial: scopeSerial?.trim().isEmpty == true
+            ? null
+            : scopeSerial?.trim(),
+        scopeMount: scopeMount?.trim().isEmpty == true
+            ? null
+            : scopeMount?.trim(),
+        scopeNotes: scopeNotes?.trim().isEmpty == true
+            ? null
+            : scopeNotes?.trim(),
         name: name.trim().isEmpty ? null : name.trim(),
         caliber: caliber.trim(),
         notes: notes.trim(),
         dope: dope.trim(),
-        manufacturer: manufacturer?.trim().isEmpty == true ? null : manufacturer?.trim(),
+        manufacturer: manufacturer?.trim().isEmpty == true
+            ? null
+            : manufacturer?.trim(),
         model: model?.trim().isEmpty == true ? null : model?.trim(),
-        serialNumber: serialNumber?.trim().isEmpty == true ? null : serialNumber?.trim(),
-        barrelLength: barrelLength?.trim().isEmpty == true ? null : barrelLength?.trim(),
+        serialNumber: serialNumber?.trim().isEmpty == true
+            ? null
+            : serialNumber?.trim(),
+        barrelLength: barrelLength?.trim().isEmpty == true
+            ? null
+            : barrelLength?.trim(),
         twistRate: twistRate?.trim().isEmpty == true ? null : twistRate?.trim(),
         purchaseDate: purchaseDate,
-        purchasePrice: purchasePrice?.trim().isEmpty == true ? null : purchasePrice?.trim(),
-        purchaseLocation: purchaseLocation?.trim().isEmpty == true ? null : purchaseLocation?.trim(),
+        purchasePrice: purchasePrice?.trim().isEmpty == true
+            ? null
+            : purchasePrice?.trim(),
+        purchaseLocation: purchaseLocation?.trim().isEmpty == true
+            ? null
+            : purchaseLocation?.trim(),
       ),
     );
     notifyListeners();
   }
-
 
   void updateRifle({
     required String rifleId,
@@ -1323,7 +1408,8 @@ class AppState extends ChangeNotifier {
     final idx = _rifles.indexWhere((r) => r.id == rifleId);
     if (idx < 0) return;
     final r = _rifles[idx];
-    final nextRoundCount = manualRoundCount ?? barrelRoundCount ?? r.manualRoundCount;
+    final nextRoundCount =
+        manualRoundCount ?? barrelRoundCount ?? r.manualRoundCount;
     _rifles[idx] = r.copyWith(
       name: (name == null || name.trim().isEmpty) ? null : name.trim(),
       caliber: caliber.trim(),
@@ -1334,21 +1420,40 @@ class AppState extends ChangeNotifier {
       barrelInstalledDate: barrelInstalledDate ?? r.barrelInstalledDate,
       barrelNotes: barrelNotes ?? r.barrelNotes,
       preferredUnit: preferredUnit ?? r.preferredUnit,
-      manufacturer: manufacturer?.trim().isEmpty == true ? null : manufacturer?.trim(),
+      manufacturer: manufacturer?.trim().isEmpty == true
+          ? null
+          : manufacturer?.trim(),
       model: model?.trim().isEmpty == true ? null : model?.trim(),
-      serialNumber: serialNumber?.trim().isEmpty == true ? null : serialNumber?.trim(),
-      barrelLength: barrelLength?.trim().isEmpty == true ? null : barrelLength?.trim(),
+      serialNumber: serialNumber?.trim().isEmpty == true
+          ? null
+          : serialNumber?.trim(),
+      barrelLength: barrelLength?.trim().isEmpty == true
+          ? null
+          : barrelLength?.trim(),
       twistRate: twistRate?.trim().isEmpty == true ? null : twistRate?.trim(),
       purchaseDate: purchaseDate,
-      purchasePrice: purchasePrice?.trim().isEmpty == true ? null : purchasePrice?.trim(),
-      purchaseLocation: purchaseLocation?.trim().isEmpty == true ? null : purchaseLocation?.trim(),
+      purchasePrice: purchasePrice?.trim().isEmpty == true
+          ? null
+          : purchasePrice?.trim(),
+      purchaseLocation: purchaseLocation?.trim().isEmpty == true
+          ? null
+          : purchaseLocation?.trim(),
       scopeUnit: scopeUnit ?? r.scopeUnit,
       scopeMake: scopeMake?.trim().isEmpty == true ? null : scopeMake?.trim(),
-        scopeModel: scopeModel?.trim().isEmpty == true ? null : scopeModel?.trim(),
-        scopeSerial: scopeSerial?.trim().isEmpty == true ? null : scopeSerial?.trim(),
-        scopeMount: scopeMount?.trim().isEmpty == true ? null : scopeMount?.trim(),
-        scopeNotes: scopeNotes?.trim().isEmpty == true ? null : scopeNotes?.trim(),
-    );    notifyListeners();
+      scopeModel: scopeModel?.trim().isEmpty == true
+          ? null
+          : scopeModel?.trim(),
+      scopeSerial: scopeSerial?.trim().isEmpty == true
+          ? null
+          : scopeSerial?.trim(),
+      scopeMount: scopeMount?.trim().isEmpty == true
+          ? null
+          : scopeMount?.trim(),
+      scopeNotes: scopeNotes?.trim().isEmpty == true
+          ? null
+          : scopeNotes?.trim(),
+    );
+    notifyListeners();
   }
 
   /// Deletes a rifle from active equipment lists. Historical sessions keep the rifleId;
@@ -1426,16 +1531,19 @@ class AppState extends ChangeNotifier {
         grain: grain,
         bullet: bullet.trim(),
         notes: notes.trim(),
-        manufacturer: manufacturer?.trim().isEmpty == true ? null : manufacturer?.trim(),
+        manufacturer: manufacturer?.trim().isEmpty == true
+            ? null
+            : manufacturer?.trim(),
         lotNumber: lotNumber?.trim().isEmpty == true ? null : lotNumber?.trim(),
         purchaseDate: purchaseDate,
-        purchasePrice: purchasePrice?.trim().isEmpty == true ? null : purchasePrice?.trim(),
+        purchasePrice: purchasePrice?.trim().isEmpty == true
+            ? null
+            : purchasePrice?.trim(),
         ballisticCoefficient: ballisticCoefficient,
       ),
     );
     notifyListeners();
   }
-
 
   void updateAmmoLot({
     required String ammoLotId,
@@ -1456,13 +1564,17 @@ class AppState extends ChangeNotifier {
       id: _ammoLots[idx].id,
       name: (name?.trim().isEmpty == true ? null : name?.trim()),
       caliber: caliber.trim(),
-        grain: grain,
-        bullet: bullet.trim(),
+      grain: grain,
+      bullet: bullet.trim(),
       notes: notes.trim(),
-      manufacturer: manufacturer?.trim().isEmpty == true ? null : manufacturer?.trim(),
+      manufacturer: manufacturer?.trim().isEmpty == true
+          ? null
+          : manufacturer?.trim(),
       lotNumber: lotNumber?.trim().isEmpty == true ? null : lotNumber?.trim(),
       purchaseDate: purchaseDate,
-      purchasePrice: purchasePrice?.trim().isEmpty == true ? null : purchasePrice?.trim(),
+      purchasePrice: purchasePrice?.trim().isEmpty == true
+          ? null
+          : purchasePrice?.trim(),
       ballisticCoefficient: ballisticCoefficient,
     );
     notifyListeners();
@@ -1536,10 +1648,7 @@ class AppState extends ChangeNotifier {
     if (idx == -1) return;
 
     final existing = _sessions[idx];
-    final merged = <String>{
-      ...existing.memberUserIds,
-      ...userIds,
-    }.toList();
+    final merged = <String>{...existing.memberUserIds, ...userIds}.toList();
 
     _sessions[idx] = existing.copyWith(memberUserIds: merged);
     notifyListeners();
@@ -1563,7 +1672,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-    void updateSessionLoadout({
+  void updateSessionLoadout({
     required String sessionId,
     String? rifleId,
     String? ammoLotId,
@@ -1585,16 +1694,23 @@ class AppState extends ChangeNotifier {
       }
     }
 
-    final loadoutChanged = (nextRifleId != s.rifleId) || (nextAmmoId != s.ammoLotId);
+    final loadoutChanged =
+        (nextRifleId != s.rifleId) || (nextAmmoId != s.ammoLotId);
     if (!loadoutChanged) return;
 
     final now = DateTime.now();
     final currentStrings = [...s.strings];
-    final activeIndex = currentStrings.indexWhere((x) => x.id == s.activeStringId);
+    final activeIndex = currentStrings.indexWhere(
+      (x) => x.id == s.activeStringId,
+    );
 
-    SessionStringMeta? activeMeta = activeIndex == -1 ? null : currentStrings[activeIndex];
-    final activeHasLoadout = (activeMeta?.rifleId != null) && (activeMeta?.ammoLotId != null);
-    final activeIsEmpty = (activeMeta?.rifleId == null) && (activeMeta?.ammoLotId == null);
+    SessionStringMeta? activeMeta = activeIndex == -1
+        ? null
+        : currentStrings[activeIndex];
+    final activeHasLoadout =
+        (activeMeta?.rifleId != null) && (activeMeta?.ammoLotId != null);
+    final activeIsEmpty =
+        (activeMeta?.rifleId == null) && (activeMeta?.ammoLotId == null);
 
     // If the active string has no loadout yet, just bind the initial selection to it (no prompt/new string).
     if (activeIndex != -1 && (activeIsEmpty || !activeHasLoadout)) {
@@ -1628,7 +1744,9 @@ class AppState extends ChangeNotifier {
 
     // Close the active string (if any).
     if (activeIndex != -1 && currentStrings[activeIndex].endedAt == null) {
-      currentStrings[activeIndex] = currentStrings[activeIndex].copyWith(endedAt: now);
+      currentStrings[activeIndex] = currentStrings[activeIndex].copyWith(
+        endedAt: now,
+      );
     }
 
     final newStringId = _newId();
@@ -1651,23 +1769,27 @@ class AppState extends ChangeNotifier {
         ...s.trainingDopeByString,
         newStringId: const <DopeEntry>[],
       },
-      shotsByString: {
-        ...s.shotsByString,
-        newStringId: const <ShotEntry>[],
-      },
+      shotsByString: {...s.shotsByString, newStringId: const <ShotEntry>[]},
     );
     notifyListeners();
   }
 
-
-  void setActiveString({
-    required String sessionId,
-    required String stringId,
-  }) {
+  void setActiveString({required String sessionId, required String stringId}) {
     final idx = _sessions.indexWhere((s) => s.id == sessionId);
     if (idx == -1) return;
     final s = _sessions[idx];
-    final st = s.strings.firstWhere((x) => x.id == stringId, orElse: () => s.strings.isNotEmpty ? s.strings.last : SessionStringMeta(id: stringId, startedAt: DateTime.now(), endedAt: null, rifleId: s.rifleId, ammoLotId: s.ammoLotId));
+    final st = s.strings.firstWhere(
+      (x) => x.id == stringId,
+      orElse: () => s.strings.isNotEmpty
+          ? s.strings.last
+          : SessionStringMeta(
+              id: stringId,
+              startedAt: DateTime.now(),
+              endedAt: null,
+              rifleId: s.rifleId,
+              ammoLotId: s.ammoLotId,
+            ),
+    );
     _sessions[idx] = s.copyWith(
       activeStringId: stringId,
       // Snap loadout display to the string meta (if present)
@@ -1677,10 +1799,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void updateSessionNotes({
-    required String sessionId,
-    required String notes,
-  }) {
+  void updateSessionNotes({required String sessionId, required String notes}) {
     final idx = _sessions.indexWhere((s) => s.id == sessionId);
     if (idx < 0) return;
     final s = _sessions[idx];
@@ -1726,8 +1845,12 @@ class AppState extends ChangeNotifier {
             ],
     );
 
-        final sid = (s.activeStringId.isEmpty && s.strings.isNotEmpty) ? s.strings.last.id : s.activeStringId;
-    final currentList = List<ShotEntry>.from(s.shotsByString[sid] ?? const <ShotEntry>[]);
+    final sid = (s.activeStringId.isEmpty && s.strings.isNotEmpty)
+        ? s.strings.last.id
+        : s.activeStringId;
+    final currentList = List<ShotEntry>.from(
+      s.shotsByString[sid] ?? const <ShotEntry>[],
+    );
     final sessionPhoto = (photoBytes == null)
         ? null
         : SessionPhoto(
@@ -1743,7 +1866,9 @@ class AppState extends ChangeNotifier {
         ...s.shotsByString,
         sid: [...currentList, entry],
       },
-      sessionPhotos: sessionPhoto == null ? s.sessionPhotos : [...s.sessionPhotos, sessionPhoto],
+      sessionPhotos: sessionPhoto == null
+          ? s.sessionPhotos
+          : [...s.sessionPhotos, sessionPhoto],
     );
     notifyListeners();
   }
@@ -1787,8 +1912,12 @@ class AppState extends ChangeNotifier {
       return edk != dk;
     }).toList();
 
-        final sid = (s.activeStringId.isEmpty && s.strings.isNotEmpty) ? s.strings.last.id : s.activeStringId;
-    final currentList = List<DopeEntry>.from(s.trainingDopeByString[sid] ?? const <DopeEntry>[]);
+    final sid = (s.activeStringId.isEmpty && s.strings.isNotEmpty)
+        ? s.strings.last.id
+        : s.activeStringId;
+    final currentList = List<DopeEntry>.from(
+      s.trainingDopeByString[sid] ?? const <DopeEntry>[],
+    );
     final filtered2 = currentList.where((e) {
       if (e.rifleId != updatedEntry.rifleId) return true;
       if (e.ammoLotId != updatedEntry.ammoLotId) return true;
@@ -1803,7 +1932,6 @@ class AppState extends ChangeNotifier {
         sid: [...filtered2, updatedEntry],
       },
     );
-
 
     if (promote) {
       final rifleId = updatedEntry.rifleId;
@@ -1888,7 +2016,9 @@ class AppState extends ChangeNotifier {
       id: _newId(),
       time: photo.time,
       bytes: bytes,
-      caption: ((caption ?? '').trim().isEmpty ? 'Cold bore photo' : (caption ?? '').trim()),
+      caption: ((caption ?? '').trim().isEmpty
+          ? 'Cold bore photo'
+          : (caption ?? '').trim()),
     );
 
     final updatedShot = shot.copyWith(photos: [...shot.photos, photo]);
@@ -1911,7 +2041,10 @@ class AppState extends ChangeNotifier {
 
   /// Sets one cold bore entry as the baseline for the active user for the *current rifle+ammo combo*.
   /// Other combos keep their own baseline.
-  void setBaselineColdBore({required String sessionId, required String shotId}) {
+  void setBaselineColdBore({
+    required String sessionId,
+    required String shotId,
+  }) {
     final user = _activeUser;
     if (user == null) return;
 
@@ -1950,13 +2083,11 @@ class AppState extends ChangeNotifier {
 
       final updatedShotsByString = <String, List<ShotEntry>>{
         for (final entry in s.shotsByString.entries)
-          entry.key: entry.value
-              .map((sh) {
-                if (!sh.isColdBore) return sh;
-                final shouldBeBaseline = (s.id == sessionId && sh.id == shotId);
-                return sh.copyWith(isBaseline: shouldBeBaseline);
-              })
-              .toList(),
+          entry.key: entry.value.map((sh) {
+            if (!sh.isColdBore) return sh;
+            final shouldBeBaseline = (s.id == sessionId && sh.id == shotId);
+            return sh.copyWith(isBaseline: shouldBeBaseline);
+          }).toList(),
       };
 
       _sessions[i] = s.copyWith(
@@ -2005,16 +2136,11 @@ class AppState extends ChangeNotifier {
     if (idx < 0) return;
     final s = _sessions[idx];
 
-    final p = PhotoNote(
-      id: _newId(),
-      time: time,
-      caption: caption.trim(),
-    );
+    final p = PhotoNote(id: _newId(), time: time, caption: caption.trim());
 
     _sessions[idx] = s.copyWith(photos: [...s.photos, p]);
     notifyListeners();
   }
-
 
   /// Adds a session-level photo captured from the Session screen.
   void addSessionPhoto({
@@ -2084,7 +2210,6 @@ class AppState extends ChangeNotifier {
 
   String newChildId() => _newId();
 
-
   int totalRoundsForRifle(String rifleId) {
     final r = rifleById(rifleId);
     if (r == null) return 0;
@@ -2102,7 +2227,8 @@ class AppState extends ChangeNotifier {
     final idx = _rifles.indexWhere((r) => r.id == rifleId);
     if (idx < 0) return;
     final r = _rifles[idx];
-    final next = [...r.services, entry]..sort((a, b) => b.date.compareTo(a.date));
+    final next = [...r.services, entry]
+      ..sort((a, b) => b.date.compareTo(a.date));
     _rifles[idx] = r.copyWith(services: next);
     notifyListeners();
   }
@@ -2158,7 +2284,9 @@ class AppState extends ChangeNotifier {
     _sessions[idx] = session.copyWith(
       confirmedShotCount: shotCount,
       shotCountAppliedToRifle: appliedToRifle,
-      endedAt: endSession ? (session.endedAt ?? DateTime.now()) : session.endedAt,
+      endedAt: endSession
+          ? (session.endedAt ?? DateTime.now())
+          : session.endedAt,
     );
     notifyListeners();
   }
@@ -2216,15 +2344,15 @@ class AppState extends ChangeNotifier {
     final idx = _sessions.indexWhere((s) => s.id == sessionId);
     if (idx < 0) return;
     final session = _sessions[idx];
-    final updatedRuns = session.timerRuns.where((run) => run.id != runId).toList();
+    final updatedRuns = session.timerRuns
+        .where((run) => run.id != runId)
+        .toList();
     if (updatedRuns.length == session.timerRuns.length) return;
     _sessions[idx] = session.copyWith(timerRuns: updatedRuns);
     notifyListeners();
   }
 
-  void clearSessionTimer({
-    required String sessionId,
-  }) {
+  void clearSessionTimer({required String sessionId}) {
     final idx = _sessions.indexWhere((s) => s.id == sessionId);
     if (idx < 0) return;
     final session = _sessions[idx];
@@ -2246,7 +2374,11 @@ class AppState extends ChangeNotifier {
     final session = _sessions[idx];
     final now = DateTime.now();
     final updatedStrings = session.strings
-        .map((st) => st.id == session.activeStringId && st.endedAt == null ? st.copyWith(endedAt: now) : st)
+        .map(
+          (st) => st.id == session.activeStringId && st.endedAt == null
+              ? st.copyWith(endedAt: now)
+              : st,
+        )
         .toList();
 
     final validAppliedShotCounts = <String, int>{
@@ -2258,7 +2390,8 @@ class AppState extends ChangeNotifier {
 
     _sessions[idx] = session.copyWith(
       confirmedShotCount: confirmedShotCount ?? session.confirmedShotCount,
-      shotCountAppliedToRifle: session.shotCountAppliedToRifle || shouldApplyShotCount,
+      shotCountAppliedToRifle:
+          session.shotCountAppliedToRifle || shouldApplyShotCount,
       endedAt: now,
       strings: updatedStrings,
     );
@@ -2279,10 +2412,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void addRifleRounds({
-    required String rifleId,
-    required int roundCount,
-  }) {
+  void addRifleRounds({required String rifleId, required int roundCount}) {
     if (roundCount <= 0) return;
     final idx = _rifles.indexWhere((r) => r.id == rifleId);
     if (idx < 0) return;
@@ -2316,45 +2446,53 @@ class AppState extends ChangeNotifier {
     final payload = <String, dynamic>{
       'schema': kBackupSchemaVersion,
       'generatedAt': DateTime.now().toIso8601String(),
-      'rifles': _rifles.map((r) => {
-        'id': r.id,
-        'name': r.name,
-        'caliber': r.caliber,
-        'manufacturer': r.manufacturer,
-        'model': r.model,
-        'serialNumber': r.serialNumber,
-        'barrelLength': r.barrelLength,
-        'twistRate': r.twistRate,
-        'scopeUnit': r.scopeUnit.name,
-        'notes': r.notes,
-        'dope': r.dope,
-        'manualRoundCount': r.manualRoundCount,
-        'barrelRoundCount': r.barrelRoundCount,
-        'barrelInstalledDate': r.barrelInstalledDate?.toIso8601String(),
-        'barrelNotes': r.barrelNotes,
-        'services': r.services.map((s) => s.toMap()).toList(),
-        'purchaseDate': r.purchaseDate?.toIso8601String(),
-        'purchasePrice': r.purchasePrice,
-        'purchaseLocation': r.purchaseLocation,
-        'scopeMake': r.scopeMake,
-        'scopeModel': r.scopeModel,
-        'scopeSerial': r.scopeSerial,
-        'scopeMount': r.scopeMount,
-        'scopeNotes': r.scopeNotes,
-      }).toList(),
-      'ammoLots': _ammoLots.map((a) => {
-        'id': a.id,
-        'name': a.name,
-        'caliber': a.caliber,
-        'manufacturer': a.manufacturer,
-        'grain': a.grain,
-        'bullet': a.bullet,
-        'notes': a.notes,
-        'lotNumber': a.lotNumber,
-        'purchaseDate': a.purchaseDate?.toIso8601String(),
-        'purchasePrice': a.purchasePrice,
-        'ballisticCoefficient': a.ballisticCoefficient,
-      }).toList(),
+      'rifles': _rifles
+          .map(
+            (r) => {
+              'id': r.id,
+              'name': r.name,
+              'caliber': r.caliber,
+              'manufacturer': r.manufacturer,
+              'model': r.model,
+              'serialNumber': r.serialNumber,
+              'barrelLength': r.barrelLength,
+              'twistRate': r.twistRate,
+              'scopeUnit': r.scopeUnit.name,
+              'notes': r.notes,
+              'dope': r.dope,
+              'manualRoundCount': r.manualRoundCount,
+              'barrelRoundCount': r.barrelRoundCount,
+              'barrelInstalledDate': r.barrelInstalledDate?.toIso8601String(),
+              'barrelNotes': r.barrelNotes,
+              'services': r.services.map((s) => s.toMap()).toList(),
+              'purchaseDate': r.purchaseDate?.toIso8601String(),
+              'purchasePrice': r.purchasePrice,
+              'purchaseLocation': r.purchaseLocation,
+              'scopeMake': r.scopeMake,
+              'scopeModel': r.scopeModel,
+              'scopeSerial': r.scopeSerial,
+              'scopeMount': r.scopeMount,
+              'scopeNotes': r.scopeNotes,
+            },
+          )
+          .toList(),
+      'ammoLots': _ammoLots
+          .map(
+            (a) => {
+              'id': a.id,
+              'name': a.name,
+              'caliber': a.caliber,
+              'manufacturer': a.manufacturer,
+              'grain': a.grain,
+              'bullet': a.bullet,
+              'notes': a.notes,
+              'lotNumber': a.lotNumber,
+              'purchaseDate': a.purchaseDate?.toIso8601String(),
+              'purchasePrice': a.purchasePrice,
+              'ballisticCoefficient': a.ballisticCoefficient,
+            },
+          )
+          .toList(),
     };
     return const JsonEncoder.withIndent('  ').convert(payload);
   }
@@ -2364,22 +2502,21 @@ class AppState extends ChangeNotifier {
     if (decoded is! Map) throw FormatException('Invalid backup JSON');
     final map = Map<String, dynamic>.from(decoded);
 
-int toInt(dynamic v) {
-  if (v == null) return 0;
-  if (v is int) return v;
-  if (v is num) return v.round();
-  return int.tryParse(v.toString().trim()) ?? 0;
-}
+    int toInt(dynamic v) {
+      if (v == null) return 0;
+      if (v is int) return v;
+      if (v is num) return v.round();
+      return int.tryParse(v.toString().trim()) ?? 0;
+    }
 
-double? toDouble(dynamic v) {
-  if (v == null) return null;
-  if (v is double) return v;
-  if (v is num) return v.toDouble();
-  return double.tryParse(v.toString().trim());
-}
+    double? toDouble(dynamic v) {
+      if (v == null) return null;
+      if (v is double) return v;
+      if (v is num) return v.toDouble();
+      return double.tryParse(v.toString().trim());
+    }
 
-String toStr(dynamic v) => v == null ? '' : v.toString();
-
+    String toStr(dynamic v) => v == null ? '' : v.toString();
 
     final rifles = ((map['rifles'] as List?) ?? const []).map((x) {
       final m = Map<String, dynamic>.from(x as Map);
@@ -2392,14 +2529,16 @@ String toStr(dynamic v) => v == null ? '' : v.toString();
         serialNumber: m['serialNumber'] as String?,
         barrelLength: m['barrelLength'] as String?,
         twistRate: m['twistRate'] as String?,
-      scopeUnit: ScopeUnit.values.firstWhere(
+        scopeUnit: ScopeUnit.values.firstWhere(
           (e) => e.name == (m['scopeUnit'] as String? ?? 'mil'),
           orElse: () => ScopeUnit.mil,
         ),
         notes: (m['notes'] as String?) ?? '',
         dope: (m['dope'] as String?) ?? '',
         manualRoundCount: (m['manualRoundCount'] as num?)?.round() ?? 0,
-        purchaseDate: (m['purchaseDate'] as String?) == null ? null : DateTime.tryParse(m['purchaseDate'] as String),
+        purchaseDate: (m['purchaseDate'] as String?) == null
+            ? null
+            : DateTime.tryParse(m['purchaseDate'] as String),
         purchasePrice: m['purchasePrice'] as String?,
         purchaseLocation: m['purchaseLocation'] as String?,
         scopeMake: m['scopeMake'] as String?,
@@ -2413,7 +2552,9 @@ String toStr(dynamic v) => v == null ? '' : v.toString();
     final ammo = ((map['ammoLots'] as List?) ?? const []).map((x) {
       final m = Map<String, dynamic>.from(x as Map);
       return AmmoLot(
-        id: toStr(m['id']).isEmpty ? DateTime.now().microsecondsSinceEpoch.toString() : toStr(m['id']),
+        id: toStr(m['id']).isEmpty
+            ? DateTime.now().microsecondsSinceEpoch.toString()
+            : toStr(m['id']),
         caliber: toStr(m['caliber']),
         grain: toInt(m['grain']),
         name: (m['name'] as String?)?.trim(),
@@ -2427,15 +2568,21 @@ String toStr(dynamic v) => v == null ? '' : v.toString();
         ballisticCoefficient: toDouble(m['ballisticCoefficient'] ?? m['bc']),
         manufacturer: (m['manufacturer'] as String?)?.trim(),
         lotNumber: (m['lotNumber'] as String?)?.trim(),
-        purchaseDate: (m['purchaseDate'] as String?) == null ? null : DateTime.tryParse((m['purchaseDate'] as String).trim()),
+        purchaseDate: (m['purchaseDate'] as String?) == null
+            ? null
+            : DateTime.tryParse((m['purchaseDate'] as String).trim()),
         purchasePrice: (m['purchasePrice'] as String?)?.trim(),
         notes: toStr(m['notes']),
       );
     }).toList();
 
     if (replaceExisting) {
-      _rifles..clear()..addAll(rifles);
-      _ammoLots..clear()..addAll(ammo);
+      _rifles
+        ..clear()
+        ..addAll(rifles);
+      _ammoLots
+        ..clear()
+        ..addAll(ammo);
     } else {
       for (final r in rifles) {
         final i = _rifles.indexWhere((e) => e.id == r.id);
@@ -2466,64 +2613,79 @@ String toStr(dynamic v) => v == null ? '' : v.toString();
     if (decoded is! Map) throw FormatException('Invalid backup JSON');
     final map = Map<String, dynamic>.from(decoded);
 
-    final importedRifles = ((map['rifles'] as List?) ?? const []).map((x) {
-      final m = Map<String, dynamic>.from(x as Map);
-      return Rifle(
-        id: (m['id'] ?? '').toString(),
-        caliber: (m['caliber'] ?? '').toString(),
-        name: (m['name'] as String?)?.toString(),
-        manufacturer: (m['manufacturer'] as String?)?.toString(),
-        model: (m['model'] as String?)?.toString(),
-        serialNumber: (m['serialNumber'] as String?)?.toString(),
-        barrelLength: (m['barrelLength'] as String?)?.toString(),
-        twistRate: (m['twistRate'] as String?)?.toString(),
-        purchaseDate: (m['purchaseDate'] as String?) != null
-            ? DateTime.tryParse((m['purchaseDate'] as String))
-            : null,
-        purchasePrice: (m['purchasePrice'] as String?)?.toString(),
-        purchaseLocation: (m['purchaseLocation'] as String?)?.toString(),
-        notes: (m['notes'] as String?)?.toString() ?? '',
-        dope: (m['dope'] as String?)?.toString() ?? '',
-        scopeMake: (m['scopeMake'] as String?)?.toString(),
-        scopeModel: (m['scopeModel'] as String?)?.toString(),
-        scopeSerial: (m['scopeSerial'] as String?)?.toString(),
-        scopeMount: (m['scopeMount'] as String?)?.toString(),
-        scopeNotes: (m['scopeNotes'] as String?)?.toString(),
-        scopeUnit: ScopeUnit.values.firstWhere(
-          (u) => u.name == (m['scopeUnit'] ?? ScopeUnit.mil.name).toString(),
-          orElse: () => ScopeUnit.mil,
-        ),
-        manualRoundCount: (m['manualRoundCount'] as int?) ?? 0,
-        barrelRoundCount: (m['barrelRoundCount'] as int?) ?? ((m['manualRoundCount'] as int?) ?? 0),
-        barrelInstalledDate: (m['barrelInstalledDate'] as String?) != null
-            ? DateTime.tryParse((m['barrelInstalledDate'] as String))
-            : null,
-        barrelNotes: (m['barrelNotes'] as String?)?.toString() ?? '',
-        dopeEntries: (m['dopeEntries'] as List?)
-                ?.map((e) => RifleDopeEntry.fromMap(Map<String, dynamic>.from(e as Map)))
-                .toList() ??
-            const [],
-      );
-    }).where((r) => r.caliber.trim().isNotEmpty).toList();
+    final importedRifles = ((map['rifles'] as List?) ?? const [])
+        .map((x) {
+          final m = Map<String, dynamic>.from(x as Map);
+          return Rifle(
+            id: (m['id'] ?? '').toString(),
+            caliber: (m['caliber'] ?? '').toString(),
+            name: (m['name'] as String?)?.toString(),
+            manufacturer: (m['manufacturer'] as String?)?.toString(),
+            model: (m['model'] as String?)?.toString(),
+            serialNumber: (m['serialNumber'] as String?)?.toString(),
+            barrelLength: (m['barrelLength'] as String?)?.toString(),
+            twistRate: (m['twistRate'] as String?)?.toString(),
+            purchaseDate: (m['purchaseDate'] as String?) != null
+                ? DateTime.tryParse((m['purchaseDate'] as String))
+                : null,
+            purchasePrice: (m['purchasePrice'] as String?)?.toString(),
+            purchaseLocation: (m['purchaseLocation'] as String?)?.toString(),
+            notes: (m['notes'] as String?)?.toString() ?? '',
+            dope: (m['dope'] as String?)?.toString() ?? '',
+            scopeMake: (m['scopeMake'] as String?)?.toString(),
+            scopeModel: (m['scopeModel'] as String?)?.toString(),
+            scopeSerial: (m['scopeSerial'] as String?)?.toString(),
+            scopeMount: (m['scopeMount'] as String?)?.toString(),
+            scopeNotes: (m['scopeNotes'] as String?)?.toString(),
+            scopeUnit: ScopeUnit.values.firstWhere(
+              (u) =>
+                  u.name == (m['scopeUnit'] ?? ScopeUnit.mil.name).toString(),
+              orElse: () => ScopeUnit.mil,
+            ),
+            manualRoundCount: (m['manualRoundCount'] as int?) ?? 0,
+            barrelRoundCount:
+                (m['barrelRoundCount'] as int?) ??
+                ((m['manualRoundCount'] as int?) ?? 0),
+            barrelInstalledDate: (m['barrelInstalledDate'] as String?) != null
+                ? DateTime.tryParse((m['barrelInstalledDate'] as String))
+                : null,
+            barrelNotes: (m['barrelNotes'] as String?)?.toString() ?? '',
+            dopeEntries:
+                (m['dopeEntries'] as List?)
+                    ?.map(
+                      (e) => RifleDopeEntry.fromMap(
+                        Map<String, dynamic>.from(e as Map),
+                      ),
+                    )
+                    .toList() ??
+                const [],
+          );
+        })
+        .where((r) => r.caliber.trim().isNotEmpty)
+        .toList();
 
-    final importedAmmo = ((map['ammoLots'] as List?) ?? const []).map((x) {
-      final m = Map<String, dynamic>.from(x as Map);
-      return AmmoLot(
-        id: (m['id'] ?? '').toString(),
-        caliber: (m['caliber'] ?? '').toString(),
-        grain: (m['grain'] as num?)?.round() ?? 0,
-        name: (m['name'] as String?)?.toString(),
-        bullet: (m['bullet'] as String?) ?? '',
-        ballisticCoefficient: (m['ballisticCoefficient'] as num?)?.toDouble(),
-        manufacturer: (m['manufacturer'] as String?)?.toString(),
-        lotNumber: (m['lotNumber'] as String?)?.toString(),
-        purchaseDate: (m['purchaseDate'] as String?) != null
-            ? DateTime.tryParse((m['purchaseDate'] as String))
-            : null,
-        purchasePrice: (m['purchasePrice'] as String?)?.toString(),
-        notes: (m['notes'] as String?)?.toString() ?? '',
-      );
-    }).where((a) => a.caliber.trim().isNotEmpty).toList();
+    final importedAmmo = ((map['ammoLots'] as List?) ?? const [])
+        .map((x) {
+          final m = Map<String, dynamic>.from(x as Map);
+          return AmmoLot(
+            id: (m['id'] ?? '').toString(),
+            caliber: (m['caliber'] ?? '').toString(),
+            grain: (m['grain'] as num?)?.round() ?? 0,
+            name: (m['name'] as String?)?.toString(),
+            bullet: (m['bullet'] as String?) ?? '',
+            ballisticCoefficient: (m['ballisticCoefficient'] as num?)
+                ?.toDouble(),
+            manufacturer: (m['manufacturer'] as String?)?.toString(),
+            lotNumber: (m['lotNumber'] as String?)?.toString(),
+            purchaseDate: (m['purchaseDate'] as String?) != null
+                ? DateTime.tryParse((m['purchaseDate'] as String))
+                : null,
+            purchasePrice: (m['purchasePrice'] as String?)?.toString(),
+            notes: (m['notes'] as String?)?.toString() ?? '',
+          );
+        })
+        .where((a) => a.caliber.trim().isNotEmpty)
+        .toList();
 
     int findRifleMatchIndex(Rifle incoming) {
       String norm(dynamic s) => (s ?? '').toString().trim().toLowerCase();
@@ -2545,7 +2707,9 @@ String toStr(dynamic v) => v == null ? '' : v.toString();
           if (norm(r.manufacturer) == inMan && norm(r.model) == inMod) return i;
         } else {
           // fallback: caliber + name
-          if (norm(r.name).isNotEmpty && norm(r.name) == norm(incoming.name)) return i;
+          if (norm(r.name).isNotEmpty && norm(r.name) == norm(incoming.name)) {
+            return i;
+          }
         }
       }
       return -1;
@@ -2566,34 +2730,36 @@ String toStr(dynamic v) => v == null ? '' : v.toString();
         final okBullet = inBullet.isEmpty || norm(a.bullet) == inBullet;
         if (okMan && okGr && okBullet) return i;
         // fallback: caliber + name
-        if (norm(a.name).isNotEmpty && norm(a.name) == norm(incoming.name)) return i;
+        if (norm(a.name).isNotEmpty && norm(a.name) == norm(incoming.name)) {
+          return i;
+        }
       }
       return -1;
     }
 
     String? preferExistingNullable(String? existing, String? incoming) {
-  final e = (existing ?? '').trim();
-  if (e.isNotEmpty) return existing;
-  final n = (incoming ?? '').trim();
-  return n.isEmpty ? existing : incoming;
-}
+      final e = (existing ?? '').trim();
+      if (e.isNotEmpty) return existing;
+      final n = (incoming ?? '').trim();
+      return n.isEmpty ? existing : incoming;
+    }
 
-DateTime? preferExistingDateTime(DateTime? existing, DateTime? incoming) {
-  return incoming ?? existing;
-}
+    DateTime? preferExistingDateTime(DateTime? existing, DateTime? incoming) {
+      return incoming ?? existing;
+    }
 
+    String preferExistingRequired(String existing, String incoming) {
+      final e = existing.trim();
+      if (e.isNotEmpty) return existing;
+      final n = incoming.trim();
+      return n.isNotEmpty ? incoming : existing;
+    }
 
-String preferExistingRequired(String existing, String incoming) {
-  final e = existing.trim();
-  if (e.isNotEmpty) return existing;
-  final n = incoming.trim();
-  return n.isNotEmpty ? incoming : existing;
-}
+    int preferExistingInt(int existing, int incoming) =>
+        existing != 0 ? existing : incoming;
 
-int preferExistingInt(int existing, int incoming) => existing != 0 ? existing : incoming;
-
-double? preferExistingDouble(double? existing, double? incoming) => existing ?? incoming;
-
+    double? preferExistingDouble(double? existing, double? incoming) =>
+        existing ?? incoming;
 
     // Merge rifles
     for (final incoming in importedRifles) {
@@ -2606,21 +2772,41 @@ double? preferExistingDouble(double? existing, double? incoming) => existing ?? 
 
       final updated = existing.copyWith(
         name: preferExistingNullable(existing.name, incoming.name),
-        manufacturer: preferExistingNullable(existing.manufacturer, incoming.manufacturer),
+        manufacturer: preferExistingNullable(
+          existing.manufacturer,
+          incoming.manufacturer,
+        ),
         model: preferExistingNullable(existing.model, incoming.model),
-        serialNumber: preferExistingNullable(existing.serialNumber, incoming.serialNumber),
-        barrelLength: preferExistingNullable(existing.barrelLength, incoming.barrelLength),
-        twistRate: preferExistingNullable(existing.twistRate, incoming.twistRate),
+        serialNumber: preferExistingNullable(
+          existing.serialNumber,
+          incoming.serialNumber,
+        ),
+        barrelLength: preferExistingNullable(
+          existing.barrelLength,
+          incoming.barrelLength,
+        ),
+        twistRate: preferExistingNullable(
+          existing.twistRate,
+          incoming.twistRate,
+        ),
         purchaseDate: existing.purchaseDate ?? incoming.purchaseDate,
-        purchasePrice: preferExistingNullable(existing.purchasePrice, incoming.purchasePrice),
-        purchaseLocation: preferExistingNullable(existing.purchaseLocation, incoming.purchaseLocation),
+        purchasePrice: preferExistingNullable(
+          existing.purchasePrice,
+          incoming.purchasePrice,
+        ),
+        purchaseLocation: preferExistingNullable(
+          existing.purchaseLocation,
+          incoming.purchaseLocation,
+        ),
         notes: preferExistingRequired(existing.notes, incoming.notes),
         dope: preferExistingRequired(existing.dope, incoming.dope),
         // Never overwrite history fields here (manualRoundCount, dopeEntries).
-      scopeUnit: overwriteScope ? incoming.scopeUnit : existing.scopeUnit,
+        scopeUnit: overwriteScope ? incoming.scopeUnit : existing.scopeUnit,
         scopeMake: overwriteScope ? incoming.scopeMake : existing.scopeMake,
         scopeModel: overwriteScope ? incoming.scopeModel : existing.scopeModel,
-        scopeSerial: overwriteScope ? incoming.scopeSerial : existing.scopeSerial,
+        scopeSerial: overwriteScope
+            ? incoming.scopeSerial
+            : existing.scopeSerial,
         scopeMount: overwriteScope ? incoming.scopeMount : existing.scopeMount,
         scopeNotes: overwriteScope ? incoming.scopeNotes : existing.scopeNotes,
       );
@@ -2637,27 +2823,40 @@ double? preferExistingDouble(double? existing, double? incoming) => existing ?? 
       }
       final existing = _ammoLots[idx];
       final updated = AmmoLot(
-  id: existing.id,
-  caliber: existing.caliber,
-  grain: preferExistingInt(existing.grain, incoming.grain),
-  name: preferExistingNullable(existing.name, incoming.name),
-  bullet: preferExistingRequired(existing.bullet, incoming.bullet),
-  ballisticCoefficient: preferExistingDouble(existing.ballisticCoefficient, incoming.ballisticCoefficient),
-  manufacturer: preferExistingNullable(existing.manufacturer, incoming.manufacturer),
-  lotNumber: preferExistingNullable(existing.lotNumber, incoming.lotNumber),
-  purchaseDate: preferExistingDateTime(existing.purchaseDate, incoming.purchaseDate),
-  purchasePrice: preferExistingNullable(existing.purchasePrice, incoming.purchasePrice),
-  notes: preferExistingRequired(existing.notes, incoming.notes),
-);
+        id: existing.id,
+        caliber: existing.caliber,
+        grain: preferExistingInt(existing.grain, incoming.grain),
+        name: preferExistingNullable(existing.name, incoming.name),
+        bullet: preferExistingRequired(existing.bullet, incoming.bullet),
+        ballisticCoefficient: preferExistingDouble(
+          existing.ballisticCoefficient,
+          incoming.ballisticCoefficient,
+        ),
+        manufacturer: preferExistingNullable(
+          existing.manufacturer,
+          incoming.manufacturer,
+        ),
+        lotNumber: preferExistingNullable(
+          existing.lotNumber,
+          incoming.lotNumber,
+        ),
+        purchaseDate: preferExistingDateTime(
+          existing.purchaseDate,
+          incoming.purchaseDate,
+        ),
+        purchasePrice: preferExistingNullable(
+          existing.purchasePrice,
+          incoming.purchasePrice,
+        ),
+        notes: preferExistingRequired(existing.notes, incoming.notes),
+      );
       _ammoLots[idx] = updated;
     }
 
     // Persist (if available in this app) and refresh UI
-    try {
-    } catch (_) {}
+    try {} catch (_) {}
     notifyListeners();
   }
-
 }
 
 int? _toNullableInt(dynamic value) {
@@ -2681,114 +2880,124 @@ DateTime _parseDateTime(dynamic value) {
 }
 
 Map<String, dynamic> _userToMap(UserProfile user) => <String, dynamic>{
-      'id': user.id,
-      'name': user.name,
-      'identifier': user.identifier,
-    };
+  'id': user.id,
+  'name': user.name,
+  'identifier': user.identifier,
+};
 
 UserProfile _userFromMap(Map<String, dynamic> map) => UserProfile(
-      id: (map['id'] ?? '').toString(),
-      name: map['name']?.toString(),
-      identifier: (map['identifier'] ?? '').toString(),
-    );
+  id: (map['id'] ?? '').toString(),
+  name: map['name']?.toString(),
+  identifier: (map['identifier'] ?? '').toString(),
+);
 
 Map<String, dynamic> _rifleToMap(Rifle rifle) => <String, dynamic>{
-      'id': rifle.id,
-      'name': rifle.name,
-      'caliber': rifle.caliber,
-      'notes': rifle.notes,
-      'dope': rifle.dope,
-      'dopeEntries': rifle.dopeEntries.map((e) => e.toMap()).toList(),
-      'preferredUnit': rifle.preferredUnit.name,
-      'scopeUnit': rifle.scopeUnit.name,
-      'manualRoundCount': rifle.manualRoundCount,
-      'barrelRoundCount': rifle.barrelRoundCount,
-      'barrelInstalledDate': rifle.barrelInstalledDate?.toIso8601String(),
-      'barrelNotes': rifle.barrelNotes,
-      'services': rifle.services.map((s) => s.toMap()).toList(),
-      'scopeMake': rifle.scopeMake,
-      'scopeModel': rifle.scopeModel,
-      'scopeSerial': rifle.scopeSerial,
-      'scopeMount': rifle.scopeMount,
-      'scopeNotes': rifle.scopeNotes,
-      'manufacturer': rifle.manufacturer,
-      'model': rifle.model,
-      'serialNumber': rifle.serialNumber,
-      'barrelLength': rifle.barrelLength,
-      'twistRate': rifle.twistRate,
-      'purchaseDate': rifle.purchaseDate?.toIso8601String(),
-      'purchasePrice': rifle.purchasePrice,
-      'purchaseLocation': rifle.purchaseLocation,
-    };
+  'id': rifle.id,
+  'name': rifle.name,
+  'caliber': rifle.caliber,
+  'notes': rifle.notes,
+  'dope': rifle.dope,
+  'dopeEntries': rifle.dopeEntries.map((e) => e.toMap()).toList(),
+  'preferredUnit': rifle.preferredUnit.name,
+  'scopeUnit': rifle.scopeUnit.name,
+  'manualRoundCount': rifle.manualRoundCount,
+  'barrelRoundCount': rifle.barrelRoundCount,
+  'barrelInstalledDate': rifle.barrelInstalledDate?.toIso8601String(),
+  'barrelNotes': rifle.barrelNotes,
+  'services': rifle.services.map((s) => s.toMap()).toList(),
+  'scopeMake': rifle.scopeMake,
+  'scopeModel': rifle.scopeModel,
+  'scopeSerial': rifle.scopeSerial,
+  'scopeMount': rifle.scopeMount,
+  'scopeNotes': rifle.scopeNotes,
+  'manufacturer': rifle.manufacturer,
+  'model': rifle.model,
+  'serialNumber': rifle.serialNumber,
+  'barrelLength': rifle.barrelLength,
+  'twistRate': rifle.twistRate,
+  'purchaseDate': rifle.purchaseDate?.toIso8601String(),
+  'purchasePrice': rifle.purchasePrice,
+  'purchaseLocation': rifle.purchaseLocation,
+};
 
 Rifle _rifleFromMap(Map<String, dynamic> map) => Rifle(
-      id: (map['id'] ?? '').toString(),
-      name: map['name']?.toString(),
-      caliber: (map['caliber'] ?? '').toString(),
-      notes: (map['notes'] ?? '').toString(),
-      dope: (map['dope'] ?? '').toString(),
-      dopeEntries: ((map['dopeEntries'] as List?) ?? const [])
-          .map((e) => RifleDopeEntry.fromMap(Map<String, dynamic>.from(e as Map)))
-          .toList(),
-      preferredUnit: ElevationUnit.values.firstWhere(
-        (u) => u.name == (map['preferredUnit'] ?? ElevationUnit.mil.name).toString(),
-        orElse: () => ElevationUnit.mil,
-      ),
-      scopeUnit: ScopeUnit.values.firstWhere(
-        (u) => u.name == (map['scopeUnit'] ?? ScopeUnit.mil.name).toString(),
-        orElse: () => ScopeUnit.mil,
-      ),
-      manualRoundCount: _toNullableInt(map['manualRoundCount']) ?? 0,
-      barrelRoundCount: _toNullableInt(map['barrelRoundCount']) ?? 0,
-      barrelInstalledDate: map['barrelInstalledDate'] == null ? null : _parseDateTime(map['barrelInstalledDate']),
-      barrelNotes: (map['barrelNotes'] ?? '').toString(),
-      services: ((map['services'] as List?) ?? const [])
-          .map((e) => RifleServiceEntry.fromMap(Map<String, dynamic>.from(e as Map)))
-          .toList(),
-      scopeMake: map['scopeMake']?.toString(),
-      scopeModel: map['scopeModel']?.toString(),
-      scopeSerial: map['scopeSerial']?.toString(),
-      scopeMount: map['scopeMount']?.toString(),
-      scopeNotes: map['scopeNotes']?.toString(),
-      manufacturer: map['manufacturer']?.toString(),
-      model: map['model']?.toString(),
-      serialNumber: map['serialNumber']?.toString(),
-      barrelLength: map['barrelLength']?.toString(),
-      twistRate: map['twistRate']?.toString(),
-      purchaseDate: map['purchaseDate'] == null ? null : _parseDateTime(map['purchaseDate']),
-      purchasePrice: map['purchasePrice']?.toString(),
-      purchaseLocation: map['purchaseLocation']?.toString(),
-    );
+  id: (map['id'] ?? '').toString(),
+  name: map['name']?.toString(),
+  caliber: (map['caliber'] ?? '').toString(),
+  notes: (map['notes'] ?? '').toString(),
+  dope: (map['dope'] ?? '').toString(),
+  dopeEntries: ((map['dopeEntries'] as List?) ?? const [])
+      .map((e) => RifleDopeEntry.fromMap(Map<String, dynamic>.from(e as Map)))
+      .toList(),
+  preferredUnit: ElevationUnit.values.firstWhere(
+    (u) =>
+        u.name == (map['preferredUnit'] ?? ElevationUnit.mil.name).toString(),
+    orElse: () => ElevationUnit.mil,
+  ),
+  scopeUnit: ScopeUnit.values.firstWhere(
+    (u) => u.name == (map['scopeUnit'] ?? ScopeUnit.mil.name).toString(),
+    orElse: () => ScopeUnit.mil,
+  ),
+  manualRoundCount: _toNullableInt(map['manualRoundCount']) ?? 0,
+  barrelRoundCount: _toNullableInt(map['barrelRoundCount']) ?? 0,
+  barrelInstalledDate: map['barrelInstalledDate'] == null
+      ? null
+      : _parseDateTime(map['barrelInstalledDate']),
+  barrelNotes: (map['barrelNotes'] ?? '').toString(),
+  services: ((map['services'] as List?) ?? const [])
+      .map(
+        (e) => RifleServiceEntry.fromMap(Map<String, dynamic>.from(e as Map)),
+      )
+      .toList(),
+  scopeMake: map['scopeMake']?.toString(),
+  scopeModel: map['scopeModel']?.toString(),
+  scopeSerial: map['scopeSerial']?.toString(),
+  scopeMount: map['scopeMount']?.toString(),
+  scopeNotes: map['scopeNotes']?.toString(),
+  manufacturer: map['manufacturer']?.toString(),
+  model: map['model']?.toString(),
+  serialNumber: map['serialNumber']?.toString(),
+  barrelLength: map['barrelLength']?.toString(),
+  twistRate: map['twistRate']?.toString(),
+  purchaseDate: map['purchaseDate'] == null
+      ? null
+      : _parseDateTime(map['purchaseDate']),
+  purchasePrice: map['purchasePrice']?.toString(),
+  purchaseLocation: map['purchaseLocation']?.toString(),
+);
 
 Map<String, dynamic> _ammoLotToMap(AmmoLot ammo) => <String, dynamic>{
-      'id': ammo.id,
-      'name': ammo.name,
-      'caliber': ammo.caliber,
-      'grain': ammo.grain,
-      'bullet': ammo.bullet,
-      'notes': ammo.notes,
-      'manufacturer': ammo.manufacturer,
-      'lotNumber': ammo.lotNumber,
-      'purchaseDate': ammo.purchaseDate?.toIso8601String(),
-      'purchasePrice': ammo.purchasePrice,
-      'ballisticCoefficient': ammo.ballisticCoefficient,
-    };
+  'id': ammo.id,
+  'name': ammo.name,
+  'caliber': ammo.caliber,
+  'grain': ammo.grain,
+  'bullet': ammo.bullet,
+  'notes': ammo.notes,
+  'manufacturer': ammo.manufacturer,
+  'lotNumber': ammo.lotNumber,
+  'purchaseDate': ammo.purchaseDate?.toIso8601String(),
+  'purchasePrice': ammo.purchasePrice,
+  'ballisticCoefficient': ammo.ballisticCoefficient,
+};
 
 AmmoLot _ammoLotFromMap(Map<String, dynamic> map) => AmmoLot(
-      id: (map['id'] ?? '').toString(),
-      name: map['name']?.toString(),
-      caliber: (map['caliber'] ?? '').toString(),
-      grain: _toNullableInt(map['grain']) ?? 0,
-      bullet: (map['bullet'] ?? '').toString(),
-      notes: (map['notes'] ?? '').toString(),
-      manufacturer: map['manufacturer']?.toString(),
-      lotNumber: map['lotNumber']?.toString(),
-      purchaseDate: map['purchaseDate'] == null ? null : _parseDateTime(map['purchaseDate']),
-      purchasePrice: map['purchasePrice']?.toString(),
-      ballisticCoefficient: _toNullableDouble(map['ballisticCoefficient']),
-    );
+  id: (map['id'] ?? '').toString(),
+  name: map['name']?.toString(),
+  caliber: (map['caliber'] ?? '').toString(),
+  grain: _toNullableInt(map['grain']) ?? 0,
+  bullet: (map['bullet'] ?? '').toString(),
+  notes: (map['notes'] ?? '').toString(),
+  manufacturer: map['manufacturer']?.toString(),
+  lotNumber: map['lotNumber']?.toString(),
+  purchaseDate: map['purchaseDate'] == null
+      ? null
+      : _parseDateTime(map['purchaseDate']),
+  purchasePrice: map['purchasePrice']?.toString(),
+  ballisticCoefficient: _toNullableDouble(map['ballisticCoefficient']),
+);
 
-Map<String, dynamic> _sessionStringMetaToMap(SessionStringMeta meta) => <String, dynamic>{
+Map<String, dynamic> _sessionStringMetaToMap(SessionStringMeta meta) =>
+    <String, dynamic>{
       'id': meta.id,
       'startedAt': meta.startedAt.toIso8601String(),
       'endedAt': meta.endedAt?.toIso8601String(),
@@ -2796,7 +3005,8 @@ Map<String, dynamic> _sessionStringMetaToMap(SessionStringMeta meta) => <String,
       'ammoLotId': meta.ammoLotId,
     };
 
-SessionStringMeta _sessionStringMetaFromMap(Map<String, dynamic> map) => SessionStringMeta(
+SessionStringMeta _sessionStringMetaFromMap(Map<String, dynamic> map) =>
+    SessionStringMeta(
       id: (map['id'] ?? '').toString(),
       startedAt: _parseDateTime(map['startedAt']),
       endedAt: map['endedAt'] == null ? null : _parseDateTime(map['endedAt']),
@@ -2805,49 +3015,52 @@ SessionStringMeta _sessionStringMetaFromMap(Map<String, dynamic> map) => Session
     );
 
 Map<String, dynamic> _dopeEntryToMap(DopeEntry entry) => <String, dynamic>{
-      'id': entry.id,
-      'time': entry.time.toIso8601String(),
-      'rifleId': entry.rifleId,
-      'ammoLotId': entry.ammoLotId,
-      'distance': entry.distance,
-      'distanceUnit': entry.distanceUnit.name,
-      'elevation': entry.elevation,
-      'elevationUnit': entry.elevationUnit.name,
-      'elevationNotes': entry.elevationNotes,
-      'windType': entry.windType.name,
-      'windValue': entry.windValue,
-      'windNotes': entry.windNotes,
-      'windageLeft': entry.windageLeft,
-      'windageRight': entry.windageRight,
-    };
+  'id': entry.id,
+  'time': entry.time.toIso8601String(),
+  'rifleId': entry.rifleId,
+  'ammoLotId': entry.ammoLotId,
+  'distance': entry.distance,
+  'distanceUnit': entry.distanceUnit.name,
+  'elevation': entry.elevation,
+  'elevationUnit': entry.elevationUnit.name,
+  'elevationNotes': entry.elevationNotes,
+  'windType': entry.windType.name,
+  'windValue': entry.windValue,
+  'windNotes': entry.windNotes,
+  'windageLeft': entry.windageLeft,
+  'windageRight': entry.windageRight,
+};
 
 DopeEntry _dopeEntryFromMap(Map<String, dynamic> map) => DopeEntry(
-      id: (map['id'] ?? '').toString(),
-      time: _parseDateTime(map['time']),
-      rifleId: map['rifleId']?.toString(),
-      ammoLotId: map['ammoLotId']?.toString(),
-      distance: _toNullableDouble(map['distance']) ?? 0,
-      distanceUnit: DistanceUnit.values.firstWhere(
-        (u) => u.name == (map['distanceUnit'] ?? DistanceUnit.yards.name).toString(),
-        orElse: () => DistanceUnit.yards,
-      ),
-      elevation: _toNullableDouble(map['elevation']) ?? 0,
-      elevationUnit: ElevationUnit.values.firstWhere(
-        (u) => u.name == (map['elevationUnit'] ?? ElevationUnit.mil.name).toString(),
-        orElse: () => ElevationUnit.mil,
-      ),
-      elevationNotes: (map['elevationNotes'] ?? '').toString(),
-      windType: WindType.values.firstWhere(
-        (u) => u.name == (map['windType'] ?? WindType.fullValue.name).toString(),
-        orElse: () => WindType.fullValue,
-      ),
-      windValue: (map['windValue'] ?? '').toString(),
-      windNotes: (map['windNotes'] ?? '').toString(),
-      windageLeft: _toNullableDouble(map['windageLeft']) ?? 0,
-      windageRight: _toNullableDouble(map['windageRight']) ?? 0,
-    );
+  id: (map['id'] ?? '').toString(),
+  time: _parseDateTime(map['time']),
+  rifleId: map['rifleId']?.toString(),
+  ammoLotId: map['ammoLotId']?.toString(),
+  distance: _toNullableDouble(map['distance']) ?? 0,
+  distanceUnit: DistanceUnit.values.firstWhere(
+    (u) =>
+        u.name == (map['distanceUnit'] ?? DistanceUnit.yards.name).toString(),
+    orElse: () => DistanceUnit.yards,
+  ),
+  elevation: _toNullableDouble(map['elevation']) ?? 0,
+  elevationUnit: ElevationUnit.values.firstWhere(
+    (u) =>
+        u.name == (map['elevationUnit'] ?? ElevationUnit.mil.name).toString(),
+    orElse: () => ElevationUnit.mil,
+  ),
+  elevationNotes: (map['elevationNotes'] ?? '').toString(),
+  windType: WindType.values.firstWhere(
+    (u) => u.name == (map['windType'] ?? WindType.fullValue.name).toString(),
+    orElse: () => WindType.fullValue,
+  ),
+  windValue: (map['windValue'] ?? '').toString(),
+  windNotes: (map['windNotes'] ?? '').toString(),
+  windageLeft: _toNullableDouble(map['windageLeft']) ?? 0,
+  windageRight: _toNullableDouble(map['windageRight']) ?? 0,
+);
 
-Map<String, dynamic> _coldBorePhotoToMap(ColdBorePhoto photo) => <String, dynamic>{
+Map<String, dynamic> _coldBorePhotoToMap(ColdBorePhoto photo) =>
+    <String, dynamic>{
       'id': photo.id,
       'time': photo.time.toIso8601String(),
       'bytes': base64Encode(photo.bytes),
@@ -2855,55 +3068,56 @@ Map<String, dynamic> _coldBorePhotoToMap(ColdBorePhoto photo) => <String, dynami
     };
 
 ColdBorePhoto _coldBorePhotoFromMap(Map<String, dynamic> map) => ColdBorePhoto(
-      id: (map['id'] ?? '').toString(),
-      time: _parseDateTime(map['time']),
-      bytes: base64Decode((map['bytes'] ?? '').toString()),
-      caption: (map['caption'] ?? '').toString(),
-    );
+  id: (map['id'] ?? '').toString(),
+  time: _parseDateTime(map['time']),
+  bytes: base64Decode((map['bytes'] ?? '').toString()),
+  caption: (map['caption'] ?? '').toString(),
+);
 
 Map<String, dynamic> _shotEntryToMap(ShotEntry shot) => <String, dynamic>{
-      'id': shot.id,
-      'time': shot.time.toIso8601String(),
-      'isColdBore': shot.isColdBore,
-      'isBaseline': shot.isBaseline,
-      'distance': shot.distance,
-      'result': shot.result,
-      'notes': shot.notes,
-      'offsetX': shot.offsetX,
-      'offsetY': shot.offsetY,
-      'offsetUnit': shot.offsetUnit,
-      'photos': shot.photos.map(_coldBorePhotoToMap).toList(),
-    };
+  'id': shot.id,
+  'time': shot.time.toIso8601String(),
+  'isColdBore': shot.isColdBore,
+  'isBaseline': shot.isBaseline,
+  'distance': shot.distance,
+  'result': shot.result,
+  'notes': shot.notes,
+  'offsetX': shot.offsetX,
+  'offsetY': shot.offsetY,
+  'offsetUnit': shot.offsetUnit,
+  'photos': shot.photos.map(_coldBorePhotoToMap).toList(),
+};
 
 ShotEntry _shotEntryFromMap(Map<String, dynamic> map) => ShotEntry(
-      id: (map['id'] ?? '').toString(),
-      time: _parseDateTime(map['time']),
-      isColdBore: map['isColdBore'] == true,
-      isBaseline: map['isBaseline'] == true,
-      distance: (map['distance'] ?? '').toString(),
-      result: (map['result'] ?? '').toString(),
-      notes: (map['notes'] ?? '').toString(),
-      offsetX: _toNullableDouble(map['offsetX']),
-      offsetY: _toNullableDouble(map['offsetY']),
-      offsetUnit: (map['offsetUnit'] ?? 'in').toString(),
-      photos: ((map['photos'] as List?) ?? const [])
-          .map((e) => _coldBorePhotoFromMap(Map<String, dynamic>.from(e as Map)))
-          .toList(),
-    );
+  id: (map['id'] ?? '').toString(),
+  time: _parseDateTime(map['time']),
+  isColdBore: map['isColdBore'] == true,
+  isBaseline: map['isBaseline'] == true,
+  distance: (map['distance'] ?? '').toString(),
+  result: (map['result'] ?? '').toString(),
+  notes: (map['notes'] ?? '').toString(),
+  offsetX: _toNullableDouble(map['offsetX']),
+  offsetY: _toNullableDouble(map['offsetY']),
+  offsetUnit: (map['offsetUnit'] ?? 'in').toString(),
+  photos: ((map['photos'] as List?) ?? const [])
+      .map((e) => _coldBorePhotoFromMap(Map<String, dynamic>.from(e as Map)))
+      .toList(),
+);
 
 Map<String, dynamic> _photoNoteToMap(PhotoNote photo) => <String, dynamic>{
-      'id': photo.id,
-      'time': photo.time.toIso8601String(),
-      'caption': photo.caption,
-    };
+  'id': photo.id,
+  'time': photo.time.toIso8601String(),
+  'caption': photo.caption,
+};
 
 PhotoNote _photoNoteFromMap(Map<String, dynamic> map) => PhotoNote(
-      id: (map['id'] ?? '').toString(),
-      time: _parseDateTime(map['time']),
-      caption: (map['caption'] ?? '').toString(),
-    );
+  id: (map['id'] ?? '').toString(),
+  time: _parseDateTime(map['time']),
+  caption: (map['caption'] ?? '').toString(),
+);
 
-Map<String, dynamic> _sessionPhotoToMap(SessionPhoto photo) => <String, dynamic>{
+Map<String, dynamic> _sessionPhotoToMap(SessionPhoto photo) =>
+    <String, dynamic>{
       'id': photo.id,
       'time': photo.time.toIso8601String(),
       'bytes': base64Encode(photo.bytes),
@@ -2911,13 +3125,14 @@ Map<String, dynamic> _sessionPhotoToMap(SessionPhoto photo) => <String, dynamic>
     };
 
 SessionPhoto _sessionPhotoFromMap(Map<String, dynamic> map) => SessionPhoto(
-      id: (map['id'] ?? '').toString(),
-      time: _parseDateTime(map['time']),
-      bytes: base64Decode((map['bytes'] ?? '').toString()),
-      caption: (map['caption'] ?? '').toString(),
-    );
+  id: (map['id'] ?? '').toString(),
+  time: _parseDateTime(map['time']),
+  bytes: base64Decode((map['bytes'] ?? '').toString()),
+  caption: (map['caption'] ?? '').toString(),
+);
 
-Map<String, dynamic> _sessionTimerRunToMap(SessionTimerRun run) => <String, dynamic>{
+Map<String, dynamic> _sessionTimerRunToMap(SessionTimerRun run) =>
+    <String, dynamic>{
       'id': run.id,
       'time': run.time.toIso8601String(),
       'elapsedMs': run.elapsedMs,
@@ -2927,17 +3142,21 @@ Map<String, dynamic> _sessionTimerRunToMap(SessionTimerRun run) => <String, dyna
       'goalMs': run.goalMs,
     };
 
-SessionTimerRun _sessionTimerRunFromMap(Map<String, dynamic> map) => SessionTimerRun(
+SessionTimerRun _sessionTimerRunFromMap(Map<String, dynamic> map) =>
+    SessionTimerRun(
       id: (map['id'] ?? '').toString(),
       time: _parseDateTime(map['time']),
       elapsedMs: _toNullableInt(map['elapsedMs']) ?? 0,
       firstShotMs: _toNullableInt(map['firstShotMs']) ?? 0,
-      splitMs: ((map['splitMs'] as List?) ?? const []).map((e) => _toNullableInt(e) ?? 0).toList(),
+      splitMs: ((map['splitMs'] as List?) ?? const [])
+          .map((e) => _toNullableInt(e) ?? 0)
+          .toList(),
       startDelayMs: _toNullableInt(map['startDelayMs']) ?? 0,
       goalMs: _toNullableInt(map['goalMs']) ?? 0,
     );
 
-Map<String, dynamic> _trainingSessionToMap(TrainingSession session) => <String, dynamic>{
+Map<String, dynamic> _trainingSessionToMap(TrainingSession session) =>
+    <String, dynamic>{
       'id': session.id,
       'userId': session.userId,
       'memberUserIds': session.memberUserIds,
@@ -2972,75 +3191,83 @@ Map<String, dynamic> _trainingSessionToMap(TrainingSession session) => <String, 
       'trainingDope': session.trainingDope.map(_dopeEntryToMap).toList(),
     };
 
-TrainingSession _trainingSessionFromMap(Map<String, dynamic> map) => TrainingSession(
-      id: (map['id'] ?? '').toString(),
-      userId: (map['userId'] ?? '').toString(),
-      memberUserIds: ((map['memberUserIds'] as List?) ?? const []).map((e) => e.toString()).toList(),
-      dateTime: _parseDateTime(map['dateTime']),
-      locationName: (map['locationName'] ?? '').toString(),
-      notes: (map['notes'] ?? '').toString(),
-      latitude: _toNullableDouble(map['latitude']),
-      longitude: _toNullableDouble(map['longitude']),
-      temperatureF: _toNullableDouble(map['temperatureF']),
-      windSpeedMph: _toNullableDouble(map['windSpeedMph']),
-      windDirectionDeg: _toNullableInt(map['windDirectionDeg']),
-      rifleId: map['rifleId']?.toString(),
-      ammoLotId: map['ammoLotId']?.toString(),
-      shots: ((map['shots'] as List?) ?? const [])
-          .map((e) => _shotEntryFromMap(Map<String, dynamic>.from(e as Map)))
-          .toList(),
-      photos: ((map['photos'] as List?) ?? const [])
-          .map((e) => _photoNoteFromMap(Map<String, dynamic>.from(e as Map)))
-          .toList(),
-      sessionPhotos: ((map['sessionPhotos'] as List?) ?? const [])
-          .map((e) => _sessionPhotoFromMap(Map<String, dynamic>.from(e as Map)))
-          .toList(),
-      trainingDope: ((map['trainingDope'] as List?) ?? const [])
-          .map((e) => _dopeEntryFromMap(Map<String, dynamic>.from(e as Map)))
-          .toList(),
-      trainingDopeByString: ((map['trainingDopeByString'] as Map?) ?? const <String, dynamic>{}).map(
+TrainingSession _trainingSessionFromMap(
+  Map<String, dynamic> map,
+) => TrainingSession(
+  id: (map['id'] ?? '').toString(),
+  userId: (map['userId'] ?? '').toString(),
+  memberUserIds: ((map['memberUserIds'] as List?) ?? const [])
+      .map((e) => e.toString())
+      .toList(),
+  dateTime: _parseDateTime(map['dateTime']),
+  locationName: (map['locationName'] ?? '').toString(),
+  notes: (map['notes'] ?? '').toString(),
+  latitude: _toNullableDouble(map['latitude']),
+  longitude: _toNullableDouble(map['longitude']),
+  temperatureF: _toNullableDouble(map['temperatureF']),
+  windSpeedMph: _toNullableDouble(map['windSpeedMph']),
+  windDirectionDeg: _toNullableInt(map['windDirectionDeg']),
+  rifleId: map['rifleId']?.toString(),
+  ammoLotId: map['ammoLotId']?.toString(),
+  shots: ((map['shots'] as List?) ?? const [])
+      .map((e) => _shotEntryFromMap(Map<String, dynamic>.from(e as Map)))
+      .toList(),
+  photos: ((map['photos'] as List?) ?? const [])
+      .map((e) => _photoNoteFromMap(Map<String, dynamic>.from(e as Map)))
+      .toList(),
+  sessionPhotos: ((map['sessionPhotos'] as List?) ?? const [])
+      .map((e) => _sessionPhotoFromMap(Map<String, dynamic>.from(e as Map)))
+      .toList(),
+  trainingDope: ((map['trainingDope'] as List?) ?? const [])
+      .map((e) => _dopeEntryFromMap(Map<String, dynamic>.from(e as Map)))
+      .toList(),
+  trainingDopeByString:
+      ((map['trainingDopeByString'] as Map?) ?? const <String, dynamic>{}).map(
         (key, value) => MapEntry(
           key.toString(),
           ((value as List?) ?? const [])
-              .map((e) => _dopeEntryFromMap(Map<String, dynamic>.from(e as Map)))
+              .map(
+                (e) => _dopeEntryFromMap(Map<String, dynamic>.from(e as Map)),
+              )
               .toList(),
         ),
       ),
-      shotsByString: ((map['shotsByString'] as Map?) ?? const <String, dynamic>{}).map(
+  shotsByString: ((map['shotsByString'] as Map?) ?? const <String, dynamic>{})
+      .map(
         (key, value) => MapEntry(
           key.toString(),
           ((value as List?) ?? const [])
-              .map((e) => _shotEntryFromMap(Map<String, dynamic>.from(e as Map)))
+              .map(
+                (e) => _shotEntryFromMap(Map<String, dynamic>.from(e as Map)),
+              )
               .toList(),
         ),
       ),
-      strings: ((map['strings'] as List?) ?? const [])
-          .map((e) => _sessionStringMetaFromMap(Map<String, dynamic>.from(e as Map)))
-          .toList(),
-      activeStringId: (map['activeStringId'] ?? '').toString(),
-      confirmedShotCount: _toNullableInt(map['confirmedShotCount']),
-      shotCountAppliedToRifle: map['shotCountAppliedToRifle'] == true,
-      endedAt: map['endedAt'] == null ? null : _parseDateTime(map['endedAt']),
-      shotTimerElapsedMs: _toNullableInt(map['shotTimerElapsedMs']),
-      shotTimerFirstShotMs: _toNullableInt(map['shotTimerFirstShotMs']),
-      shotTimerSplitMs: ((map['shotTimerSplitMs'] as List?) ?? const [])
-          .map((e) => _toNullableInt(e) ?? 0)
-          .toList(),
-      timerRuns: ((map['timerRuns'] as List?) ?? const [])
-          .map((e) => _sessionTimerRunFromMap(Map<String, dynamic>.from(e as Map)))
-          .toList(),
-    );
+  strings: ((map['strings'] as List?) ?? const [])
+      .map(
+        (e) => _sessionStringMetaFromMap(Map<String, dynamic>.from(e as Map)),
+      )
+      .toList(),
+  activeStringId: (map['activeStringId'] ?? '').toString(),
+  confirmedShotCount: _toNullableInt(map['confirmedShotCount']),
+  shotCountAppliedToRifle: map['shotCountAppliedToRifle'] == true,
+  endedAt: map['endedAt'] == null ? null : _parseDateTime(map['endedAt']),
+  shotTimerElapsedMs: _toNullableInt(map['shotTimerElapsedMs']),
+  shotTimerFirstShotMs: _toNullableInt(map['shotTimerFirstShotMs']),
+  shotTimerSplitMs: ((map['shotTimerSplitMs'] as List?) ?? const [])
+      .map((e) => _toNullableInt(e) ?? 0)
+      .toList(),
+  timerRuns: ((map['timerRuns'] as List?) ?? const [])
+      .map((e) => _sessionTimerRunFromMap(Map<String, dynamic>.from(e as Map)))
+      .toList(),
+);
 
 class UserProfile {
   final String id;
   final String? name;
   final String identifier;
 
-  UserProfile({
-    required this.id,
-    this.name,
-    required this.identifier,
-  });
+  UserProfile({required this.id, this.name, required this.identifier});
 }
 
 class Rifle {
@@ -3182,12 +3409,12 @@ class RifleServiceEntry {
   });
 
   Map<String, dynamic> toMap() => <String, dynamic>{
-        'id': id,
-        'service': service,
-        'date': date.toIso8601String(),
-        'roundsAtService': roundsAtService,
-        'notes': notes,
-      };
+    'id': id,
+    'service': service,
+    'date': date.toIso8601String(),
+    'roundsAtService': roundsAtService,
+    'notes': notes,
+  };
 
   factory RifleServiceEntry.fromMap(Map<String, dynamic> map) {
     final rawDate = map['date'];
@@ -3203,7 +3430,9 @@ class RifleServiceEntry {
     }
 
     final rawRounds = map['roundsAtService'];
-    final rounds = (rawRounds is num) ? rawRounds.toInt() : int.tryParse('$rawRounds') ?? 0;
+    final rounds = (rawRounds is num)
+        ? rawRounds.toInt()
+        : int.tryParse('$rawRounds') ?? 0;
 
     return RifleServiceEntry(
       id: (map['id'] ?? '').toString(),
@@ -3214,7 +3443,6 @@ class RifleServiceEntry {
     );
   }
 }
-
 
 class AmmoLot {
   final String id;
@@ -3237,7 +3465,7 @@ class AmmoLot {
     required this.id,
     this.name,
     required this.caliber,
-required this.grain,
+    required this.grain,
     required this.bullet,
     required this.notes,
     this.manufacturer,
@@ -3247,8 +3475,6 @@ required this.grain,
     this.ballisticCoefficient,
   });
 }
-
-
 
 class SessionStringMeta {
   final String id;
@@ -3280,7 +3506,6 @@ class SessionStringMeta {
     );
   }
 }
-
 
 class TrainingSession {
   final String id;
@@ -3352,7 +3577,6 @@ class TrainingSession {
     this.timerRuns = const [],
   });
 
-
   TrainingSession copyWith({
     List<String>? memberUserIds,
     DateTime? dateTime,
@@ -3404,7 +3628,8 @@ class TrainingSession {
       strings: strings ?? this.strings,
       activeStringId: activeStringId ?? this.activeStringId,
       confirmedShotCount: confirmedShotCount ?? this.confirmedShotCount,
-      shotCountAppliedToRifle: shotCountAppliedToRifle ?? this.shotCountAppliedToRifle,
+      shotCountAppliedToRifle:
+          shotCountAppliedToRifle ?? this.shotCountAppliedToRifle,
       endedAt: endedAt ?? this.endedAt,
       shotTimerElapsedMs: shotTimerElapsedMs ?? this.shotTimerElapsedMs,
       shotTimerFirstShotMs: shotTimerFirstShotMs ?? this.shotTimerFirstShotMs,
@@ -3412,8 +3637,6 @@ class TrainingSession {
       timerRuns: timerRuns ?? this.timerRuns,
     );
   }
-
-
 }
 
 class SessionTimerRun {
@@ -3538,11 +3761,7 @@ class PhotoNote {
   final DateTime time;
   final String caption;
 
-  PhotoNote({
-    required this.id,
-    required this.time,
-    required this.caption,
-  });
+  PhotoNote({required this.id, required this.time, required this.caption});
 }
 
 class _ColdBoreRow {
@@ -3564,8 +3783,6 @@ class _ColdBoreRow {
 /// Screens
 ///
 
-
-
 class AudioCounterScreen extends StatefulWidget {
   final AppState state;
   const AudioCounterScreen({super.key, required this.state});
@@ -3585,13 +3802,17 @@ class _AudioCounterScreenState extends State<AudioCounterScreen> {
   bool _applyToRifleOnDetection = false;
   String? _statusMessage;
 
-  bool get _audioSupported => !kIsWeb && (defaultTargetPlatform == TargetPlatform.iOS || defaultTargetPlatform == TargetPlatform.android);
+  bool get _audioSupported =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.iOS ||
+          defaultTargetPlatform == TargetPlatform.android);
 
   @override
   void initState() {
     super.initState();
     if (widget.state.rifles.isNotEmpty) {
-      _selectedRifleId = widget.state.shotTimerSelectedRifleId ?? widget.state.rifles.first.id;
+      _selectedRifleId =
+          widget.state.shotTimerSelectedRifleId ?? widget.state.rifles.first.id;
     }
     _audioThresholdDb = widget.state.audioThresholdDb;
   }
@@ -3630,9 +3851,11 @@ class _AudioCounterScreenState extends State<AudioCounterScreen> {
           if (!mounted) return;
           final maxDb = reading.maxDecibel;
           final now = DateTime.now();
-          final shouldMark = _isListening &&
+          final shouldMark =
+              _isListening &&
               maxDb >= _audioThresholdDb &&
-              (_lastShotAt == null || now.difference(_lastShotAt!).inMilliseconds >= 250);
+              (_lastShotAt == null ||
+                  now.difference(_lastShotAt!).inMilliseconds >= 250);
 
           setState(() {
             _latestDb = maxDb;
@@ -3640,7 +3863,10 @@ class _AudioCounterScreenState extends State<AudioCounterScreen> {
               _lastShotAt = now;
               _totalShotsDetected += 1;
               if (_applyToRifleOnDetection && _selectedRifleId != null) {
-                widget.state.addRifleRounds(rifleId: _selectedRifleId!, roundCount: 1);
+                widget.state.addRifleRounds(
+                  rifleId: _selectedRifleId!,
+                  roundCount: 1,
+                );
               }
             }
           });
@@ -3649,7 +3875,8 @@ class _AudioCounterScreenState extends State<AudioCounterScreen> {
           if (!mounted) return;
           setState(() {
             _isListening = false;
-            _statusMessage = 'Microphone unavailable. Check permissions and try again.';
+            _statusMessage =
+                'Microphone unavailable. Check permissions and try again.';
           });
         },
         cancelOnError: true,
@@ -3663,14 +3890,18 @@ class _AudioCounterScreenState extends State<AudioCounterScreen> {
       if (!mounted) return;
       setState(() {
         _isListening = false;
-        _statusMessage = 'Microphone unavailable. Check permissions and try again.';
+        _statusMessage =
+            'Microphone unavailable. Check permissions and try again.';
       });
     }
   }
 
   void _applyDetectedShotsToRifle() {
     if (_totalShotsDetected <= 0 || _selectedRifleId == null) return;
-    widget.state.addRifleRounds(rifleId: _selectedRifleId!, roundCount: _totalShotsDetected);
+    widget.state.addRifleRounds(
+      rifleId: _selectedRifleId!,
+      roundCount: _totalShotsDetected,
+    );
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Applied $_totalShotsDetected shots to rifle')),
     );
@@ -3695,9 +3926,7 @@ class _AudioCounterScreenState extends State<AudioCounterScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Audio Shot Counter'),
-      ),
+      appBar: AppBar(title: const Text('Audio Shot Counter')),
       body: AnimatedBuilder(
         animation: widget.state,
         builder: (context, _) {
@@ -3715,7 +3944,8 @@ class _AudioCounterScreenState extends State<AudioCounterScreen> {
                           Expanded(
                             child: Text(
                               'Standalone Audio Counter',
-                              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                              style: Theme.of(context).textTheme.titleMedium
+                                  ?.copyWith(fontWeight: FontWeight.w700),
                             ),
                           ),
                           if (_isListening)
@@ -3728,34 +3958,60 @@ class _AudioCounterScreenState extends State<AudioCounterScreen> {
                       const SizedBox(height: 12),
                       Text(
                         'Shots detected: $_totalShotsDetected',
-                        style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                       const SizedBox(height: 6),
                       Text(
                         'Live level: ${_latestDb.toStringAsFixed(1)} dB',
-                        style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.72)),
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withValues(alpha: 0.72),
+                        ),
                       ),
                       const SizedBox(height: 12),
                       if (widget.state.rifles.isNotEmpty) ...[
                         DropdownButtonFormField<String>(
-                          value: _selectedRifleId,
-                          decoration: const InputDecoration(labelText: 'Target Rifle'),
+                          initialValue: _selectedRifleId,
+                          decoration: const InputDecoration(
+                            labelText: 'Target Rifle',
+                          ),
                           items: widget.state.rifles
-                              .map((rifle) => DropdownMenuItem(value: rifle.id, child: Text(_rifleDropdownLabel(rifle))))
+                              .map(
+                                (rifle) => DropdownMenuItem(
+                                  value: rifle.id,
+                                  child: Text(_rifleDropdownLabel(rifle)),
+                                ),
+                              )
                               .toList(),
-                          onChanged: (val) => setState(() => _selectedRifleId = val),
+                          onChanged: (val) =>
+                              setState(() => _selectedRifleId = val),
                         ),
                         const SizedBox(height: 12),
                       ],
                       SwitchListTile.adaptive(
                         contentPadding: EdgeInsets.zero,
                         title: const Text('Apply shots immediately'),
-                        subtitle: const Text('Auto-increment rifle round count as shots are detected'),
+                        subtitle: const Text(
+                          'Auto-increment rifle round count as shots are detected',
+                        ),
                         value: _applyToRifleOnDetection,
-                        onChanged: (v) => setState(() => _applyToRifleOnDetection = v),
+                        onChanged: (v) =>
+                            setState(() => _applyToRifleOnDetection = v),
                       ),
                       const SizedBox(height: 12),
-                      Text('Detection threshold', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.78))),
+                      Text(
+                        'Detection threshold',
+                        style: TextStyle(
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withValues(alpha: 0.78),
+                        ),
+                      ),
                       Slider(
                         value: _audioThresholdDb,
                         min: 70,
@@ -3764,9 +4020,9 @@ class _AudioCounterScreenState extends State<AudioCounterScreen> {
                         label: '${_audioThresholdDb.toStringAsFixed(0)} dB',
                         onChanged: _isListening
                             ? (value) {
-                              setState(() => _audioThresholdDb = value);
-                              widget.state.setAudioThresholdDb(value);
-                            }
+                                setState(() => _audioThresholdDb = value);
+                                widget.state.setAudioThresholdDb(value);
+                              }
                             : null,
                       ),
                       Wrap(
@@ -3774,16 +4030,28 @@ class _AudioCounterScreenState extends State<AudioCounterScreen> {
                         runSpacing: 8,
                         children: [
                           FilledButton.icon(
-                            onPressed: () => _toggleAudioListener(!_isListening),
-                            icon: Icon(_isListening ? Icons.stop_circle_outlined : Icons.mic_outlined),
-                            label: Text(_isListening ? 'Stop Listening' : 'Start Listening'),
+                            onPressed: () =>
+                                _toggleAudioListener(!_isListening),
+                            icon: Icon(
+                              _isListening
+                                  ? Icons.stop_circle_outlined
+                                  : Icons.mic_outlined,
+                            ),
+                            label: Text(
+                              _isListening
+                                  ? 'Stop Listening'
+                                  : 'Start Listening',
+                            ),
                           ),
                           OutlinedButton.icon(
-                            onPressed: _totalShotsDetected > 0 ? _resetCounter : null,
+                            onPressed: _totalShotsDetected > 0
+                                ? _resetCounter
+                                : null,
                             icon: const Icon(Icons.refresh),
                             label: const Text('Reset'),
                           ),
-                          if (_totalShotsDetected > 0 && _selectedRifleId != null)
+                          if (_totalShotsDetected > 0 &&
+                              _selectedRifleId != null)
                             FilledButton.icon(
                               onPressed: _applyDetectedShotsToRifle,
                               icon: const Icon(Icons.check_circle_outline),
@@ -3894,13 +4162,34 @@ class _HomeShellState extends State<HomeShell> {
             onDestinationSelected: (i) => setState(() => _tab = i),
             labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
             destinations: const [
-              NavigationDestination(icon: Icon(Icons.event_note_outlined), label: 'Session'),
-              NavigationDestination(icon: Icon(Icons.ac_unit_outlined), label: 'Bore'),
-              NavigationDestination(icon: Icon(Icons.timer_outlined), label: 'Timer'),
-              NavigationDestination(icon: Icon(Icons.mic_outlined), label: 'Audio'),
-              NavigationDestination(icon: Icon(Icons.build_outlined), label: 'Gear'),
-              NavigationDestination(icon: Icon(Icons.list_alt_outlined), label: 'Data'),
-              NavigationDestination(icon: Icon(Icons.ios_share_outlined), label: 'Export'),
+              NavigationDestination(
+                icon: Icon(Icons.event_note_outlined),
+                label: 'Session',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.ac_unit_outlined),
+                label: 'Bore',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.timer_outlined),
+                label: 'Timer',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.mic_outlined),
+                label: 'Audio',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.build_outlined),
+                label: 'Gear',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.list_alt_outlined),
+                label: 'Data',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.ios_share_outlined),
+                label: 'Export',
+              ),
             ],
           ),
         );
@@ -3920,6 +4209,55 @@ class DataScreen extends StatefulWidget {
 class _DataScreenState extends State<DataScreen> {
   bool _rifleOnly = false;
   bool _allDistances = true;
+  String? _selectedRifleFilterId;
+  String? _selectedAmmoFilterId;
+
+  Map<String, Map<DistanceKey, DopeEntry>> _effectiveRifleOnlyMap() {
+    final explicit = widget.state.workingDopeRifleOnly;
+    final byAmmo = widget.state.workingDopeRifleAmmo;
+
+    final merged = <String, Map<DistanceKey, DopeEntry>>{
+      for (final entry in explicit.entries)
+        entry.key: {for (final row in entry.value.entries) row.key: row.value},
+    };
+
+    for (final entry in byAmmo.entries) {
+      final key = entry.key;
+      final bucket = entry.value;
+      if (bucket.isEmpty) continue;
+
+      final sample = bucket.values.first;
+      String? rifleId = sample.rifleId;
+      if (rifleId == null || rifleId.isEmpty) {
+        final sep = key.indexOf('_');
+        if (sep > 0) {
+          rifleId = key.substring(0, sep);
+        }
+      }
+      if (rifleId == null || rifleId.isEmpty) continue;
+
+      final target = merged.putIfAbsent(
+        rifleId,
+        () => <DistanceKey, DopeEntry>{},
+      );
+      for (final row in bucket.entries) {
+        final dk = row.key;
+        final incoming = row.value;
+        final current = target[dk];
+
+        // Keep explicit rifle-only values intact. If missing, prefer latest
+        // derived entry for this rifle+distance from rifle+ammo buckets.
+        if (explicit[rifleId]?.containsKey(dk) == true) {
+          continue;
+        }
+        if (current == null || incoming.time.isAfter(current.time)) {
+          target[dk] = incoming;
+        }
+      }
+    }
+
+    return merged;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -3928,7 +4266,9 @@ class _DataScreenState extends State<DataScreen> {
       builder: (context, _) {
         final rifles = widget.state.rifles;
         final withDope = rifles.where((r) => r.dope.trim().isNotEmpty).toList();
-        final wmap = _rifleOnly ? widget.state.workingDopeRifleOnly : widget.state.workingDopeRifleAmmo;
+        final wmap = _rifleOnly
+            ? _effectiveRifleOnlyMap()
+            : widget.state.workingDopeRifleAmmo;
 
         String rifleTitle(String? rifleId) {
           if (rifleId == null) return 'Unknown Rifle';
@@ -3950,16 +4290,128 @@ class _DataScreenState extends State<DataScreen> {
           if (ammo == null) return 'Deleted ammo';
           final name = (ammo.name ?? '').trim();
           if (name.isNotEmpty) return name;
-          final bullet = '${ammo.grain > 0 ? '${ammo.grain}gr ' : ''}${ammo.bullet}'.trim();
+          final bullet =
+              '${ammo.grain > 0 ? '${ammo.grain}gr ' : ''}${ammo.bullet}'
+                  .trim();
           if (bullet.isNotEmpty) return bullet;
           return ammo.caliber.trim().isEmpty ? 'Ammo' : ammo.caliber.trim();
         }
+
+        String? bucketRifleId(String key, Map<DistanceKey, DopeEntry> inner) {
+          if (_rifleOnly) return key;
+
+          String? rifleId = inner.isNotEmpty
+              ? inner.values.first.rifleId
+              : null;
+          if (rifleId == null || rifleId.isEmpty) {
+            final sep = key.indexOf('_');
+            if (sep > 0) {
+              rifleId = key.substring(0, sep);
+            }
+          }
+          return (rifleId == null || rifleId.isEmpty) ? null : rifleId;
+        }
+
+        String? bucketAmmoId(String key, Map<DistanceKey, DopeEntry> inner) {
+          if (_rifleOnly) return null;
+
+          String? ammoId = inner.isNotEmpty
+              ? inner.values.first.ammoLotId
+              : null;
+          if (ammoId == null || ammoId.isEmpty) {
+            final sep = key.indexOf('_');
+            if (sep > 0 && sep < key.length - 1) {
+              ammoId = key.substring(sep + 1);
+            }
+          }
+          return (ammoId == null || ammoId.isEmpty) ? null : ammoId;
+        }
+
+        final availableRifleIds = <String>{};
+        final availableAmmoIds = <String>{};
+        final ammoToRifles = <String, Set<String>>{};
+        for (final entry in wmap.entries) {
+          final key = entry.key;
+          final inner = entry.value;
+          final rifleId = bucketRifleId(key, inner);
+          final ammoId = bucketAmmoId(key, inner);
+          if (rifleId != null) {
+            availableRifleIds.add(rifleId);
+          }
+          if (!_rifleOnly && ammoId != null) {
+            availableAmmoIds.add(ammoId);
+            if (rifleId != null) {
+              ammoToRifles.putIfAbsent(ammoId, () => <String>{}).add(rifleId);
+            }
+          }
+        }
+
+        if (_selectedRifleFilterId != null &&
+            !availableRifleIds.contains(_selectedRifleFilterId)) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            setState(() {
+              _selectedRifleFilterId = null;
+              _selectedAmmoFilterId = null;
+            });
+          });
+        }
+
+        if (_rifleOnly && _selectedAmmoFilterId != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            setState(() => _selectedAmmoFilterId = null);
+          });
+        } else if (!_rifleOnly && _selectedAmmoFilterId != null) {
+          final selectedAmmoRifles =
+              ammoToRifles[_selectedAmmoFilterId!] ?? const <String>{};
+          final ammoStillValid =
+              availableAmmoIds.contains(_selectedAmmoFilterId) &&
+              (_selectedRifleFilterId == null ||
+                  selectedAmmoRifles.contains(_selectedRifleFilterId));
+          if (!ammoStillValid) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted) return;
+              setState(() => _selectedAmmoFilterId = null);
+            });
+          }
+        }
+
+        final rifleFilterOptions = availableRifleIds.toList()
+          ..sort(
+            (a, b) => rifleTitle(
+              a,
+            ).toLowerCase().compareTo(rifleTitle(b).toLowerCase()),
+          );
+        final ammoFilterOptions =
+            availableAmmoIds.where((ammoId) {
+              if (_selectedRifleFilterId == null) return true;
+              final rifles = ammoToRifles[ammoId] ?? const <String>{};
+              return rifles.contains(_selectedRifleFilterId);
+            }).toList()..sort(
+              (a, b) => ammoTitle(
+                a,
+              ).toLowerCase().compareTo(ammoTitle(b).toLowerCase()),
+            );
 
         final workingSections = <Widget>[];
         if (wmap.isNotEmpty) {
           final sortedKeys = wmap.keys.toList()..sort();
           for (final key in sortedKeys) {
             final inner = wmap[key]!;
+            final rifleIdForBucket = bucketRifleId(key, inner);
+            final ammoIdForBucket = bucketAmmoId(key, inner);
+
+            if (_selectedRifleFilterId != null &&
+                rifleIdForBucket != _selectedRifleFilterId) {
+              continue;
+            }
+            if (!_rifleOnly &&
+                _selectedAmmoFilterId != null &&
+                ammoIdForBucket != _selectedAmmoFilterId) {
+              continue;
+            }
+
             var dks = inner.keys.toList();
             dks.sort((a, b) => a.value.compareTo(b.value));
             if (!_allDistances) {
@@ -3970,24 +4422,8 @@ class _DataScreenState extends State<DataScreen> {
             if (_rifleOnly) {
               title = rifleTitle(key);
             } else {
-              String? rifleId;
-              String? ammoId;
-              if (inner.isNotEmpty) {
-                final sample = inner.values.first;
-                rifleId = sample.rifleId;
-                ammoId = sample.ammoLotId;
-              }
-
-              // Backward-compatible fallback for old persisted keys.
-              if (rifleId == null || ammoId == null) {
-                final sep = key.indexOf('_');
-                if (sep > 0 && sep < key.length - 1) {
-                  rifleId ??= key.substring(0, sep);
-                  ammoId ??= key.substring(sep + 1);
-                }
-              }
-
-              title = '${rifleTitle(rifleId)} / ${ammoTitle(ammoId)}';
+              title =
+                  '${rifleTitle(rifleIdForBucket)} / ${ammoTitle(ammoIdForBucket)}';
             }
 
             workingSections.add(
@@ -4010,13 +4446,41 @@ class _DataScreenState extends State<DataScreen> {
                         ],
                         rows: dks.map((dk) {
                           final e = inner[dk]!;
-                          return DataRow(cells: [
-                            DataCell(Text('${dk.value} ${dk.unit.name[0]}')),
-                            DataCell(Text(_cleanText('${e.elevation} ${e.elevationUnit.name}${e.elevationNotes.isNotEmpty ? " • ${e.elevationNotes}" : ""}'))),
-                            DataCell(Text(_cleanText('${e.windType.name}: ${e.windValue}${e.windNotes.isNotEmpty ? " • ${e.windNotes}" : ""}'))),
-                            DataCell(Text(e.windageLeft.toStringAsFixed(2))),
-                            DataCell(Text(e.windageRight.toStringAsFixed(2))),
-                          ]);
+                          final elevationText = _cleanText(
+                            '${e.elevation} ${e.elevationUnit.name}${e.elevationNotes.isNotEmpty ? " • ${e.elevationNotes}" : ""}',
+                          );
+                          final windText = _cleanText(
+                            '${e.windType.name}: ${e.windValue}${e.windNotes.isNotEmpty ? " • ${e.windNotes}" : ""}',
+                          );
+                          return DataRow(
+                            cells: [
+                              DataCell(Text('${dk.value} ${dk.unit.name[0]}')),
+                              DataCell(
+                                SizedBox(
+                                  width: 180,
+                                  child: Text(
+                                    elevationText,
+                                    softWrap: true,
+                                    maxLines: 3,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ),
+                              DataCell(
+                                SizedBox(
+                                  width: 220,
+                                  child: Text(
+                                    windText,
+                                    softWrap: true,
+                                    maxLines: 3,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ),
+                              DataCell(Text(e.windageLeft.toStringAsFixed(2))),
+                              DataCell(Text(e.windageRight.toStringAsFixed(2))),
+                            ],
+                          );
                         }).toList(),
                       ),
                     ),
@@ -4029,7 +4493,24 @@ class _DataScreenState extends State<DataScreen> {
           workingSections.add(
             Text(
               'No working DOPE yet. Promote from a session.',
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7)),
+              style: TextStyle(
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.7),
+              ),
+            ),
+          );
+        }
+
+        if (workingSections.isEmpty) {
+          workingSections.add(
+            Text(
+              'No working DOPE entries match the selected filter.',
+              style: TextStyle(
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.7),
+              ),
             ),
           );
         }
@@ -4053,14 +4534,21 @@ class _DataScreenState extends State<DataScreen> {
                         children: [
                           const Icon(Icons.my_location_outlined),
                           const SizedBox(width: 8),
-                          Text('DOPE (Quick Reference)', style: Theme.of(context).textTheme.titleMedium),
+                          Text(
+                            'DOPE (Quick Reference)',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
                         ],
                       ),
                       const SizedBox(height: 8),
                       if (withDope.isEmpty)
                         Text(
                           'No DOPE saved yet. Add it under Equipment -> Rifles.',
-                          style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7)),
+                          style: TextStyle(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurface.withValues(alpha: 0.7),
+                          ),
                         )
                       else
                         ...withDope.map(
@@ -4071,7 +4559,9 @@ class _DataScreenState extends State<DataScreen> {
                               children: [
                                 Text(
                                   '${r.name ?? 'Rifle'} • ${r.caliber}',
-                                  style: const TextStyle(fontWeight: FontWeight.w600),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                                 const SizedBox(height: 4),
                                 Text(r.dope),
@@ -4094,7 +4584,10 @@ class _DataScreenState extends State<DataScreen> {
                         children: [
                           const Icon(Icons.table_chart_outlined),
                           const SizedBox(width: 8),
-                          Text('Working DOPE Chart', style: Theme.of(context).textTheme.titleMedium),
+                          Text(
+                            'Working DOPE Chart',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
                           const Spacer(),
                           const Text('Rifle only'),
                           Switch(
@@ -4108,6 +4601,68 @@ class _DataScreenState extends State<DataScreen> {
                           ),
                         ],
                       ),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<String?>(
+                        initialValue: _selectedRifleFilterId,
+                        decoration: const InputDecoration(
+                          labelText: 'Rifle filter',
+                        ),
+                        items: [
+                          const DropdownMenuItem<String?>(
+                            value: null,
+                            child: Text('All rifles'),
+                          ),
+                          ...rifleFilterOptions.map(
+                            (rifleId) => DropdownMenuItem<String?>(
+                              value: rifleId,
+                              child: Text(
+                                rifleTitle(rifleId),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                        ],
+                        onChanged: (value) {
+                          setState(() {
+                            _selectedRifleFilterId = value;
+                            if (_selectedAmmoFilterId != null) {
+                              final ammoRifles =
+                                  ammoToRifles[_selectedAmmoFilterId!] ??
+                                  const <String>{};
+                              if (value != null &&
+                                  !ammoRifles.contains(value)) {
+                                _selectedAmmoFilterId = null;
+                              }
+                            }
+                          });
+                        },
+                      ),
+                      if (!_rifleOnly) ...[
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<String?>(
+                          initialValue: _selectedAmmoFilterId,
+                          decoration: const InputDecoration(
+                            labelText: 'Ammo filter',
+                          ),
+                          items: [
+                            const DropdownMenuItem<String?>(
+                              value: null,
+                              child: Text('All ammo'),
+                            ),
+                            ...ammoFilterOptions.map(
+                              (ammoId) => DropdownMenuItem<String?>(
+                                value: ammoId,
+                                child: Text(
+                                  ammoTitle(ammoId),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ),
+                          ],
+                          onChanged: (value) =>
+                              setState(() => _selectedAmmoFilterId = value),
+                        ),
+                      ],
                       const SizedBox(height: 8),
                       ...workingSections,
                     ],
@@ -4125,13 +4680,20 @@ class _DataScreenState extends State<DataScreen> {
                         children: [
                           const Icon(Icons.notifications_none),
                           const SizedBox(width: 8),
-                          Text('Maintenance reminders', style: Theme.of(context).textTheme.titleMedium),
+                          Text(
+                            'Maintenance reminders',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
                         ],
                       ),
                       const SizedBox(height: 8),
                       Text(
                         'Coming next: round-count reminders, cleaning schedule, and per-rifle checklists.',
-                        style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7)),
+                        style: TextStyle(
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withValues(alpha: 0.7),
+                        ),
                       ),
                     ],
                   ),
@@ -4160,7 +4722,10 @@ class _UsersScreenState extends State<UsersScreen> {
       builder: (_) => const _NewUserDialog(),
     );
     if (res == null) return;
-    widget.state.addUser(name: (res.name ?? res.identifier), identifier: res.identifier);
+    widget.state.addUser(
+      name: (res.name ?? res.identifier),
+      identifier: res.identifier,
+    );
   }
 
   @override
@@ -4204,7 +4769,9 @@ class _UsersScreenState extends State<UsersScreen> {
                 return ListTile(
                   title: Text(u.name ?? ''),
                   subtitle: Text(u.identifier),
-                  trailing: isActive ? const Icon(Icons.check_circle_outline) : null,
+                  trailing: isActive
+                      ? const Icon(Icons.check_circle_outline)
+                      : null,
                   onTap: () {
                     widget.state.switchUser(u);
                     Navigator.of(context).pop();
@@ -4240,7 +4807,8 @@ class SessionsScreen extends StatelessWidget {
     if (context.mounted) {
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => SessionDetailScreen(state: state, sessionId: created.id),
+          builder: (_) =>
+              SessionDetailScreen(state: state, sessionId: created.id),
         ),
       );
     }
@@ -4252,7 +4820,8 @@ class SessionsScreen extends StatelessWidget {
       animation: state,
       builder: (context, _) {
         final user = state.activeUser;
-        final sessions = [...state.sessions]..sort((a, b) => b.dateTime.compareTo(a.dateTime));
+        final sessions = [...state.sessions]
+          ..sort((a, b) => b.dateTime.compareTo(a.dateTime));
 
         if (user == null) {
           return const _EmptyState(
@@ -4284,18 +4853,18 @@ class SessionsScreen extends StatelessWidget {
             itemBuilder: (context, index) {
               final s = sessions[index];
               final rifle = state.rifleById(s.rifleId);
-        final ammo = state.ammoById(s.ammoLotId);
+              final ammo = state.ammoById(s.ammoLotId);
 
-        String joinNonEmpty(List<String?> parts) {
-          final out = <String>[];
-          for (final p in parts) {
-            final v = (p ?? '').trim();
-            if (v.isNotEmpty) out.add(v);
-          }
-          return out.join(' • ');
-        }
+              String joinNonEmpty(List<String?> parts) {
+                final out = <String>[];
+                for (final p in parts) {
+                  final v = (p ?? '').trim();
+                  if (v.isNotEmpty) out.add(v);
+                }
+                return out.join(' • ');
+              }
 
-        final subtitleBits = <String>[
+              final subtitleBits = <String>[
                 _fmtDateTime(s.dateTime),
                 if (rifle != null) rifle.name ?? '',
                 if (ammo != null) ammo.name ?? '',
@@ -4318,7 +4887,8 @@ class SessionsScreen extends StatelessWidget {
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => SessionDetailScreen(state: state, sessionId: s.id),
+                      builder: (_) =>
+                          SessionDetailScreen(state: state, sessionId: s.id),
                     ),
                   );
                 },
@@ -4371,7 +4941,9 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
   void initState() {
     super.initState();
     _elevationUnit = widget.lockedUnit;
-    _ammoLotId = widget.defaultAmmoId ?? (widget.ammoOptions.isNotEmpty ? widget.ammoOptions.first.id : null);
+    _ammoLotId =
+        widget.defaultAmmoId ??
+        (widget.ammoOptions.isNotEmpty ? widget.ammoOptions.first.id : null);
   }
 
   final _windValueCtrl = TextEditingController();
@@ -4380,7 +4952,6 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
   double _windageRight = 0.0;
   bool _promote = true;
   bool _rifleOnly = false;
-
 
   @override
   void dispose() {
@@ -4392,7 +4963,9 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final ammoById = <String, AmmoLot>{ for (final a in widget.ammoOptions) a.id: a };
+    final ammoById = <String, AmmoLot>{
+      for (final a in widget.ammoOptions) a.id: a,
+    };
     final uniqueAmmoOptions = ammoById.values.toList();
     final safeAmmoLotId = ammoById.containsKey(_ammoLotId)
         ? _ammoLotId
@@ -4406,14 +4979,21 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
           children: [
             DropdownButtonFormField<String?>(
               initialValue: safeAmmoLotId,
-              decoration: const InputDecoration(labelText: 'Ammo (for this entry)'),
+              decoration: const InputDecoration(
+                labelText: 'Ammo (for this entry)',
+              ),
               items: uniqueAmmoOptions
-                  .map((a) => DropdownMenuItem<String?>(value: a.id, child: Text('${a.name ?? 'Ammo'} (${a.caliber})')))
+                  .map(
+                    (a) => DropdownMenuItem<String?>(
+                      value: a.id,
+                      child: Text('${a.name ?? 'Ammo'} (${a.caliber})'),
+                    ),
+                  )
                   .toList(),
               onChanged: (v) => setState(() => _ammoLotId = v),
             ),
 
-const SizedBox(height: 12),
+            const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
@@ -4427,7 +5007,9 @@ const SizedBox(height: 12),
                 DropdownButton<DistanceUnit>(
                   value: _distanceUnit,
                   items: DistanceUnit.values
-                      .map((u) => DropdownMenuItem(value: u, child: Text(u.name)))
+                      .map(
+                        (u) => DropdownMenuItem(value: u, child: Text(u.name)),
+                      )
                       .toList(),
                   onChanged: (v) => setState(() => _distanceUnit = v!),
                 ),
@@ -4445,33 +5027,62 @@ const SizedBox(height: 12),
                       onPressed: () {
                         final step = _elevationUnit == ElevationUnit.mil
                             ? 0.1
-                            : (_elevationUnit == ElevationUnit.moa ? 0.25 : 0.5);
-                        setState(() => _elevation = (_elevation - step).clamp(0.0, 999.0));
+                            : (_elevationUnit == ElevationUnit.moa
+                                  ? 0.25
+                                  : 0.5);
+                        setState(
+                          () => _elevation = (_elevation - step).clamp(
+                            0.0,
+                            999.0,
+                          ),
+                        );
                       },
                       icon: const Icon(Icons.remove_circle_outline),
                     ),
-                    Text(_elevation.toStringAsFixed(2), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                    Text(
+                      _elevation.toStringAsFixed(2),
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                     IconButton(
                       tooltip: '+',
                       onPressed: () {
                         final step = _elevationUnit == ElevationUnit.mil
                             ? 0.1
-                            : (_elevationUnit == ElevationUnit.moa ? 0.25 : 0.5);
-                        setState(() => _elevation = (_elevation + step).clamp(0.0, 999.0));
+                            : (_elevationUnit == ElevationUnit.moa
+                                  ? 0.25
+                                  : 0.5);
+                        setState(
+                          () => _elevation = (_elevation + step).clamp(
+                            0.0,
+                            999.0,
+                          ),
+                        );
                       },
                       icon: const Icon(Icons.add_circle_outline),
                     ),
                     const SizedBox(width: 12),
                     DropdownButton<ElevationUnit>(
                       value: _elevationUnit,
-                      items: ElevationUnit.values.map((u) => DropdownMenuItem(value: u, child: Text(u.name.toUpperCase()))).toList(),
+                      items: ElevationUnit.values
+                          .map(
+                            (u) => DropdownMenuItem(
+                              value: u,
+                              child: Text(u.name.toUpperCase()),
+                            ),
+                          )
+                          .toList(),
                       onChanged: (v) => setState(() => _elevationUnit = v!),
                     ),
                   ],
                 ),
                 TextField(
                   controller: _elevationNotesCtrl,
-                  decoration: const InputDecoration(labelText: 'Elevation notes (optional)'),
+                  decoration: const InputDecoration(
+                    labelText: 'Elevation notes (optional)',
+                  ),
                 ),
               ],
             ),
@@ -4508,8 +5119,14 @@ const SizedBox(height: 12),
                           isSelected: [isLeft, !isLeft],
                           onPressed: (i) => setWind(i == 0, val),
                           children: const [
-                            Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('Left')),
-                            Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('Right')),
+                            Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 10),
+                              child: Text('Left'),
+                            ),
+                            Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 10),
+                              child: Text('Right'),
+                            ),
                           ],
                         ),
                         const SizedBox(width: 12),
@@ -4518,7 +5135,13 @@ const SizedBox(height: 12),
                           onPressed: () => setWind(isLeft, val - step),
                           icon: const Icon(Icons.remove_circle_outline),
                         ),
-                        Text(val.toStringAsFixed(2), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                        Text(
+                          val.toStringAsFixed(2),
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                         IconButton(
                           tooltip: '+',
                           onPressed: () => setWind(isLeft, val + step),
@@ -4545,7 +5168,10 @@ const SizedBox(height: 12),
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
         ElevatedButton(
           onPressed: () {
             final dist = double.tryParse(_distanceCtrl.text.trim());
@@ -4582,10 +5208,7 @@ class _SessionShotTimerCard extends StatefulWidget {
   final AppState state;
   final String sessionId;
 
-  const _SessionShotTimerCard({
-    required this.state,
-    required this.sessionId,
-  });
+  const _SessionShotTimerCard({required this.state, required this.sessionId});
 
   @override
   State<_SessionShotTimerCard> createState() => _SessionShotTimerCardState();
@@ -4617,7 +5240,10 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
 
   bool get _isRunning => _stopwatch.isRunning;
   bool get _isActive => _isRunning || _isArmed;
-  bool get _audioAssistSupported => !kIsWeb && (defaultTargetPlatform == TargetPlatform.iOS || defaultTargetPlatform == TargetPlatform.android);
+  bool get _audioAssistSupported =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.iOS ||
+          defaultTargetPlatform == TargetPlatform.android);
 
   @override
   void initState() {
@@ -4629,7 +5255,8 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
   void didUpdateWidget(covariant _SessionShotTimerCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!_isRunning &&
-        (oldWidget.sessionId != widget.sessionId || oldWidget.state != widget.state)) {
+        (oldWidget.sessionId != widget.sessionId ||
+            oldWidget.state != widget.state)) {
       _loadFromSession();
     }
   }
@@ -4647,14 +5274,19 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
   void _loadFromSession() {
     final session = widget.state.getSessionById(widget.sessionId);
     _baseElapsedMs = 0;
-    _elapsedMs = ((session?.shotTimerElapsedMs ?? 0) > 0) ? session!.shotTimerElapsedMs! : 0;
-    _firstShotMs = ((session?.shotTimerFirstShotMs ?? 0) > 0) ? session!.shotTimerFirstShotMs : null;
+    _elapsedMs = ((session?.shotTimerElapsedMs ?? 0) > 0)
+        ? session!.shotTimerElapsedMs!
+        : 0;
+    _firstShotMs = ((session?.shotTimerFirstShotMs ?? 0) > 0)
+        ? session!.shotTimerFirstShotMs
+        : null;
     _splitMs = [
       for (final split in session?.shotTimerSplitMs ?? const <int>[])
         if (split > 0) split,
     ];
     if (_selectedRifleId == null) {
-      _selectedRifleId = session?.rifleId ?? widget.state.shotTimerSelectedRifleId;
+      _selectedRifleId =
+          session?.rifleId ?? widget.state.shotTimerSelectedRifleId;
       if (_selectedRifleId == null && widget.state.rifles.isNotEmpty) {
         _selectedRifleId = widget.state.rifles.first.id;
       }
@@ -4699,12 +5331,16 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
             width: 96,
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
-              color: goalMs > 0 && marks[i] > goalMs ? Colors.red.withValues(alpha: 0.12) : null,
+              color: goalMs > 0 && marks[i] > goalMs
+                  ? Colors.red.withValues(alpha: 0.12)
+                  : null,
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
                 color: goalMs > 0 && marks[i] > goalMs
                     ? Colors.red.withValues(alpha: 0.55)
-                    : Theme.of(context).colorScheme.outline.withValues(alpha: 0.35),
+                    : Theme.of(
+                        context,
+                      ).colorScheme.outline.withValues(alpha: 0.35),
               ),
             ),
             child: Column(
@@ -4715,7 +5351,9 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    color: goalMs > 0 && marks[i] > goalMs ? Colors.red.shade700 : null,
+                    color: goalMs > 0 && marks[i] > goalMs
+                        ? Colors.red.shade700
+                        : null,
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -4724,7 +5362,9 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: goalMs > 0 && marks[i] > goalMs ? Colors.red.shade700 : null,
+                    color: goalMs > 0 && marks[i] > goalMs
+                        ? Colors.red.shade700
+                        : null,
                   ),
                 ),
               ],
@@ -4756,7 +5396,10 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
     _ticker = Timer.periodic(const Duration(milliseconds: 16), (_) async {
       if (!mounted) return;
       if (_isArmed) {
-        final next = math.max(0, (_armedUntil?.difference(DateTime.now()).inMilliseconds ?? 0));
+        final next = math.max(
+          0,
+          (_armedUntil?.difference(DateTime.now()).inMilliseconds ?? 0),
+        );
         if (next <= 0) {
           _beginRun();
           _beep(); // Fire and forget - don't await to avoid blocking timer
@@ -4804,7 +5447,8 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
     if (!_audioAssistSupported) {
       setState(() {
         _audioAssistEnabled = false;
-        _audioAssistMessage = 'Audio assist is available on iPhone and Android only.';
+        _audioAssistMessage =
+            'Audio assist is available on iPhone and Android only.';
       });
       return;
     }
@@ -4827,18 +5471,24 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
           if (!mounted) return;
           final maxDb = reading.maxDecibel;
           final now = DateTime.now();
-          final shouldMark = _audioAssistEnabled &&
+          final shouldMark =
+              _audioAssistEnabled &&
               _isRunning &&
               maxDb >= _audioThresholdDb &&
-              (_lastAudioShotAt == null || now.difference(_lastAudioShotAt!).inMilliseconds >= 250);
+              (_lastAudioShotAt == null ||
+                  now.difference(_lastAudioShotAt!).inMilliseconds >= 250);
 
           setState(() {
             _latestDb = maxDb;
             if (shouldMark) {
               _lastAudioShotAt = now;
               _recordShotAt(_currentElapsedMs());
-              if (widget.state.shotTimerApplyAudioShotCountToRifle && _selectedRifleId != null) {
-                widget.state.addRifleRounds(rifleId: _selectedRifleId!, roundCount: 1);
+              if (widget.state.shotTimerApplyAudioShotCountToRifle &&
+                  _selectedRifleId != null) {
+                widget.state.addRifleRounds(
+                  rifleId: _selectedRifleId!,
+                  roundCount: 1,
+                );
               } else {
                 _audioShotCount += 1;
               }
@@ -4852,7 +5502,8 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
           if (!mounted) return;
           setState(() {
             _audioAssistEnabled = false;
-            _audioAssistMessage = 'Microphone unavailable. Check permissions and try again.';
+            _audioAssistMessage =
+                'Microphone unavailable. Check permissions and try again.';
           });
         },
         cancelOnError: true,
@@ -4860,13 +5511,15 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
       if (!mounted) return;
       setState(() {
         _audioAssistEnabled = true;
-        _audioAssistMessage = 'Audio assist armed. Loud impulses can auto-mark shots.';
+        _audioAssistMessage =
+            'Audio assist armed. Loud impulses can auto-mark shots.';
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _audioAssistEnabled = false;
-        _audioAssistMessage = 'Microphone unavailable. Check permissions and try again.';
+        _audioAssistMessage =
+            'Microphone unavailable. Check permissions and try again.';
       });
     }
   }
@@ -4888,7 +5541,9 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
     setState(() {
       _countdownRemainingMs = _startDelayMs;
       _isArmed = _startDelayMs > 0;
-      _armedUntil = _startDelayMs > 0 ? DateTime.now().add(Duration(milliseconds: _startDelayMs)) : null;
+      _armedUntil = _startDelayMs > 0
+          ? DateTime.now().add(Duration(milliseconds: _startDelayMs))
+          : null;
     });
     if (!_isArmed) {
       _beginRun();
@@ -4916,7 +5571,9 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Save Timer?'),
-        content: const Text('Do you want to save this timer run to the session, delete it, or keep it paused for now?'),
+        content: const Text(
+          'Do you want to save this timer run to the session, delete it, or keep it paused for now?',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, 'keep'),
@@ -5012,7 +5669,9 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
       parts.add('first ${_fmtMs(run.firstShotMs)}');
     }
     if (run.splitMs.isNotEmpty) {
-      parts.add('${run.splitMs.length} split${run.splitMs.length == 1 ? '' : 's'}');
+      parts.add(
+        '${run.splitMs.length} split${run.splitMs.length == 1 ? '' : 's'}',
+      );
     }
     return parts.join(' • ');
   }
@@ -5022,7 +5681,8 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
     final session = widget.state.getSessionById(widget.sessionId);
     final isEnded = session?.endedAt != null;
     final totalShotsMarked = (_firstShotMs == null ? 0 : 1) + _splitMs.length;
-    final savedRuns = session?.timerRuns.reversed.toList() ?? const <SessionTimerRun>[];
+    final savedRuns =
+        session?.timerRuns.reversed.toList() ?? const <SessionTimerRun>[];
     final currentShotMarks = _shotMarks(_firstShotMs, _splitMs);
 
     return Card(
@@ -5058,7 +5718,9 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
             ),
             const SizedBox(height: 8),
             Text(
-              _isArmed ? _fmtMs(_countdownRemainingMs) : _fmtMs(_currentElapsedMs()),
+              _isArmed
+                  ? _fmtMs(_countdownRemainingMs)
+                  : _fmtMs(_currentElapsedMs()),
               style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
@@ -5067,29 +5729,42 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
               runSpacing: 8,
               children: [
                 Chip(
-                  label: Text('First shot: ${_firstShotMs == null ? '-' : _fmtMs(_firstShotMs!)}'),
+                  label: Text(
+                    'First shot: ${_firstShotMs == null ? '-' : _fmtMs(_firstShotMs!)}',
+                  ),
                 ),
                 Chip(
-                  label: Text('Splits: ${_splitMs.isEmpty ? '-' : _splitMs.map(_fmtMs).join(', ')}'),
+                  label: Text(
+                    'Splits: ${_splitMs.isEmpty ? '-' : _splitMs.map(_fmtMs).join(', ')}',
+                  ),
                 ),
-                Chip(
-                  label: Text('Marked shots: $totalShotsMarked'),
-                ),
+                Chip(label: Text('Marked shots: $totalShotsMarked')),
                 if (_startDelayMs > 0)
                   Chip(
-                    label: Text('Delay: ${(_startDelayMs / 1000).toStringAsFixed(1)}s'),
+                    label: Text(
+                      'Delay: ${(_startDelayMs / 1000).toStringAsFixed(1)}s',
+                    ),
                   ),
                 if (_goalMs > 0)
                   Chip(
-                    avatar: Icon(Icons.flag_outlined, size: 18, color: _goalAlertPlayed ? Colors.red.shade700 : null),
-                    label: Text('Goal: ${(_goalMs / 1000).toStringAsFixed(1)}s'),
+                    avatar: Icon(
+                      Icons.flag_outlined,
+                      size: 18,
+                      color: _goalAlertPlayed ? Colors.red.shade700 : null,
+                    ),
+                    label: Text(
+                      'Goal: ${(_goalMs / 1000).toStringAsFixed(1)}s',
+                    ),
                   ),
               ],
             ),
             const SizedBox(height: 8),
             const Align(
               alignment: Alignment.centerLeft,
-              child: Text('Shot Chart', style: TextStyle(fontWeight: FontWeight.w700)),
+              child: Text(
+                'Shot Chart',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
             ),
             const SizedBox(height: 6),
             _shotMarkChart(currentShotMarks, goalMs: _goalMs),
@@ -5099,7 +5774,9 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
                 Expanded(
                   child: TextFormField(
                     controller: _delayCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     enabled: !isEnded && !_isActive,
                     decoration: const InputDecoration(
                       labelText: 'Delay Start (sec)',
@@ -5111,7 +5788,9 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
                 Expanded(
                   child: TextFormField(
                     controller: _goalCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     enabled: !isEnded && !_isActive,
                     decoration: const InputDecoration(
                       labelText: 'Time Goal (sec)',
@@ -5136,8 +5815,18 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
                             _start();
                           }
                         },
-                  icon: Icon(_isActive ? Icons.stop_circle_outlined : Icons.play_arrow_outlined),
-                  label: Text(_isActive ? 'Stop' : ((_elapsedMs > 0 || totalShotsMarked > 0) ? 'Start / Resume' : 'Start')),
+                  icon: Icon(
+                    _isActive
+                        ? Icons.stop_circle_outlined
+                        : Icons.play_arrow_outlined,
+                  ),
+                  label: Text(
+                    _isActive
+                        ? 'Stop'
+                        : ((_elapsedMs > 0 || totalShotsMarked > 0)
+                              ? 'Start / Resume'
+                              : 'Start'),
+                  ),
                 ),
                 OutlinedButton.icon(
                   onPressed: _isRunning ? _markShot : null,
@@ -5145,7 +5834,10 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
                   label: const Text('Lap / Shot'),
                 ),
                 TextButton.icon(
-                  onPressed: (!_isRunning && (_elapsedMs > 0 || totalShotsMarked > 0)) ? _reset : null,
+                  onPressed:
+                      (!_isRunning && (_elapsedMs > 0 || totalShotsMarked > 0))
+                      ? _reset
+                      : null,
                   icon: const Icon(Icons.refresh),
                   label: const Text('Clear'),
                 ),
@@ -5154,27 +5846,38 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
             const SizedBox(height: 8),
             Text(
               'Records total elapsed time, first-shot time, and split times for this session.',
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.72)),
+              style: TextStyle(
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.72),
+              ),
             ),
             const SizedBox(height: 12),
             SwitchListTile.adaptive(
               contentPadding: EdgeInsets.zero,
               title: const Text('Audio Assist'),
-              subtitle: Text(_audioAssistSupported
-                  ? (_audioAssistEnabled
-                      ? 'Microphone listening for loud shot impulses.'
-                      : 'Optional microphone assist for auto-marking shots.')
-                  : 'Available only in iPhone and Android app builds.'),
+              subtitle: Text(
+                _audioAssistSupported
+                    ? (_audioAssistEnabled
+                          ? 'Microphone listening for loud shot impulses.'
+                          : 'Optional microphone assist for auto-marking shots.')
+                    : 'Available only in iPhone and Android app builds.',
+              ),
               value: _audioAssistEnabled,
               onChanged: isEnded ? null : (value) => _setAudioAssist(value),
             ),
             if (widget.state.rifles.isNotEmpty) ...[
               const SizedBox(height: 8),
               DropdownButtonFormField<String>(
-                value: _selectedRifleId,
+                initialValue: _selectedRifleId,
                 decoration: const InputDecoration(labelText: 'Apply to Rifle'),
                 items: widget.state.rifles
-                    .map((rifle) => DropdownMenuItem(value: rifle.id, child: Text(_rifleDropdownLabel(rifle))))
+                    .map(
+                      (rifle) => DropdownMenuItem(
+                        value: rifle.id,
+                        child: Text(_rifleDropdownLabel(rifle)),
+                      ),
+                    )
                     .toList(),
                 onChanged: isEnded
                     ? null
@@ -5188,25 +5891,42 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
               SwitchListTile.adaptive(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('Auto-apply audio shot count to rifle'),
-                subtitle: const Text('Increment selected rifle round count for auto-marked audio shots'),
+                subtitle: const Text(
+                  'Increment selected rifle round count for auto-marked audio shots',
+                ),
                 value: widget.state.shotTimerApplyAudioShotCountToRifle,
-                onChanged: isEnded ? null : (v) => widget.state.setShotTimerApplyAudioShotCountToRifle(v),
+                onChanged: isEnded
+                    ? null
+                    : (v) => widget.state
+                          .setShotTimerApplyAudioShotCountToRifle(v),
               ),
               if (_audioShotCount > 0 && _selectedRifleId != null)
                 FilledButton.icon(
                   onPressed: isEnded
                       ? null
                       : () {
-                          widget.state.addRifleRounds(rifleId: _selectedRifleId!, roundCount: _audioShotCount);
+                          widget.state.addRifleRounds(
+                            rifleId: _selectedRifleId!,
+                            roundCount: _audioShotCount,
+                          );
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Applied $_audioShotCount shots to rifle')),
+                            SnackBar(
+                              content: Text(
+                                'Applied $_audioShotCount shots to rifle',
+                              ),
+                            ),
                           );
                           setState(() => _audioShotCount = 0);
                         },
                   icon: const Icon(Icons.check_circle_outline),
-                  label: Text('Apply $_audioShotCount audio shots to rifle now'),
+                  label: Text(
+                    'Apply $_audioShotCount audio shots to rifle now',
+                  ),
                 ),
-              Text('Audio-shot detections: $_audioShotCount', style: const TextStyle(fontSize: 13)),
+              Text(
+                'Audio-shot detections: $_audioShotCount',
+                style: const TextStyle(fontSize: 13),
+              ),
             ],
             Row(
               children: [
@@ -5230,9 +5950,13 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                Chip(label: Text('Live level: ${_latestDb.toStringAsFixed(1)} dB')),
-                if (_audioAssistMessage != null) Chip(label: Text(_audioAssistMessage!)),
-                if (!_audioAssistSupported) const Chip(label: Text('Phone app only')),
+                Chip(
+                  label: Text('Live level: ${_latestDb.toStringAsFixed(1)} dB'),
+                ),
+                if (_audioAssistMessage != null)
+                  Chip(label: Text(_audioAssistMessage!)),
+                if (!_audioAssistSupported)
+                  const Chip(label: Text('Phone app only')),
               ],
             ),
             if (savedRuns.isNotEmpty) ...[
@@ -5256,13 +5980,18 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
                           if (run.startDelayMs > 0 || run.goalMs > 0)
                             Text(
                               [
-                                if (run.startDelayMs > 0) 'Delay ${_fmtMs(run.startDelayMs)}',
-                                if (run.goalMs > 0) 'Goal ${_fmtMs(run.goalMs)}',
+                                if (run.startDelayMs > 0)
+                                  'Delay ${_fmtMs(run.startDelayMs)}',
+                                if (run.goalMs > 0)
+                                  'Goal ${_fmtMs(run.goalMs)}',
                               ].join(' | '),
                             ),
                           const SizedBox(height: 6),
                           _shotMarkChart(
-                            _shotMarks(run.firstShotMs > 0 ? run.firstShotMs : null, run.splitMs),
+                            _shotMarks(
+                              run.firstShotMs > 0 ? run.firstShotMs : null,
+                              run.splitMs,
+                            ),
                             goalMs: run.goalMs,
                           ),
                         ],
@@ -5275,14 +6004,18 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
                             context: context,
                             builder: (_) => AlertDialog(
                               title: const Text('Delete saved run?'),
-                              content: const Text('This removes the saved timer run from this session.'),
+                              content: const Text(
+                                'This removes the saved timer run from this session.',
+                              ),
                               actions: [
                                 TextButton(
-                                  onPressed: () => Navigator.of(context).pop(false),
+                                  onPressed: () =>
+                                      Navigator.of(context).pop(false),
                                   child: const Text('Cancel'),
                                 ),
                                 FilledButton(
-                                  onPressed: () => Navigator.of(context).pop(true),
+                                  onPressed: () =>
+                                      Navigator.of(context).pop(true),
                                   child: const Text('Delete'),
                                 ),
                               ],
@@ -5314,14 +6047,10 @@ class ShotTimerToolScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Shot Timer'),
-      ),
+      appBar: AppBar(title: const Text('Shot Timer')),
       body: ListView(
         padding: const EdgeInsets.all(16),
-        children: [
-          _StandaloneShotTimerCard(state: state),
-        ],
+        children: [_StandaloneShotTimerCard(state: state)],
       ),
     );
   }
@@ -5333,7 +6062,8 @@ class _StandaloneShotTimerCard extends StatefulWidget {
   const _StandaloneShotTimerCard({required this.state});
 
   @override
-  State<_StandaloneShotTimerCard> createState() => _StandaloneShotTimerCardState();
+  State<_StandaloneShotTimerCard> createState() =>
+      _StandaloneShotTimerCardState();
 }
 
 class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
@@ -5362,13 +6092,17 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
 
   bool get _isRunning => _stopwatch.isRunning;
   bool get _isActive => _isRunning || _isArmed;
-  bool get _audioAssistSupported => !kIsWeb && (defaultTargetPlatform == TargetPlatform.iOS || defaultTargetPlatform == TargetPlatform.android);
+  bool get _audioAssistSupported =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.iOS ||
+          defaultTargetPlatform == TargetPlatform.android);
 
   @override
   void initState() {
     super.initState();
     if (widget.state.rifles.isNotEmpty) {
-      _selectedRifleId = widget.state.shotTimerSelectedRifleId ?? widget.state.rifles.first.id;
+      _selectedRifleId =
+          widget.state.shotTimerSelectedRifleId ?? widget.state.rifles.first.id;
       widget.state.setShotTimerSelectedRifleId(_selectedRifleId);
     }
     _audioThresholdDb = widget.state.audioThresholdDb;
@@ -5422,12 +6156,16 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
             width: 96,
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
-              color: goalMs > 0 && marks[i] > goalMs ? Colors.red.withValues(alpha: 0.12) : null,
+              color: goalMs > 0 && marks[i] > goalMs
+                  ? Colors.red.withValues(alpha: 0.12)
+                  : null,
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
                 color: goalMs > 0 && marks[i] > goalMs
                     ? Colors.red.withValues(alpha: 0.55)
-                    : Theme.of(context).colorScheme.outline.withValues(alpha: 0.35),
+                    : Theme.of(
+                        context,
+                      ).colorScheme.outline.withValues(alpha: 0.35),
               ),
             ),
             child: Column(
@@ -5438,7 +6176,9 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    color: goalMs > 0 && marks[i] > goalMs ? Colors.red.shade700 : null,
+                    color: goalMs > 0 && marks[i] > goalMs
+                        ? Colors.red.shade700
+                        : null,
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -5447,7 +6187,9 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: goalMs > 0 && marks[i] > goalMs ? Colors.red.shade700 : null,
+                    color: goalMs > 0 && marks[i] > goalMs
+                        ? Colors.red.shade700
+                        : null,
                   ),
                 ),
               ],
@@ -5479,7 +6221,10 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
     _ticker = Timer.periodic(const Duration(milliseconds: 16), (_) async {
       if (!mounted) return;
       if (_isArmed) {
-        final next = math.max(0, (_armedUntil?.difference(DateTime.now()).inMilliseconds ?? 0));
+        final next = math.max(
+          0,
+          (_armedUntil?.difference(DateTime.now()).inMilliseconds ?? 0),
+        );
         if (next <= 0) {
           _beginRun();
           _beep(); // Fire and forget - don't await to avoid blocking timer
@@ -5527,7 +6272,8 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
     if (!_audioAssistSupported) {
       setState(() {
         _audioAssistEnabled = false;
-        _audioAssistMessage = 'Audio assist is available on iPhone and Android only.';
+        _audioAssistMessage =
+            'Audio assist is available on iPhone and Android only.';
       });
       return;
     }
@@ -5550,10 +6296,12 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
           if (!mounted) return;
           final maxDb = reading.maxDecibel;
           final now = DateTime.now();
-          final shouldMark = _audioAssistEnabled &&
+          final shouldMark =
+              _audioAssistEnabled &&
               _isRunning &&
               maxDb >= _audioThresholdDb &&
-              (_lastAudioShotAt == null || now.difference(_lastAudioShotAt!).inMilliseconds >= 250);
+              (_lastAudioShotAt == null ||
+                  now.difference(_lastAudioShotAt!).inMilliseconds >= 250);
 
           setState(() {
             _latestDb = maxDb;
@@ -5567,7 +6315,8 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
           if (!mounted) return;
           setState(() {
             _audioAssistEnabled = false;
-            _audioAssistMessage = 'Microphone unavailable. Check permissions and try again.';
+            _audioAssistMessage =
+                'Microphone unavailable. Check permissions and try again.';
           });
         },
         cancelOnError: true,
@@ -5575,13 +6324,15 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
       if (!mounted) return;
       setState(() {
         _audioAssistEnabled = true;
-        _audioAssistMessage = 'Audio assist armed. Loud impulses can auto-mark shots.';
+        _audioAssistMessage =
+            'Audio assist armed. Loud impulses can auto-mark shots.';
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _audioAssistEnabled = false;
-        _audioAssistMessage = 'Microphone unavailable. Check permissions and try again.';
+        _audioAssistMessage =
+            'Microphone unavailable. Check permissions and try again.';
       });
     }
   }
@@ -5594,7 +6345,9 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
     setState(() {
       _countdownRemainingMs = _startDelayMs;
       _isArmed = _startDelayMs > 0;
-      _armedUntil = _startDelayMs > 0 ? DateTime.now().add(Duration(milliseconds: _startDelayMs)) : null;
+      _armedUntil = _startDelayMs > 0
+          ? DateTime.now().add(Duration(milliseconds: _startDelayMs))
+          : null;
     });
     if (!_isArmed) {
       _beginRun();
@@ -5682,7 +6435,10 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
             Row(
               children: [
                 const Expanded(
-                  child: Text('Standalone Shot Timer', style: TextStyle(fontWeight: FontWeight.w700)),
+                  child: Text(
+                    'Standalone Shot Timer',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
                 ),
                 if (_isArmed)
                   const Chip(
@@ -5698,7 +6454,9 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
             ),
             const SizedBox(height: 8),
             Text(
-              _isArmed ? _fmtMs(_countdownRemainingMs) : _fmtMs(_currentElapsedMs()),
+              _isArmed
+                  ? _fmtMs(_countdownRemainingMs)
+                  : _fmtMs(_currentElapsedMs()),
               style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
@@ -5706,22 +6464,43 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                Chip(label: Text('First shot: ${_firstShotMs == null ? '-' : _fmtMs(_firstShotMs!)}')),
-                Chip(label: Text('Splits: ${_splitMs.isEmpty ? '-' : _splitMs.map(_fmtMs).join(', ')}')),
+                Chip(
+                  label: Text(
+                    'First shot: ${_firstShotMs == null ? '-' : _fmtMs(_firstShotMs!)}',
+                  ),
+                ),
+                Chip(
+                  label: Text(
+                    'Splits: ${_splitMs.isEmpty ? '-' : _splitMs.map(_fmtMs).join(', ')}',
+                  ),
+                ),
                 Chip(label: Text('Marked shots: $totalShotsMarked')),
                 if (_startDelayMs > 0)
-                  Chip(label: Text('Delay: ${(_startDelayMs / 1000).toStringAsFixed(1)}s')),
+                  Chip(
+                    label: Text(
+                      'Delay: ${(_startDelayMs / 1000).toStringAsFixed(1)}s',
+                    ),
+                  ),
                 if (_goalMs > 0)
                   Chip(
-                    avatar: Icon(Icons.flag_outlined, size: 18, color: _goalAlertPlayed ? Colors.red.shade700 : null),
-                    label: Text('Goal: ${(_goalMs / 1000).toStringAsFixed(1)}s'),
+                    avatar: Icon(
+                      Icons.flag_outlined,
+                      size: 18,
+                      color: _goalAlertPlayed ? Colors.red.shade700 : null,
+                    ),
+                    label: Text(
+                      'Goal: ${(_goalMs / 1000).toStringAsFixed(1)}s',
+                    ),
                   ),
               ],
             ),
             const SizedBox(height: 8),
             const Align(
               alignment: Alignment.centerLeft,
-              child: Text('Shot Chart', style: TextStyle(fontWeight: FontWeight.w700)),
+              child: Text(
+                'Shot Chart',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
             ),
             const SizedBox(height: 6),
             _shotMarkChart(shotMarks, goalMs: _goalMs),
@@ -5731,7 +6510,9 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
                 Expanded(
                   child: TextFormField(
                     controller: _delayCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     enabled: !_isActive,
                     decoration: const InputDecoration(
                       labelText: 'Delay Start (sec)',
@@ -5743,7 +6524,9 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
                 Expanded(
                   child: TextFormField(
                     controller: _goalCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     enabled: !_isActive,
                     decoration: const InputDecoration(
                       labelText: 'Time Goal (sec)',
@@ -5766,8 +6549,18 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
                       _start();
                     }
                   },
-                  icon: Icon(_isActive ? Icons.stop_circle_outlined : Icons.play_arrow_outlined),
-                  label: Text(_isActive ? 'Stop' : ((_elapsedMs > 0 || totalShotsMarked > 0) ? 'Start / Resume' : 'Start')),
+                  icon: Icon(
+                    _isActive
+                        ? Icons.stop_circle_outlined
+                        : Icons.play_arrow_outlined,
+                  ),
+                  label: Text(
+                    _isActive
+                        ? 'Stop'
+                        : ((_elapsedMs > 0 || totalShotsMarked > 0)
+                              ? 'Start / Resume'
+                              : 'Start'),
+                  ),
                 ),
                 OutlinedButton.icon(
                   onPressed: _isRunning ? _markShot : null,
@@ -5775,7 +6568,10 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
                   label: const Text('Lap / Shot'),
                 ),
                 TextButton.icon(
-                  onPressed: (!_isRunning && (_elapsedMs > 0 || totalShotsMarked > 0)) ? _reset : null,
+                  onPressed:
+                      (!_isRunning && (_elapsedMs > 0 || totalShotsMarked > 0))
+                      ? _reset
+                      : null,
                   icon: const Icon(Icons.refresh),
                   label: const Text('Clear'),
                 ),
@@ -5784,27 +6580,38 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
             const SizedBox(height: 8),
             Text(
               'Use this outside of a session when you just need the timer by itself.',
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.72)),
+              style: TextStyle(
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.72),
+              ),
             ),
             const SizedBox(height: 12),
             SwitchListTile.adaptive(
               contentPadding: EdgeInsets.zero,
               title: const Text('Audio Assist'),
-              subtitle: Text(_audioAssistSupported
-                  ? (_audioAssistEnabled
-                      ? 'Microphone listening for loud shot impulses.'
-                      : 'Optional microphone assist for auto-marking shots.')
-                  : 'Available only in iPhone and Android app builds.'),
+              subtitle: Text(
+                _audioAssistSupported
+                    ? (_audioAssistEnabled
+                          ? 'Microphone listening for loud shot impulses.'
+                          : 'Optional microphone assist for auto-marking shots.')
+                    : 'Available only in iPhone and Android app builds.',
+              ),
               value: _audioAssistEnabled,
               onChanged: (value) => _setAudioAssist(value),
             ),
             if (widget.state.rifles.isNotEmpty) ...[
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                value: _selectedRifleId,
+                initialValue: _selectedRifleId,
                 decoration: const InputDecoration(labelText: 'Apply to Rifle'),
                 items: widget.state.rifles
-                    .map((rifle) => DropdownMenuItem(value: rifle.id, child: Text(_rifleDropdownLabel(rifle))))
+                    .map(
+                      (rifle) => DropdownMenuItem(
+                        value: rifle.id,
+                        child: Text(_rifleDropdownLabel(rifle)),
+                      ),
+                    )
                     .toList(),
                 onChanged: (val) {
                   if (val != null) {
@@ -5817,34 +6624,61 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
             SwitchListTile.adaptive(
               contentPadding: EdgeInsets.zero,
               title: const Text('Auto-apply audio shot count to rifle'),
-              subtitle: const Text('Increment selected rifle round count for auto-marked audio shots'),
+              subtitle: const Text(
+                'Increment selected rifle round count for auto-marked audio shots',
+              ),
               value: widget.state.shotTimerApplyAudioShotCountToRifle,
-              onChanged: (v) => widget.state.setShotTimerApplyAudioShotCountToRifle(v),
+              onChanged: (v) =>
+                  widget.state.setShotTimerApplyAudioShotCountToRifle(v),
             ),
             if (_audioShotCount > 0 && _selectedRifleId != null)
               FilledButton.icon(
                 onPressed: () {
-                  widget.state.addRifleRounds(rifleId: _selectedRifleId!, roundCount: _audioShotCount);
+                  widget.state.addRifleRounds(
+                    rifleId: _selectedRifleId!,
+                    roundCount: _audioShotCount,
+                  );
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Applied $_audioShotCount shots to rifle')),
+                    SnackBar(
+                      content: Text('Applied $_audioShotCount shots to rifle'),
+                    ),
                   );
                   setState(() => _audioShotCount = 0);
                 },
                 icon: const Icon(Icons.check_circle_outline),
                 label: Text('Apply $_audioShotCount audio shots to rifle now'),
               ),
-            Text('Audio-shot detections: $_audioShotCount', style: const TextStyle(fontSize: 13)),
+            Text(
+              'Audio-shot detections: $_audioShotCount',
+              style: const TextStyle(fontSize: 13),
+            ),
             const SizedBox(height: 8),
-            Text('Beep volume', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.78))),
+            Text(
+              'Beep volume',
+              style: TextStyle(
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.78),
+              ),
+            ),
             Slider(
               value: widget.state.shotTimerBeepVolume,
               min: 0.0,
               max: 1.0,
               divisions: 10,
-              label: (widget.state.shotTimerBeepVolume * 100).round().toString(),
+              label: (widget.state.shotTimerBeepVolume * 100)
+                  .round()
+                  .toString(),
               onChanged: (v) => widget.state.setShotTimerBeepVolume(v),
             ),
-            Text('Beep frequency', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.78))),
+            Text(
+              'Beep frequency',
+              style: TextStyle(
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.78),
+              ),
+            ),
             Slider(
               value: widget.state.shotTimerBeepFrequencyHz,
               min: 400.0,
@@ -5864,9 +6698,9 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
                     label: '${_audioThresholdDb.toStringAsFixed(0)} dB',
                     onChanged: (_audioAssistEnabled && _audioAssistSupported)
                         ? (value) {
-                          setState(() => _audioThresholdDb = value);
-                          widget.state.setAudioThresholdDb(value);
-                        }
+                            setState(() => _audioThresholdDb = value);
+                            widget.state.setAudioThresholdDb(value);
+                          }
                         : null,
                   ),
                 ),
@@ -5878,9 +6712,13 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                Chip(label: Text('Live level: ${_latestDb.toStringAsFixed(1)} dB')),
-                if (_audioAssistMessage != null) Chip(label: Text(_audioAssistMessage!)),
-                if (!_audioAssistSupported) const Chip(label: Text('Phone app only')),
+                Chip(
+                  label: Text('Live level: ${_latestDb.toStringAsFixed(1)} dB'),
+                ),
+                if (_audioAssistMessage != null)
+                  Chip(label: Text(_audioAssistMessage!)),
+                if (!_audioAssistSupported)
+                  const Chip(label: Text('Phone app only')),
               ],
             ),
           ],
@@ -5893,22 +6731,83 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
 class SessionDetailScreen extends StatelessWidget {
   final AppState state;
   final String sessionId;
-  const SessionDetailScreen({super.key, required this.state, required this.sessionId});
+  const SessionDetailScreen({
+    super.key,
+    required this.state,
+    required this.sessionId,
+  });
 
   Map<String, int> _shotCountsByRifle(TrainingSession session) {
     final counts = <String, int>{};
+
+    int timerShotCount(TrainingSession s) {
+      int countFromTimerFields() {
+        final hasFirst = (s.shotTimerFirstShotMs ?? 0) > 0;
+        return (hasFirst ? 1 : 0) + s.shotTimerSplitMs.length;
+      }
+
+      int countFromRuns() {
+        var total = 0;
+        for (final run in s.timerRuns) {
+          final hasFirst = run.firstShotMs > 0;
+          total += (hasFirst ? 1 : 0) + run.splitMs.length;
+        }
+        return total;
+      }
+
+      final fieldCount = countFromTimerFields();
+      if (s.timerRuns.isEmpty) return fieldCount;
+
+      final runFingerprints = s.timerRuns
+          .map(
+            (run) =>
+                '${run.elapsedMs}|${run.firstShotMs}|${run.splitMs.join(',')}',
+          )
+          .toSet();
+      final fieldFingerprint =
+          '${s.shotTimerElapsedMs ?? 0}|${s.shotTimerFirstShotMs ?? 0}|${s.shotTimerSplitMs.join(',')}';
+      final includeFieldCount =
+          fieldCount > 0 && !runFingerprints.contains(fieldFingerprint);
+
+      return countFromRuns() + (includeFieldCount ? fieldCount : 0);
+    }
+
     for (final string in session.strings) {
       final rifleId = string.rifleId;
       if (rifleId == null) continue;
-      final shotCount = (session.shotsByString[string.id] ?? const <ShotEntry>[]).length;
-      counts.update(rifleId, (value) => value + shotCount, ifAbsent: () => shotCount);
+      final shotCountByString =
+          (session.shotsByString[string.id] ?? const <ShotEntry>[]).length;
+      final dopeCountByString =
+          (session.trainingDopeByString[string.id] ?? const <DopeEntry>[])
+              .length;
+      counts.update(
+        rifleId,
+        (value) => value + shotCountByString + dopeCountByString,
+        ifAbsent: () => shotCountByString + dopeCountByString,
+      );
+    }
+
+    final timerCount = timerShotCount(session);
+    if (timerCount > 0 && session.rifleId != null) {
+      counts.update(
+        session.rifleId!,
+        (value) => value + timerCount,
+        ifAbsent: () => timerCount,
+      );
     }
 
     final fallbackTotal = session.confirmedShotCount ?? session.shots.length;
-    final countedTotal = counts.values.fold<int>(0, (sum, value) => sum + value);
+    final countedTotal = counts.values.fold<int>(
+      0,
+      (sum, value) => sum + value,
+    );
     if (session.rifleId != null && fallbackTotal > countedTotal) {
       final missing = fallbackTotal - countedTotal;
-      counts.update(session.rifleId!, (value) => value + missing, ifAbsent: () => missing);
+      counts.update(
+        session.rifleId!,
+        (value) => value + missing,
+        ifAbsent: () => missing,
+      );
     }
     return counts;
   }
@@ -5918,13 +6817,13 @@ class SessionDetailScreen extends StatelessWidget {
     if (rifle == null) return 'Deleted rifle ($rifleId)';
     final parts = <String>[
       if (rifle.caliber.trim().isNotEmpty) rifle.caliber.trim(),
-      if ((rifle.manufacturer ?? '').trim().isNotEmpty) (rifle.manufacturer ?? '').trim(),
+      if ((rifle.manufacturer ?? '').trim().isNotEmpty)
+        (rifle.manufacturer ?? '').trim(),
       if ((rifle.model ?? '').trim().isNotEmpty) (rifle.model ?? '').trim(),
       if ((rifle.name ?? '').trim().isNotEmpty) (rifle.name ?? '').trim(),
     ];
     return parts.isEmpty ? 'Rifle' : parts.join(' • ');
   }
-
 
   Future<bool> _promptStartNewStringDialog(BuildContext context) async {
     final res = await showDialog<bool>(
@@ -5992,8 +6891,6 @@ class SessionDetailScreen extends StatelessWidget {
     return res == true;
   }
 
-
-
   Future<void> _shareSession(BuildContext context, TrainingSession s) async {
     final me = state.activeUser;
     if (me == null) return;
@@ -6001,7 +6898,9 @@ class SessionDetailScreen extends StatelessWidget {
     final others = state.users.where((u) => u.id != me.id).toList();
     if (others.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No other users found. Create another user first.')),
+        const SnackBar(
+          content: Text('No other users found. Create another user first.'),
+        ),
       );
       return;
     }
@@ -6019,7 +6918,9 @@ class SessionDetailScreen extends StatelessWidget {
     state.shareSessionWithUsers(sessionId: s.id, userIds: selected.toList());
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Session shared with ${selected.length} user(s).')),
+      SnackBar(
+        content: Text('Session shared with ${selected.length} user(s).'),
+      ),
     );
   }
 
@@ -6053,7 +6954,10 @@ class SessionDetailScreen extends StatelessWidget {
     state.addPhotoNote(sessionId: s.id, time: DateTime.now(), caption: res);
   }
 
-  Future<void> _editTrainingNotes(BuildContext context, TrainingSession s) async {
+  Future<void> _editTrainingNotes(
+    BuildContext context,
+    TrainingSession s,
+  ) async {
     final res = await showDialog<String>(
       context: context,
       builder: (_) => _EditNotesDialog(initialNotes: s.notes),
@@ -6085,7 +6989,10 @@ class SessionDetailScreen extends StatelessWidget {
       appliedShotCounts: res.appliedShotCounts,
     );
     if (!context.mounted) return;
-    final appliedTotal = res.appliedShotCounts.values.fold<int>(0, (sum, value) => sum + value);
+    final appliedTotal = res.appliedShotCounts.values.fold<int>(
+      0,
+      (sum, value) => sum + value,
+    );
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
@@ -6097,8 +7004,10 @@ class SessionDetailScreen extends StatelessWidget {
     );
   }
 
-  
-  Future<void> _exportSessionReport(BuildContext context, TrainingSession s) async {
+  Future<void> _exportSessionReport(
+    BuildContext context,
+    TrainingSession s,
+  ) async {
     bool redact = true;
     bool includeB64 = false;
 
@@ -6136,7 +7045,9 @@ class SessionDetailScreen extends StatelessWidget {
                     const SizedBox(height: 8),
                     SizedBox(
                       height: 420,
-                      child: SingleChildScrollView(child: SelectableText(packet)),
+                      child: SingleChildScrollView(
+                        child: SelectableText(packet),
+                      ),
                     ),
                   ],
                 ),
@@ -6149,7 +7060,9 @@ class SessionDetailScreen extends StatelessWidget {
                       Navigator.of(dialogCtx).pop();
                     }
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Session report copied to clipboard.')),
+                      const SnackBar(
+                        content: Text('Session report copied to clipboard.'),
+                      ),
                     );
                   },
                   child: const Text('Copy'),
@@ -6168,15 +7081,15 @@ class SessionDetailScreen extends StatelessWidget {
 
   Future<void> _addDope(BuildContext context, TrainingSession s) async {
     if (s.rifleId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Select a rifle first.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Select a rifle first.')));
       return;
     }
     if (s.ammoLotId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Select ammo first.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Select ammo first.')));
       return;
     }
 
@@ -6186,7 +7099,9 @@ class SessionDetailScreen extends StatelessWidget {
         : state.ammoLots.where((a) => a.caliber == rifle.caliber).toList();
     if (ammoOptions.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No compatible ammo lots found for this rifle.')),
+        const SnackBar(
+          content: Text('No compatible ammo lots found for this rifle.'),
+        ),
       );
       return;
     }
@@ -6200,7 +7115,9 @@ class SessionDetailScreen extends StatelessWidget {
           rifleId: s.rifleId!,
           ammoOptions: ammoOptions,
           defaultAmmoId: s.ammoLotId,
-          lockedUnit: (rifle?.scopeUnit == ScopeUnit.moa ? ElevationUnit.moa : ElevationUnit.mil),
+          lockedUnit: (rifle?.scopeUnit == ScopeUnit.moa
+              ? ElevationUnit.moa
+              : ElevationUnit.mil),
         );
       },
     );
@@ -6209,19 +7126,27 @@ class SessionDetailScreen extends StatelessWidget {
     if (res.promote) {
       if (s.rifleId == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Select a rifle in Loadout to promote DOPE.')),
+          const SnackBar(
+            content: Text('Select a rifle in Loadout to promote DOPE.'),
+          ),
         );
         return;
       }
       if (!res.rifleOnly && res.entry.ammoLotId == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Select ammo to promote to Rifle + Ammo scope.')),
+          const SnackBar(
+            content: Text('Select ammo to promote to Rifle + Ammo scope.'),
+          ),
         );
         return;
       }
 
-      final key = res.rifleOnly ? s.rifleId! : '${s.rifleId}_${res.entry.ammoLotId}';
-      final wmap = res.rifleOnly ? state.workingDopeRifleOnly[key] ?? {} : state.workingDopeRifleAmmo[key] ?? {};
+      final key = res.rifleOnly
+          ? s.rifleId!
+          : '${s.rifleId}_${res.entry.ammoLotId}';
+      final wmap = res.rifleOnly
+          ? state.workingDopeRifleOnly[key] ?? {}
+          : state.workingDopeRifleAmmo[key] ?? {};
       final dk = DistanceKey(res.entry.distance, res.entry.distanceUnit);
 
       if (wmap.containsKey(dk)) {
@@ -6229,10 +7154,18 @@ class SessionDetailScreen extends StatelessWidget {
           context: context,
           builder: (_) => AlertDialog(
             title: const Text('Replace existing?'),
-            content: Text('Replace existing DOPE at ${dk.value} ${dk.unit.name}?'),
+            content: Text(
+              'Replace existing DOPE at ${dk.value} ${dk.unit.name}?',
+            ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-              FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Replace')),
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Replace'),
+              ),
             ],
           ),
         );
@@ -6260,7 +7193,9 @@ class SessionDetailScreen extends StatelessWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: Text(replacing ? 'Replace working DOPE?' : 'Save to working DOPE?'),
+        title: Text(
+          replacing ? 'Replace working DOPE?' : 'Save to working DOPE?',
+        ),
         content: Text(
           '${entry.distance.toStringAsFixed(0)} ${entry.distanceUnit == DistanceUnit.yards ? 'yd' : 'm'}'
           ' will be ${replacing ? 'replaced' : 'saved'} in ${rifleOnly ? 'Rifle only' : 'Rifle + Ammo'} working DOPE.',
@@ -6334,10 +7269,15 @@ class SessionDetailScreen extends StatelessWidget {
             : state.ammoLots.where((a) => a.caliber == rifle.caliber).toList();
 
         String rifleLoadoutLabel(Rifle? r, {String? deletedId}) {
-          if (r == null) return deletedId == null ? '- None -' : 'Deleted rifle ($deletedId)';
+          if (r == null) {
+            return deletedId == null
+                ? '- None -'
+                : 'Deleted rifle ($deletedId)';
+          }
           final parts = <String>[
             if (r.caliber.trim().isNotEmpty) r.caliber.trim(),
-            if ((r.manufacturer ?? '').trim().isNotEmpty) (r.manufacturer ?? '').trim(),
+            if ((r.manufacturer ?? '').trim().isNotEmpty)
+              (r.manufacturer ?? '').trim(),
             if ((r.model ?? '').trim().isNotEmpty) (r.model ?? '').trim(),
             if ((r.name ?? '').trim().isNotEmpty) (r.name ?? '').trim(),
           ];
@@ -6345,10 +7285,13 @@ class SessionDetailScreen extends StatelessWidget {
         }
 
         String ammoLoadoutLabel(AmmoLot? a, {String? deletedId}) {
-          if (a == null) return deletedId == null ? '- None -' : 'Deleted ammo ($deletedId)';
+          if (a == null) {
+            return deletedId == null ? '- None -' : 'Deleted ammo ($deletedId)';
+          }
           final parts = <String>[
             if (a.caliber.trim().isNotEmpty) a.caliber.trim(),
-            if ((a.manufacturer ?? '').trim().isNotEmpty) (a.manufacturer ?? '').trim(),
+            if ((a.manufacturer ?? '').trim().isNotEmpty)
+              (a.manufacturer ?? '').trim(),
             if (a.bullet.trim().isNotEmpty) a.bullet.trim(),
             if (a.grain > 0) '${a.grain}gr',
             if ((a.name ?? '').trim().isNotEmpty) (a.name ?? '').trim(),
@@ -6357,24 +7300,19 @@ class SessionDetailScreen extends StatelessWidget {
         }
 
         // Defensive: avoid DropdownButton value mismatch and duplicate IDs.
-        final rifleById = <String, Rifle>{ for (final r in state.rifles) r.id: r };
-        final compatibleAmmoById = <String, AmmoLot>{ for (final a in compatibleAmmo) a.id: a };
+        final rifleById = <String, Rifle>{
+          for (final r in state.rifles) r.id: r,
+        };
+        final compatibleAmmoById = <String, AmmoLot>{
+          for (final a in compatibleAmmo) a.id: a,
+        };
 
-        final ammoIsCompatible = s.ammoLotId == null || compatibleAmmoById.containsKey(s.ammoLotId);
+        final ammoIsCompatible =
+            s.ammoLotId == null || compatibleAmmoById.containsKey(s.ammoLotId);
         final safeAmmoLotId = ammoIsCompatible ? s.ammoLotId : null;
 
-        final currentTrainingDope = s.trainingDopeByString[s.activeStringId] ?? const <DopeEntry>[];
-        final suggestedDopeByDistance = <DistanceKey, DopeEntry>{};
-        for (final entry in currentTrainingDope) {
-          suggestedDopeByDistance[DistanceKey(entry.distance, entry.distanceUnit)] = entry;
-        }
-        final currentRifleKey = s.rifleId;
-        final currentAmmoKey = (s.rifleId != null && s.ammoLotId != null) ? '${s.rifleId}_${s.ammoLotId}' : null;
-        final currentWorkingMap = currentAmmoKey != null && (state.workingDopeRifleAmmo[currentAmmoKey]?.isNotEmpty ?? false)
-            ? state.workingDopeRifleAmmo[currentAmmoKey]!
-            : (currentRifleKey == null ? <DistanceKey, DopeEntry>{} : (state.workingDopeRifleOnly[currentRifleKey] ?? <DistanceKey, DopeEntry>{}));
-        final suggestedDope = suggestedDopeByDistance.values.toList()
-          ..sort((a, b) => a.distance.compareTo(b.distance));
+        final currentTrainingDope =
+            s.trainingDopeByString[s.activeStringId] ?? const <DopeEntry>[];
 
         return Scaffold(
           appBar: AppBar(
@@ -6386,7 +7324,7 @@ class SessionDetailScreen extends StatelessWidget {
                 icon: const Icon(Icons.share_outlined),
               ),
               IconButton(
-                tooltip: 'Edit training notes',
+                tooltip: 'Edit session notes',
                 onPressed: () => _editTrainingNotes(context, s),
                 icon: const Icon(Icons.edit_note_outlined),
               ),
@@ -6394,8 +7332,14 @@ class SessionDetailScreen extends StatelessWidget {
                 tooltip: 'More',
                 itemBuilder: (context) => [
                   if (s.endedAt == null)
-                    const PopupMenuItem(value: 'end_session', child: Text('End session')),
-                  const PopupMenuItem(value: 'session_report', child: Text('Export session report')),
+                    const PopupMenuItem(
+                      value: 'end_session',
+                      child: Text('End session'),
+                    ),
+                  const PopupMenuItem(
+                    value: 'session_report',
+                    child: Text('Export session report'),
+                  ),
                 ],
                 onSelected: (v) async {
                   if (v == 'end_session') {
@@ -6427,7 +7371,13 @@ class SessionDetailScreen extends StatelessWidget {
           body: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              Text(s.locationName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+              Text(
+                s.locationName,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
               const SizedBox(height: 6),
               Text(_fmtDateTime(s.dateTime)),
               if (s.endedAt != null) ...[
@@ -6450,61 +7400,73 @@ class SessionDetailScreen extends StatelessWidget {
                 ),
               ],
 
-const SizedBox(height: 8),
-Card(
-  child: Padding(
-    padding: const EdgeInsets.all(12),
-    child: ExpansionTile(
-      tilePadding: EdgeInsets.zero,
-      title: const Text('Session information', style: TextStyle(fontWeight: FontWeight.w700)),
-      childrenPadding: const EdgeInsets.only(top: 8, bottom: 4),
-      children: [
-        Align(alignment: Alignment.centerLeft, child: SelectableText('Session ID: ${s.id}')),
-        const SizedBox(height: 4),
-        Align(alignment: Alignment.centerLeft, child: SelectableText('Date/Time: ${_fmtDateTime(s.dateTime)}')),
-        const SizedBox(height: 4),
-        Align(alignment: Alignment.centerLeft, child: SelectableText('Location: ${s.locationName.isEmpty ? '-' : s.locationName}')),
-        const SizedBox(height: 4),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: SelectableText(
-            'Status: ${s.endedAt == null ? 'Active' : 'Ended ${_fmtDateTime(s.endedAt!)}'}',
-          ),
-        ),
-        const SizedBox(height: 4),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: SelectableText(
-            'Confirmed shot count: ${s.confirmedShotCount ?? s.shots.length}${s.shotCountAppliedToRifle ? ' (applied to rifle rounds)' : ''}',
-          ),
-        ),
-        const SizedBox(height: 4),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: SelectableText(
-            'Shot timer: ${(s.shotTimerElapsedMs ?? 0) > 0 ? '${(s.shotTimerElapsedMs! / 1000).toStringAsFixed(3)}s total' : '-'}'
-            '${(s.shotTimerFirstShotMs ?? 0) > 0 ? ' • first ${(s.shotTimerFirstShotMs! / 1000).toStringAsFixed(3)}s' : ''}'
-            '${s.shotTimerSplitMs.isNotEmpty ? ' • ${s.shotTimerSplitMs.length} split${s.shotTimerSplitMs.length == 1 ? '' : 's'}' : ''}'
-            '${s.timerRuns.isNotEmpty ? ' • ${s.timerRuns.length} saved run${s.timerRuns.length == 1 ? '' : 's'}' : ''}',
-          ),
-        ),
-        const SizedBox(height: 8),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: SelectableText(
-            'Rifle: $rifleDesc',
-          ),
-        ),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: SelectableText(
-            'Ammo: $ammoDesc',
-          ),
-        ),
-      ],
-    ),
-  ),
-),
+              const SizedBox(height: 8),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: ExpansionTile(
+                    tilePadding: EdgeInsets.zero,
+                    title: const Text(
+                      'Session information',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    childrenPadding: const EdgeInsets.only(top: 8, bottom: 4),
+                    children: [
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: SelectableText('Session ID: ${s.id}'),
+                      ),
+                      const SizedBox(height: 4),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: SelectableText(
+                          'Date/Time: ${_fmtDateTime(s.dateTime)}',
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: SelectableText(
+                          'Location: ${s.locationName.isEmpty ? '-' : s.locationName}',
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: SelectableText(
+                          'Status: ${s.endedAt == null ? 'Active' : 'Ended ${_fmtDateTime(s.endedAt!)}'}',
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: SelectableText(
+                          'Confirmed shot count: ${s.confirmedShotCount ?? s.shots.length}${s.shotCountAppliedToRifle ? ' (applied to rifle rounds)' : ''}',
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: SelectableText(
+                          'Shot timer: ${(s.shotTimerElapsedMs ?? 0) > 0 ? '${(s.shotTimerElapsedMs! / 1000).toStringAsFixed(3)}s total' : '-'}'
+                          '${(s.shotTimerFirstShotMs ?? 0) > 0 ? ' • first ${(s.shotTimerFirstShotMs! / 1000).toStringAsFixed(3)}s' : ''}'
+                          '${s.shotTimerSplitMs.isNotEmpty ? ' • ${s.shotTimerSplitMs.length} split${s.shotTimerSplitMs.length == 1 ? '' : 's'}' : ''}'
+                          '${s.timerRuns.isNotEmpty ? ' • ${s.timerRuns.length} saved run${s.timerRuns.length == 1 ? '' : 's'}' : ''}',
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: SelectableText('Rifle: $rifleDesc'),
+                      ),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: SelectableText('Ammo: $ammoDesc'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
               _SectionTitle('Notes'),
               const SizedBox(height: 8),
               Card(
@@ -6514,7 +7476,9 @@ Card(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        s.notes.isEmpty ? 'No notes yet. Tap Edit to add training notes.' : s.notes,
+                        s.notes.isEmpty
+                            ? 'No notes yet. Tap Edit to add session notes.'
+                            : s.notes,
                       ),
                       const SizedBox(height: 8),
                       Align(
@@ -6529,11 +7493,11 @@ Card(
                   ),
                 ),
               ),
-                            _SectionTitle('String'),
+              _SectionTitle('String'),
               const SizedBox(height: 8),
               _StringSummaryCard(state: state, session: s),
               const SizedBox(height: 16),
-_SectionTitle('Loadout'),
+              _SectionTitle('Loadout'),
               const SizedBox(height: 8),
               Row(
                 children: [
@@ -6543,7 +7507,10 @@ _SectionTitle('Loadout'),
                       isExpanded: true,
                       decoration: const InputDecoration(labelText: 'Rifle'),
                       items: [
-                        const DropdownMenuItem<String?>(value: null, child: Text('- None -')),
+                        const DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('- None -'),
+                        ),
                         if (s.rifleId != null && rifle == null)
                           DropdownMenuItem<String?>(
                             value: s.rifleId,
@@ -6594,11 +7561,18 @@ _SectionTitle('Loadout'),
 
                         final current = s.strings.firstWhere(
                           (x) => x.id == s.activeStringId,
-                          orElse: () => s.strings.isNotEmpty ? s.strings.last : SessionStringMeta(id: s.activeStringId, startedAt: DateTime.now(), endedAt: null),
+                          orElse: () => s.strings.isNotEmpty
+                              ? s.strings.last
+                              : SessionStringMeta(
+                                  id: s.activeStringId,
+                                  startedAt: DateTime.now(),
+                                  endedAt: null,
+                                ),
                         );
 
                         // If we haven't completed a loadout yet, just set it (no prompt).
-                        if (current.rifleId == null || current.ammoLotId == null) {
+                        if (current.rifleId == null ||
+                            current.ammoLotId == null) {
                           state.updateSessionLoadout(
                             sessionId: s.id,
                             rifleId: v,
@@ -6618,8 +7592,10 @@ _SectionTitle('Loadout'),
                           return;
                         }
 
-                        final nextAmmo = ((s.ammoLotId != null) &&
-                                (state.ammoById(s.ammoLotId)?.caliber == state.rifleById(v)?.caliber))
+                        final nextAmmo =
+                            ((s.ammoLotId != null) &&
+                                (state.ammoById(s.ammoLotId)?.caliber ==
+                                    state.rifleById(v)?.caliber))
                             ? s.ammoLotId
                             : null;
                         final existing = _findMatchingString(
@@ -6629,17 +7605,23 @@ _SectionTitle('Loadout'),
                           excludeStringId: current.id,
                         );
                         if (existing != null) {
-                          final shouldSwitch = await _promptSwitchToExistingStringDialog(
-                            context,
-                            existing,
-                          );
+                          final shouldSwitch =
+                              await _promptSwitchToExistingStringDialog(
+                                context,
+                                existing,
+                              );
                           if (shouldSwitch) {
-                            state.setActiveString(sessionId: s.id, stringId: existing.id);
+                            state.setActiveString(
+                              sessionId: s.id,
+                              stringId: existing.id,
+                            );
                             return;
                           }
                         }
 
-                        final startNew = await _promptStartNewStringDialog(context);
+                        final startNew = await _promptStartNewStringDialog(
+                          context,
+                        );
                         if (!startNew) {
                           state.updateSessionLoadout(
                             sessionId: s.id,
@@ -6657,7 +7639,7 @@ _SectionTitle('Loadout'),
                           startNewString: true,
                         );
                       },
-                  ),
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -6666,7 +7648,10 @@ _SectionTitle('Loadout'),
                       isExpanded: true,
                       decoration: const InputDecoration(labelText: 'Ammo'),
                       items: [
-                        const DropdownMenuItem<String?>(value: null, child: Text('- None -')),
+                        const DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('- None -'),
+                        ),
                         if (s.ammoLotId != null && ammo == null)
                           DropdownMenuItem<String?>(
                             value: s.ammoLotId,
@@ -6719,11 +7704,18 @@ _SectionTitle('Loadout'),
 
                               final current = s.strings.firstWhere(
                                 (x) => x.id == s.activeStringId,
-                                orElse: () => s.strings.isNotEmpty ? s.strings.last : SessionStringMeta(id: s.activeStringId, startedAt: DateTime.now(), endedAt: null),
+                                orElse: () => s.strings.isNotEmpty
+                                    ? s.strings.last
+                                    : SessionStringMeta(
+                                        id: s.activeStringId,
+                                        startedAt: DateTime.now(),
+                                        endedAt: null,
+                                      ),
                               );
 
                               // If we haven't completed a loadout yet, just set it (no prompt).
-                              if (current.rifleId == null || current.ammoLotId == null) {
+                              if (current.rifleId == null ||
+                                  current.ammoLotId == null) {
                                 state.updateSessionLoadout(
                                   sessionId: s.id,
                                   rifleId: s.rifleId,
@@ -6738,7 +7730,9 @@ _SectionTitle('Loadout'),
                                 final nextRifle = s.rifleId;
                                 final nextAmmo = v;
 
-                                final changed = (nextRifle != current.rifleId) || (nextAmmo != current.ammoLotId);
+                                final changed =
+                                    (nextRifle != current.rifleId) ||
+                                    (nextAmmo != current.ammoLotId);
                                 if (!changed) return;
 
                                 final existing = _findMatchingString(
@@ -6748,17 +7742,22 @@ _SectionTitle('Loadout'),
                                   excludeStringId: current.id,
                                 );
                                 if (existing != null) {
-                                  final shouldSwitch = await _promptSwitchToExistingStringDialog(
-                                    context,
-                                    existing,
-                                  );
+                                  final shouldSwitch =
+                                      await _promptSwitchToExistingStringDialog(
+                                        context,
+                                        existing,
+                                      );
                                   if (shouldSwitch) {
-                                    state.setActiveString(sessionId: s.id, stringId: existing.id);
+                                    state.setActiveString(
+                                      sessionId: s.id,
+                                      stringId: existing.id,
+                                    );
                                     return;
                                   }
                                 }
 
-                                final startNew = await _promptStartNewStringDialog(context);
+                                final startNew =
+                                    await _promptStartNewStringDialog(context);
                                 if (!startNew) {
                                   // Revert to current active string loadout.
                                   state.updateSessionLoadout(
@@ -6786,7 +7785,7 @@ _SectionTitle('Loadout'),
               const SizedBox(height: 16),
               Row(
                 children: [
-                  Expanded(child: _SectionTitle('Training DOPE')) ,
+                  Expanded(child: _SectionTitle('Training DOPE')),
                   TextButton.icon(
                     onPressed: () => _addDope(context, s),
                     icon: const Icon(Icons.add),
@@ -6799,7 +7798,8 @@ _SectionTitle('Loadout'),
                 _HintCard(
                   icon: Icons.my_location_outlined,
                   title: 'No training DOPE yet',
-                  message: 'Add dialed elevation/wind for this session. It will stay saved on the session.',
+                  message:
+                      'Add dialed elevation/wind for this session. It will stay saved on the session.',
                 )
               else
                 ...(() {
@@ -6812,58 +7812,21 @@ _SectionTitle('Loadout'),
                   return list.map((e) {
                     final wind = (e.windageLeft > 0)
                         ? 'L ${e.windageLeft.toStringAsFixed(2)}'
-                        : (e.windageRight > 0 ? 'R ${e.windageRight.toStringAsFixed(2)}' : '-');
+                        : (e.windageRight > 0
+                              ? 'R ${e.windageRight.toStringAsFixed(2)}'
+                              : '-');
                     return Card(
                       child: ListTile(
-                        title: Text('${e.distance} ${e.distanceUnit.name}  •  ${e.elevation.toStringAsFixed(2)} ${e.elevationUnit.name.toUpperCase()}'),
-                        subtitle: Text('Wind: $wind${e.windNotes.trim().isEmpty ? '' : ' • ${e.windNotes.trim()}'}'),
+                        title: Text(
+                          '${e.distance} ${e.distanceUnit.name}  •  ${e.elevation.toStringAsFixed(2)} ${e.elevationUnit.name.toUpperCase()}',
+                        ),
+                        subtitle: Text(
+                          'Wind: $wind${e.windNotes.trim().isEmpty ? '' : ' • ${e.windNotes.trim()}'}',
+                        ),
                       ),
                     );
                   }).toList();
                 })(),
-              const SizedBox(height: 16),
-              _SectionTitle('Suggested DOPE'),
-              const SizedBox(height: 8),
-              if (s.rifleId == null || suggestedDope.isEmpty)
-                _HintCard(
-                  icon: Icons.auto_awesome_outlined,
-                  title: 'No suggestions yet',
-                  message: s.rifleId == null
-                      ? 'Select a rifle in Loadout to save working DOPE suggestions.'
-                      : 'Add training DOPE in this string, then save the ones you want as working DOPE.',
-                )
-              else
-                ...suggestedDope.map((entry) {
-                  final dk = DistanceKey(entry.distance, entry.distanceUnit);
-                  final existing = currentWorkingMap[dk];
-                  final replacing = existing != null;
-                  final wind = (entry.windageLeft > 0)
-                      ? 'L ${entry.windageLeft.toStringAsFixed(2)}'
-                      : (entry.windageRight > 0 ? 'R ${entry.windageRight.toStringAsFixed(2)}' : '-');
-                  return Card(
-                    child: ListTile(
-                      title: Text(
-                        '${entry.distance.toStringAsFixed(0)} ${entry.distanceUnit == DistanceUnit.yards ? 'yd' : 'm'}'
-                        ' | ${entry.elevation.toStringAsFixed(2)} ${entry.elevationUnit.name.toUpperCase()}',
-                      ),
-                      subtitle: Text(
-                        '${replacing ? 'Existing working DOPE will be replaced' : 'Ready to save to working DOPE'}'
-                        ' | Wind $wind'
-                        '${entry.elevationNotes.trim().isEmpty ? '' : ' | ${entry.elevationNotes.trim()}'}',
-                      ),
-                      trailing: FilledButton(
-                        onPressed: () => _promoteSuggestedDope(
-                          context,
-                          session: s,
-                          entry: entry,
-                          rifleOnly: s.ammoLotId == null,
-                          replacing: replacing,
-                        ),
-                        child: Text(replacing ? 'Replace' : 'Save'),
-                      ),
-                    ),
-                  );
-                }),
               const SizedBox(height: 16),
               _SectionTitle('Cold Bore Entries'),
               const SizedBox(height: 8),
@@ -6871,14 +7834,19 @@ _SectionTitle('Loadout'),
                 _HintCard(
                   icon: Icons.ac_unit_outlined,
                   title: 'No cold bore entries yet',
-                  message: 'Tap "Add Cold Bore" to log the first shot for this session.',
+                  message:
+                      'Tap "Add Cold Bore" to log the first shot for this session.',
                 )
               else
-                ...s.shots.where((x) => x.isColdBore).map(
+                ...s.shots
+                    .where((x) => x.isColdBore)
+                    .map(
                       (shot) => Card(
                         child: ListTile(
                           leading: Icon(
-                            shot.isBaseline ? Icons.star : Icons.ac_unit_outlined,
+                            shot.isBaseline
+                                ? Icons.star
+                                : Icons.ac_unit_outlined,
                           ),
                           title: Text('${shot.distance} • ${shot.result}'),
                           subtitle: Text(
@@ -6903,11 +7871,15 @@ _SectionTitle('Loadout'),
               const SizedBox(height: 16),
               Row(
                 children: [
-                  Expanded(child: _SectionTitle('Working DOPE (quick reference)')),
+                  Expanded(
+                    child: _SectionTitle('Working DOPE (quick reference)'),
+                  ),
                   TextButton.icon(
                     onPressed: () {
                       Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => DataScreen(state: state)),
+                        MaterialPageRoute(
+                          builder: (_) => DataScreen(state: state),
+                        ),
                       );
                     },
                     icon: const Icon(Icons.open_in_new),
@@ -6922,31 +7894,41 @@ _SectionTitle('Loadout'),
                     return _HintCard(
                       icon: Icons.info_outline,
                       title: 'Select a rifle',
-                      message: 'Choose a rifle in Loadout to view working DOPE.',
+                      message:
+                          'Choose a rifle in Loadout to view working DOPE.',
                     );
                   }
 
                   final rifleKey = s.rifleId!;
-                  final ammoKey = (s.ammoLotId == null) ? null : '${s.rifleId}_${s.ammoLotId}';
-                  final rifleAmmoMap = (ammoKey == null) ? null : state.workingDopeRifleAmmo[ammoKey];
+                  final ammoKey = (s.ammoLotId == null)
+                      ? null
+                      : '${s.rifleId}_${s.ammoLotId}';
+                  final rifleAmmoMap = (ammoKey == null)
+                      ? null
+                      : state.workingDopeRifleAmmo[ammoKey];
                   final rifleOnlyMap = state.workingDopeRifleOnly[rifleKey];
 
-                  final useAmmoScoped = (rifleAmmoMap != null && rifleAmmoMap.isNotEmpty);
+                  final useAmmoScoped =
+                      (rifleAmmoMap != null && rifleAmmoMap.isNotEmpty);
                   final useMap = useAmmoScoped
                       ? rifleAmmoMap
                       : (rifleOnlyMap ?? <DistanceKey, DopeEntry>{});
 
-                  final scopeLabel = useAmmoScoped ? 'Rifle + Ammo' : 'Rifle only';
+                  final scopeLabel = useAmmoScoped
+                      ? 'Rifle + Ammo'
+                      : 'Rifle only';
 
                   if (useMap.isEmpty) {
                     return _HintCard(
                       icon: Icons.my_location_outlined,
                       title: 'No working DOPE yet',
-                      message: 'Promote DOPE from Training DOPE (when adding an entry) or add it in Data.',
+                      message:
+                          'Promote DOPE from Training DOPE (when adding an entry) or add it in Data.',
                     );
                   }
 
-                  final dks = useMap.keys.toList()..sort((a, b) => a.value.compareTo(b.value));
+                  final dks = useMap.keys.toList()
+                    ..sort((a, b) => a.value.compareTo(b.value));
 
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -6955,14 +7937,20 @@ _SectionTitle('Loadout'),
                         padding: const EdgeInsets.only(bottom: 6),
                         child: Text(
                           scopeLabel,
-                          style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7)),
+                          style: TextStyle(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurface.withValues(alpha: 0.7),
+                          ),
                         ),
                       ),
                       ...dks.map((dk) {
                         final e = useMap[dk]!;
                         final wind = (e.windageLeft > 0)
                             ? 'L ${e.windageLeft.toStringAsFixed(2)}'
-                            : (e.windageRight > 0 ? 'R ${e.windageRight.toStringAsFixed(2)}' : '-');
+                            : (e.windageRight > 0
+                                  ? 'R ${e.windageRight.toStringAsFixed(2)}'
+                                  : '-');
                         return Card(
                           child: ListTile(
                             title: Text(
@@ -6990,7 +7978,10 @@ _SectionTitle('Loadout'),
                     onPressed: () async {
                       final picker = ImagePicker();
                       try {
-                        final x = await picker.pickImage(source: ImageSource.camera, imageQuality: 85);
+                        final x = await picker.pickImage(
+                          source: ImageSource.camera,
+                          imageQuality: 85,
+                        );
                         if (x == null) return;
                         final bytes = await x.readAsBytes();
 
@@ -7001,7 +7992,11 @@ _SectionTitle('Loadout'),
                         );
                         if (cap != null) caption = cap;
 
-                        state.addSessionPhoto(sessionId: s.id, bytes: bytes, caption: caption);
+                        state.addSessionPhoto(
+                          sessionId: s.id,
+                          bytes: bytes,
+                          caption: caption,
+                        );
                       } catch (e) {
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -7035,10 +8030,19 @@ _SectionTitle('Loadout'),
                     child: ListTile(
                       leading: ClipRRect(
                         borderRadius: BorderRadius.circular(6),
-                        child: Image.memory(p.bytes, width: 52, height: 52, fit: BoxFit.cover),
+                        child: Image.memory(
+                          p.bytes,
+                          width: 52,
+                          height: 52,
+                          fit: BoxFit.cover,
+                        ),
                       ),
-                      title: Text(p.caption.trim().isEmpty ? 'Photo' : p.caption.trim()),
-                      subtitle: Text('${_fmtDateTime(p.time)} • ${p.bytes.lengthInBytes} bytes'),
+                      title: Text(
+                        p.caption.trim().isEmpty ? 'Photo' : p.caption.trim(),
+                      ),
+                      subtitle: Text(
+                        '${_fmtDateTime(p.time)} • ${p.bytes.lengthInBytes} bytes',
+                      ),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () {
                         showDialog<void>(
@@ -7049,11 +8053,13 @@ _SectionTitle('Loadout'),
                               children: [
                                 Padding(
                                   padding: const EdgeInsets.all(12),
-                                  child: Text(p.caption.trim().isEmpty ? 'Photo' : p.caption.trim()),
+                                  child: Text(
+                                    p.caption.trim().isEmpty
+                                        ? 'Photo'
+                                        : p.caption.trim(),
+                                  ),
                                 ),
-                                InteractiveViewer(
-                                  child: Image.memory(p.bytes),
-                                ),
+                                InteractiveViewer(child: Image.memory(p.bytes)),
                                 const SizedBox(height: 12),
                                 TextButton(
                                   onPressed: () => Navigator.pop(context),
@@ -7089,7 +8095,11 @@ _SectionTitle('Loadout'),
               const SizedBox(height: 8),
               Text(
                 'Loadout: ${rifle?.name ?? '-'} / ${ammo?.name ?? '-'}',
-                style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7)),
+                style: TextStyle(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.7),
+                ),
               ),
             ],
           ),
@@ -7141,7 +8151,8 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
           }
         }
 
-        if (_selectedRifleId != null && !rifleOptions.containsKey(_selectedRifleId)) {
+        if (_selectedRifleId != null &&
+            !rifleOptions.containsKey(_selectedRifleId)) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) {
               setState(() {
@@ -7151,7 +8162,8 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
             }
           });
         }
-        if (_selectedAmmoId != null && !ammoOptions.containsKey(_selectedAmmoId)) {
+        if (_selectedAmmoId != null &&
+            !ammoOptions.containsKey(_selectedAmmoId)) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) {
               setState(() => _selectedAmmoId = null);
@@ -7160,10 +8172,16 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
         }
 
         final filteredRows = rows.where((row) {
-          if (_selectedRifleId != null && row.rifle?.id != _selectedRifleId) return false;
-          if (_selectedAmmoId != null && row.ammo?.id != _selectedAmmoId) return false;
+          if (_selectedRifleId != null && row.rifle?.id != _selectedRifleId) {
+            return false;
+          }
+          if (_selectedAmmoId != null && row.ammo?.id != _selectedAmmoId) {
+            return false;
+          }
           if (_selectedDateWindowDays > 0) {
-            final cutoff = DateTime.now().subtract(Duration(days: _selectedDateWindowDays));
+            final cutoff = DateTime.now().subtract(
+              Duration(days: _selectedDateWindowDays),
+            );
             if (row.shot.time.isBefore(cutoff)) return false;
           }
           return true;
@@ -7178,7 +8196,8 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
               _EmptyState(
                 icon: Icons.ac_unit_outlined,
                 title: 'No cold bore entries yet',
-                message: 'Open a session, tap "Add Cold Bore", then save the entry.',
+                message:
+                    'Open a session, tap "Add Cold Bore", then save the entry.',
               ),
             ],
           );
@@ -7188,26 +8207,34 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
           ..sort((a, b) {
             final an = [
               if (a.caliber.trim().isNotEmpty) a.caliber.trim(),
-              if ((a.manufacturer ?? '').trim().isNotEmpty) (a.manufacturer ?? '').trim(),
+              if ((a.manufacturer ?? '').trim().isNotEmpty)
+                (a.manufacturer ?? '').trim(),
               if ((a.model ?? '').trim().isNotEmpty) (a.model ?? '').trim(),
               if ((a.name ?? '').trim().isNotEmpty) (a.name ?? '').trim(),
             ].join(' ');
             final bn = [
               if (b.caliber.trim().isNotEmpty) b.caliber.trim(),
-              if ((b.manufacturer ?? '').trim().isNotEmpty) (b.manufacturer ?? '').trim(),
+              if ((b.manufacturer ?? '').trim().isNotEmpty)
+                (b.manufacturer ?? '').trim(),
               if ((b.model ?? '').trim().isNotEmpty) (b.model ?? '').trim(),
               if ((b.name ?? '').trim().isNotEmpty) (b.name ?? '').trim(),
             ].join(' ');
             return an.compareTo(bn);
           });
 
-        final filteredAmmoOptions = ammoOptions.values
-            .where(
-              (ammo) => _selectedRifleId == null ||
-                  rows.any((row) => row.rifle?.id == _selectedRifleId && row.ammo?.id == ammo.id),
-            )
-            .toList()
-          ..sort((a, b) => (a.name ?? '').compareTo(b.name ?? ''));
+        final filteredAmmoOptions =
+            ammoOptions.values
+                .where(
+                  (ammo) =>
+                      _selectedRifleId == null ||
+                      rows.any(
+                        (row) =>
+                            row.rifle?.id == _selectedRifleId &&
+                            row.ammo?.id == ammo.id,
+                      ),
+                )
+                .toList()
+              ..sort((a, b) => (a.name ?? '').compareTo(b.name ?? ''));
 
         return ListView.builder(
           itemCount: filteredRows.length + 1,
@@ -7223,8 +8250,11 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
                 (groups[key] ??= []).add(r);
               }
 
-              String dir(double v, String pos, String neg) =>
-                  v == 0 ? '0' : (v > 0 ? '$pos ${v.abs().toStringAsFixed(2)}' : '$neg ${v.abs().toStringAsFixed(2)}');
+              String dir(double v, String pos, String neg) => v == 0
+                  ? '0'
+                  : (v > 0
+                        ? '$pos ${v.abs().toStringAsFixed(2)}'
+                        : '$neg ${v.abs().toStringAsFixed(2)}');
 
               final items = <Map<String, dynamic>>[];
               groups.forEach((key, list) {
@@ -7232,9 +8262,14 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
                 final rifleId = first.rifle?.id;
                 final ammoLotId = first.ammo?.id;
                 if (rifleId == null || ammoLotId == null) return;
-                final baseline = state.baselineColdBoreShot(rifleId: rifleId, ammoLotId: ammoLotId);
+                final baseline = state.baselineColdBoreShot(
+                  rifleId: rifleId,
+                  ammoLotId: ammoLotId,
+                );
                 if (baseline == null) return;
-                if (baseline.offsetX == null || baseline.offsetY == null) return;
+                if (baseline.offsetX == null || baseline.offsetY == null) {
+                  return;
+                }
 
                 final bdx = _shotOffsetToMoa(baseline, baseline.offsetX!);
                 final bdy = _shotOffsetToMoa(baseline, baseline.offsetY!);
@@ -7271,7 +8306,9 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
                 });
               });
 
-              items.sort((a, b) => (b['avg'] as double).compareTo(a['avg'] as double));
+              items.sort(
+                (a, b) => (b['avg'] as double).compareTo(a['avg'] as double),
+              );
               final top = items.take(3).toList();
 
               return Padding(
@@ -7291,29 +8328,48 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
                             const SizedBox(height: 8),
                             DropdownButtonFormField<String?>(
                               initialValue: _selectedRifleId,
-                              decoration: const InputDecoration(labelText: 'Rifle filter'),
+                              decoration: const InputDecoration(
+                                labelText: 'Rifle filter',
+                              ),
                               items: [
-                                const DropdownMenuItem<String?>(value: null, child: Text('All rifles')),
+                                const DropdownMenuItem<String?>(
+                                  value: null,
+                                  child: Text('All rifles'),
+                                ),
                                 ...rifleList.map(
                                   (rifle) => DropdownMenuItem<String?>(
-                                      value: rifle.id,
-                                      child: Text(
-                                        [
-                                          if (rifle.caliber.trim().isNotEmpty) rifle.caliber.trim(),
-                                          if ((rifle.manufacturer ?? '').trim().isNotEmpty) (rifle.manufacturer ?? '').trim(),
-                                          if ((rifle.model ?? '').trim().isNotEmpty) (rifle.model ?? '').trim(),
-                                          if ((rifle.name ?? '').trim().isNotEmpty) (rifle.name ?? '').trim(),
-                                        ].join(' • '),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
+                                    value: rifle.id,
+                                    child: Text(
+                                      [
+                                        if (rifle.caliber.trim().isNotEmpty)
+                                          rifle.caliber.trim(),
+                                        if ((rifle.manufacturer ?? '')
+                                            .trim()
+                                            .isNotEmpty)
+                                          (rifle.manufacturer ?? '').trim(),
+                                        if ((rifle.model ?? '')
+                                            .trim()
+                                            .isNotEmpty)
+                                          (rifle.model ?? '').trim(),
+                                        if ((rifle.name ?? '')
+                                            .trim()
+                                            .isNotEmpty)
+                                          (rifle.name ?? '').trim(),
+                                      ].join(' • '),
+                                      overflow: TextOverflow.ellipsis,
                                     ),
+                                  ),
                                 ),
                               ],
                               onChanged: (value) {
                                 setState(() {
                                   _selectedRifleId = value;
                                   if (_selectedAmmoId != null &&
-                                      !rows.any((row) => row.rifle?.id == value && row.ammo?.id == _selectedAmmoId)) {
+                                      !rows.any(
+                                        (row) =>
+                                            row.rifle?.id == value &&
+                                            row.ammo?.id == _selectedAmmoId,
+                                      )) {
                                     _selectedAmmoId = null;
                                   }
                                 });
@@ -7322,38 +8378,66 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
                             const SizedBox(height: 12),
                             DropdownButtonFormField<String?>(
                               initialValue: _selectedAmmoId,
-                              decoration: const InputDecoration(labelText: 'Ammo filter'),
+                              decoration: const InputDecoration(
+                                labelText: 'Ammo filter',
+                              ),
                               items: [
-                                const DropdownMenuItem<String?>(value: null, child: Text('All ammo')),
+                                const DropdownMenuItem<String?>(
+                                  value: null,
+                                  child: Text('All ammo'),
+                                ),
                                 ...filteredAmmoOptions.map(
                                   (ammo) => DropdownMenuItem<String?>(
                                     value: ammo.id,
                                     child: Text(
                                       [
-                                        if (ammo.caliber.trim().isNotEmpty) ammo.caliber.trim(),
-                                        if ((ammo.manufacturer ?? '').trim().isNotEmpty) (ammo.manufacturer ?? '').trim(),
-                                        if (ammo.bullet.trim().isNotEmpty) ammo.bullet.trim(),
+                                        if (ammo.caliber.trim().isNotEmpty)
+                                          ammo.caliber.trim(),
+                                        if ((ammo.manufacturer ?? '')
+                                            .trim()
+                                            .isNotEmpty)
+                                          (ammo.manufacturer ?? '').trim(),
+                                        if (ammo.bullet.trim().isNotEmpty)
+                                          ammo.bullet.trim(),
                                         if (ammo.grain > 0) '${ammo.grain}gr',
-                                        if ((ammo.name ?? '').trim().isNotEmpty) (ammo.name ?? '').trim(),
+                                        if ((ammo.name ?? '').trim().isNotEmpty)
+                                          (ammo.name ?? '').trim(),
                                       ].join(' • '),
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
                                 ),
                               ],
-                              onChanged: (value) => setState(() => _selectedAmmoId = value),
+                              onChanged: (value) =>
+                                  setState(() => _selectedAmmoId = value),
                             ),
                             const SizedBox(height: 12),
                             DropdownButtonFormField<int>(
                               initialValue: _selectedDateWindowDays,
-                              decoration: const InputDecoration(labelText: 'Date filter'),
+                              decoration: const InputDecoration(
+                                labelText: 'Date filter',
+                              ),
                               items: const [
-                                DropdownMenuItem<int>(value: 0, child: Text('All time')),
-                                DropdownMenuItem<int>(value: 30, child: Text('Last 30 days')),
-                                DropdownMenuItem<int>(value: 90, child: Text('Last 90 days')),
-                                DropdownMenuItem<int>(value: 365, child: Text('Last year')),
+                                DropdownMenuItem<int>(
+                                  value: 0,
+                                  child: Text('All time'),
+                                ),
+                                DropdownMenuItem<int>(
+                                  value: 30,
+                                  child: Text('Last 30 days'),
+                                ),
+                                DropdownMenuItem<int>(
+                                  value: 90,
+                                  child: Text('Last 90 days'),
+                                ),
+                                DropdownMenuItem<int>(
+                                  value: 365,
+                                  child: Text('Last year'),
+                                ),
                               ],
-                              onChanged: (value) => setState(() => _selectedDateWindowDays = value ?? 0),
+                              onChanged: (value) => setState(
+                                () => _selectedDateWindowDays = value ?? 0,
+                              ),
                             ),
                             const SizedBox(height: 8),
                             Text(
@@ -7369,34 +8453,45 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
                     const SizedBox(height: 12),
                     _ColdBoreTargetCard(state: state, rows: filteredRows),
                     const SizedBox(height: 12),
+                    _ColdBoreTargetGalleryCard(
+                      state: state,
+                      rows: filteredRows,
+                    ),
+                    const SizedBox(height: 12),
                     Card(
                       child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Baseline drift summary', style: TextStyle(fontWeight: FontWeight.w600)),
-                        const SizedBox(height: 8),
-                        if (top.isEmpty) ...[
-                          const Text('No baseline drift data yet.', style: TextStyle(color: Colors.black54)),
-                          const SizedBox(height: 6),
-                          const Text(
-                            'Tip: Mark a cold bore entry as Baseline for a specific Rifle + Ammo, and enter an Impact Offset (or use Impact OK).',
-                            style: TextStyle(color: Colors.black54),
-                          ),
-                        ] else ...[
-                          for (final s in top) ...[
-                            Text('${s['rifle']} • ${s['ammo']}'),
-                            Text(
-                              'Avg drift: ${(s['avg'] as double).toStringAsFixed(2)} MOA • Latest: ${dir(s['dx'] as double, 'Right', 'Left')} • ${dir(s['dy'] as double, 'Up', 'Down')}',
-                              style: const TextStyle(color: Colors.black54),
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Baseline drift summary',
+                              style: TextStyle(fontWeight: FontWeight.w600),
                             ),
                             const SizedBox(height: 8),
+                            if (top.isEmpty) ...[
+                              const Text(
+                                'No baseline drift data yet.',
+                                style: TextStyle(color: Colors.black54),
+                              ),
+                              const SizedBox(height: 6),
+                              const Text(
+                                'Tip: Mark a cold bore entry as Baseline for a specific Rifle + Ammo, and enter an Impact Offset (or use Impact OK).',
+                                style: TextStyle(color: Colors.black54),
+                              ),
+                            ] else ...[
+                              for (final s in top) ...[
+                                Text('${s['rifle']} • ${s['ammo']}'),
+                                Text(
+                                  'Avg drift: ${(s['avg'] as double).toStringAsFixed(2)} MOA • Latest: ${dir(s['dx'] as double, 'Right', 'Left')} • ${dir(s['dy'] as double, 'Up', 'Down')}',
+                                  style: const TextStyle(color: Colors.black54),
+                                ),
+                                const SizedBox(height: 8),
+                              ],
+                            ],
                           ],
-                        ],
-                      ],
-                    ),
-                  ),
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -7406,13 +8501,18 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
             final r = filteredRows[i - 1];
             final rifle = r.rifle;
             final ammo = r.ammo;
-            final stringIndex =
-                r.stringId == null ? -1 : r.session.strings.indexWhere((x) => x.id == r.stringId);
+            final stringIndex = r.stringId == null
+                ? -1
+                : r.session.strings.indexWhere((x) => x.id == r.stringId);
             return Column(
               children: [
                 ListTile(
-                  leading: Icon(r.shot.isBaseline ? Icons.star : Icons.ac_unit_outlined),
-                  title: Text('${r.shot.distance} • ${r.shot.result}${r.shot.photos.isEmpty ? '' : ' • ${r.shot.photos.length} photo(s)'}'),
+                  leading: Icon(
+                    r.shot.isBaseline ? Icons.star : Icons.ac_unit_outlined,
+                  ),
+                  title: Text(
+                    '${r.shot.distance} • ${r.shot.result}${r.shot.photos.isEmpty ? '' : ' • ${r.shot.photos.length} photo(s)'}',
+                  ),
                   subtitle: Text(
                     [
                       _fmtDateTime(r.shot.time),
@@ -7448,17 +8548,17 @@ class _ColdBoreTargetCard extends StatelessWidget {
   final AppState? state;
   final List<_ColdBoreRow> rows;
 
-  const _ColdBoreTargetCard({
-    required this.state,
-    required this.rows,
-  });
+  const _ColdBoreTargetCard({required this.state, required this.rows});
 
   @override
   Widget build(BuildContext context) {
-    final plottedRows = rows
-        .where((row) => row.shot.offsetX != null && row.shot.offsetY != null)
-        .toList()
-      ..sort((a, b) => a.shot.time.compareTo(b.shot.time));
+    final plottedRows =
+        rows
+            .where(
+              (row) => row.shot.offsetX != null && row.shot.offsetY != null,
+            )
+            .toList()
+          ..sort((a, b) => a.shot.time.compareTo(b.shot.time));
     final hiddenCount = rows.length - plottedRows.length;
 
     return Card(
@@ -7467,20 +8567,28 @@ class _ColdBoreTargetCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Cold bore target', style: TextStyle(fontWeight: FontWeight.w600)),
+            const Text(
+              'Cold bore target',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
             const SizedBox(height: 6),
             Text(
               hiddenCount > 0
                   ? '${plottedRows.length} plotted • $hiddenCount entries need impact offsets before they can be shown.'
                   : '${plottedRows.length} plotted',
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7)),
+              style: TextStyle(
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.7),
+              ),
             ),
             const SizedBox(height: 12),
             if (plottedRows.isEmpty)
               const _HintCard(
                 icon: Icons.gps_not_fixed_outlined,
                 title: 'No plotted cold bore impacts yet',
-                message: 'Add an Impact Offset on cold bore entries to place them on the zero target.',
+                message:
+                    'Add an Impact Offset on cold bore entries to place them on the zero target.',
               )
             else
               LayoutBuilder(
@@ -7490,8 +8598,14 @@ class _ColdBoreTargetCard extends StatelessWidget {
                   const pointSize = 16.0;
 
                   Offset pointOffset(_ColdBoreRow row) {
-                    final dx = _shotOffsetToInches(row.shot, row.shot.offsetX!).clamp(-spanInches, spanInches);
-                    final dy = _shotOffsetToInches(row.shot, row.shot.offsetY!).clamp(-spanInches, spanInches);
+                    final dx = _shotOffsetToInches(
+                      row.shot,
+                      row.shot.offsetX!,
+                    ).clamp(-spanInches, spanInches);
+                    final dy = _shotOffsetToInches(
+                      row.shot,
+                      row.shot.offsetY!,
+                    ).clamp(-spanInches, spanInches);
                     final nx = (dx + spanInches) / (spanInches * 2);
                     final ny = (spanInches - dy) / (spanInches * 2);
                     return Offset(nx * size, ny * size);
@@ -7520,32 +8634,47 @@ class _ColdBoreTargetCard extends StatelessWidget {
                               width: pointSize,
                               height: pointSize,
                               child: Tooltip(
-                                message: '${_fmtDateTime(row.shot.time)}\n${row.shot.distance} • ${row.shot.result}',
+                                message:
+                                    '${_fmtDateTime(row.shot.time)}\n${row.shot.distance} • ${row.shot.result}',
                                 child: Material(
                                   color: Colors.transparent,
                                   child: InkWell(
                                     borderRadius: BorderRadius.circular(4),
-                                    onTap: state == null ? null : () {
-                                      Navigator.of(context).push(
-                                        MaterialPageRoute(
-                                          builder: (_) => ColdBoreEntryScreen(
-                                            state: state!,
-                                            sessionId: row.session.id,
-                                            shotId: row.shot.id,
-                                          ),
-                                        ),
-                                      );
-                                    },
+                                    onTap: state == null
+                                        ? null
+                                        : () {
+                                            Navigator.of(context).push(
+                                              MaterialPageRoute(
+                                                builder: (_) =>
+                                                    ColdBoreEntryScreen(
+                                                      state: state!,
+                                                      sessionId: row.session.id,
+                                                      shotId: row.shot.id,
+                                                    ),
+                                              ),
+                                            );
+                                          },
                                     child: DecoratedBox(
                                       decoration: BoxDecoration(
                                         borderRadius: BorderRadius.circular(4),
                                         color: isBaseline
-                                            ? Theme.of(context).colorScheme.tertiary
-                                            : Theme.of(context).colorScheme.primary,
-                                        border: Border.all(color: Colors.white, width: 2),
+                                            ? Theme.of(
+                                                context,
+                                              ).colorScheme.tertiary
+                                            : Theme.of(
+                                                context,
+                                              ).colorScheme.primary,
+                                        border: Border.all(
+                                          color: Colors.white,
+                                          width: 2,
+                                        ),
                                       ),
                                       child: isBaseline
-                                          ? const Icon(Icons.star, size: 11, color: Colors.white)
+                                          ? const Icon(
+                                              Icons.star,
+                                              size: 11,
+                                              color: Colors.white,
+                                            )
                                           : const SizedBox.shrink(),
                                     ),
                                   ),
@@ -7562,8 +8691,117 @@ class _ColdBoreTargetCard extends StatelessWidget {
             const SizedBox(height: 12),
             Text(
               'Grid spacing is 1 inch. Tap any plotted point to open that cold bore entry.',
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7)),
+              style: TextStyle(
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.7),
+              ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ColdBoreTargetGalleryCard extends StatelessWidget {
+  final AppState? state;
+  final List<_ColdBoreRow> rows;
+
+  const _ColdBoreTargetGalleryCard({required this.state, required this.rows});
+
+  @override
+  Widget build(BuildContext context) {
+    final photoRows = rows.where((row) => row.shot.photos.isNotEmpty).toList()
+      ..sort((a, b) => b.shot.time.compareTo(a.shot.time));
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Cold bore target gallery',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              photoRows.isEmpty
+                  ? 'No cold bore target photos found for the current filter.'
+                  : 'Showing ${photoRows.length} cold bore target photo${photoRows.length == 1 ? '' : 's'}.',
+              style: TextStyle(
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.7),
+              ),
+            ),
+            const SizedBox(height: 10),
+            if (photoRows.isEmpty)
+              const _HintCard(
+                icon: Icons.photo_outlined,
+                title: 'No target photos yet',
+                message:
+                    'Attach a photo when adding or editing a cold bore entry to see it here.',
+              )
+            else
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final row in photoRows.take(60))
+                    Builder(
+                      builder: (context) {
+                        final photo = row.shot.photos.last;
+                        return InkWell(
+                          onTap: state == null
+                              ? null
+                              : () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => ColdBoreEntryScreen(
+                                        state: state!,
+                                        sessionId: row.session.id,
+                                        shotId: row.shot.id,
+                                      ),
+                                    ),
+                                  );
+                                },
+                          child: SizedBox(
+                            width: 118,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Image.memory(
+                                    photo.bytes,
+                                    width: 118,
+                                    height: 92,
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _fmtDateTime(row.shot.time),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 11),
+                                ),
+                                Text(
+                                  row.shot.distance,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 11),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                ],
+              ),
           ],
         ),
       ),
@@ -7575,10 +8813,7 @@ class _ColdBoreLegendDot extends StatelessWidget {
   final String label;
   final bool isBaseline;
 
-  const _ColdBoreLegendDot({
-    required this.label,
-    this.isBaseline = false,
-  });
+  const _ColdBoreLegendDot({required this.label, this.isBaseline = false});
 
   @override
   Widget build(BuildContext context) {
@@ -7596,7 +8831,9 @@ class _ColdBoreLegendDot extends StatelessWidget {
             color: color,
             border: Border.all(color: Colors.white, width: 1.5),
           ),
-          child: isBaseline ? const Icon(Icons.star, size: 9, color: Colors.white) : null,
+          child: isBaseline
+              ? const Icon(Icons.star, size: 9, color: Colors.white)
+              : null,
         ),
         const SizedBox(width: 6),
         Text(label),
@@ -7608,9 +8845,7 @@ class _ColdBoreLegendDot extends StatelessWidget {
 class _ColdBoreTargetPainter extends CustomPainter {
   final ColorScheme colorScheme;
 
-  const _ColdBoreTargetPainter({
-    required this.colorScheme,
-  });
+  const _ColdBoreTargetPainter({required this.colorScheme});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -7638,20 +8873,41 @@ class _ColdBoreTargetPainter extends CustomPainter {
     final step = size.width / fullSpanInches;
     for (var i = 1; i < fullSpanInches; i++) {
       final offset = step * i;
-      if ((offset - center.dx).abs() < 0.01 || (offset - center.dy).abs() < 0.01) {
+      if ((offset - center.dx).abs() < 0.01 ||
+          (offset - center.dy).abs() < 0.01) {
         continue;
       }
-      canvas.drawLine(Offset(offset, 0), Offset(offset, size.height), gridPaint);
+      canvas.drawLine(
+        Offset(offset, 0),
+        Offset(offset, size.height),
+        gridPaint,
+      );
       canvas.drawLine(Offset(0, offset), Offset(size.width, offset), gridPaint);
     }
 
-    canvas.drawLine(Offset(center.dx, 0), Offset(center.dx, size.height), axisPaint);
-    canvas.drawLine(Offset(0, center.dy), Offset(size.width, center.dy), axisPaint);
+    canvas.drawLine(
+      Offset(center.dx, 0),
+      Offset(center.dx, size.height),
+      axisPaint,
+    );
+    canvas.drawLine(
+      Offset(0, center.dy),
+      Offset(size.width, center.dy),
+      axisPaint,
+    );
 
     final centerPaint = Paint()..color = colorScheme.error;
     canvas.drawCircle(center, 4, centerPaint);
-    canvas.drawLine(Offset(center.dx - 10, center.dy), Offset(center.dx + 10, center.dy), axisPaint);
-    canvas.drawLine(Offset(center.dx, center.dy - 10), Offset(center.dx, center.dy + 10), axisPaint);
+    canvas.drawLine(
+      Offset(center.dx - 10, center.dy),
+      Offset(center.dx + 10, center.dy),
+      axisPaint,
+    );
+    canvas.drawLine(
+      Offset(center.dx, center.dy - 10),
+      Offset(center.dx, center.dy + 10),
+      axisPaint,
+    );
   }
 
   @override
@@ -7695,14 +8951,17 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Photo failed: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Photo failed: $e')));
     }
   }
 
   void _setBaseline() {
-    widget.state.setBaselineColdBore(sessionId: widget.sessionId, shotId: widget.shotId);
+    widget.state.setBaselineColdBore(
+      sessionId: widget.sessionId,
+      shotId: widget.shotId,
+    );
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Marked as baseline (first shot).')),
     );
@@ -7712,13 +8971,23 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
     final s = widget.state.getSessionById(widget.sessionId);
     if (s == null) return;
 
-    final current = widget.state.shotById(sessionId: widget.sessionId, shotId: widget.shotId);
+    final current = widget.state.shotById(
+      sessionId: widget.sessionId,
+      shotId: widget.shotId,
+    );
     if (current == null) return;
 
-    final baseline = widget.state.baselineColdBoreShot(rifleId: s.rifleId, ammoLotId: s.ammoLotId);
+    final baseline = widget.state.baselineColdBoreShot(
+      rifleId: s.rifleId,
+      ammoLotId: s.ammoLotId,
+    );
     if (baseline == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No baseline set for this rifle + ammo yet. Tap "Mark as Baseline" first.')),
+        const SnackBar(
+          content: Text(
+            'No baseline set for this rifle + ammo yet. Tap "Mark as Baseline" first.',
+          ),
+        ),
       );
       return;
     }
@@ -7735,14 +9004,20 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
         current.offsetX == null ||
         current.offsetY == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Both entries need impact offsets before you can compare them.')),
+        const SnackBar(
+          content: Text(
+            'Both entries need impact offsets before you can compare them.',
+          ),
+        ),
       );
       return;
     }
 
-    final dx = _shotOffsetToMoa(current, current.offsetX!) -
+    final dx =
+        _shotOffsetToMoa(current, current.offsetX!) -
         _shotOffsetToMoa(baseline, baseline.offsetX!);
-    final dy = _shotOffsetToMoa(current, current.offsetY!) -
+    final dy =
+        _shotOffsetToMoa(current, current.offsetY!) -
         _shotOffsetToMoa(baseline, baseline.offsetY!);
 
     String unitLabel(String u) {
@@ -7766,8 +9041,12 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
     showDialog<void>(
       context: context,
       builder: (_) {
-        final baseImg = baseline.photos.isNotEmpty ? baseline.photos.last.bytes : null;
-        final curImg = current.photos.isNotEmpty ? current.photos.last.bytes : null;
+        final baseImg = baseline.photos.isNotEmpty
+            ? baseline.photos.last.bytes
+            : null;
+        final curImg = current.photos.isNotEmpty
+            ? current.photos.last.bytes
+            : null;
         return AlertDialog(
           title: const Text('Compare to Baseline'),
           content: SizedBox(
@@ -7778,7 +9057,9 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
                 children: [
                   Text('Baseline: ${baseline.distance} • ${baseline.result}'),
                   if (baseline.offsetX != null || baseline.offsetY != null)
-                    Text('Offset: X ${baseline.offsetX ?? 0}  Y ${baseline.offsetY ?? 0} (${unitLabel(baseline.offsetUnit)})'),
+                    Text(
+                      'Offset: X ${baseline.offsetX ?? 0}  Y ${baseline.offsetY ?? 0} (${unitLabel(baseline.offsetUnit)})',
+                    ),
                   const SizedBox(height: 8),
                   if (baseImg != null)
                     ClipRRect(
@@ -7790,7 +9071,9 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
                   const SizedBox(height: 16),
                   Text('Selected: ${current.distance} • ${current.result}'),
                   if (current.offsetX != null || current.offsetY != null)
-                    Text('Offset: X ${current.offsetX ?? 0}  Y ${current.offsetY ?? 0} (${unitLabel(current.offsetUnit)})'),
+                    Text(
+                      'Offset: X ${current.offsetX ?? 0}  Y ${current.offsetY ?? 0} (${unitLabel(current.offsetUnit)})',
+                    ),
                   const SizedBox(height: 8),
                   if (curImg != null)
                     ClipRRect(
@@ -7809,7 +9092,10 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
           ],
         );
       },
@@ -7822,7 +9108,10 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
       animation: widget.state,
       builder: (context, _) {
         final s = widget.state.getSessionById(widget.sessionId);
-        final shot = widget.state.shotById(sessionId: widget.sessionId, shotId: widget.shotId);
+        final shot = widget.state.shotById(
+          sessionId: widget.sessionId,
+          shotId: widget.shotId,
+        );
         if (s == null || shot == null) {
           return const Scaffold(body: Center(child: Text('Entry not found')));
         }
@@ -7834,16 +9123,26 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
             break;
           }
         }
-        final stringIndex = stringId == null ? -1 : s.strings.indexWhere((x) => x.id == stringId);
+        final stringIndex = stringId == null
+            ? -1
+            : s.strings.indexWhere((x) => x.id == stringId);
         final stringMeta = stringIndex >= 0 ? s.strings[stringIndex] : null;
         final rifle = widget.state.rifleById(stringMeta?.rifleId ?? s.rifleId);
-        final ammo = widget.state.ammoById(stringMeta?.ammoLotId ?? s.ammoLotId);
+        final ammo = widget.state.ammoById(
+          stringMeta?.ammoLotId ?? s.ammoLotId,
+        );
 
         String weatherLine() {
           final parts = <String>[];
-          if (s.temperatureF != null) parts.add('${s.temperatureF!.toStringAsFixed(0)} F');
-          if (s.windSpeedMph != null) parts.add('${s.windSpeedMph!.toStringAsFixed(0)} mph wind');
-          if (s.windDirectionDeg != null) parts.add('${s.windDirectionDeg} deg');
+          if (s.temperatureF != null) {
+            parts.add('${s.temperatureF!.toStringAsFixed(0)} F');
+          }
+          if (s.windSpeedMph != null) {
+            parts.add('${s.windSpeedMph!.toStringAsFixed(0)} mph wind');
+          }
+          if (s.windDirectionDeg != null) {
+            parts.add('${s.windDirectionDeg} deg');
+          }
           return parts.isEmpty ? 'No weather saved' : parts.join(' • ');
         }
 
@@ -7863,10 +9162,21 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
             children: [
               Row(
                 children: [
-                  Expanded(child: Text('${shot.distance} • ${shot.result}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700))),
+                  Expanded(
+                    child: Text(
+                      '${shot.distance} • ${shot.result}',
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
                   const SizedBox(width: 8),
                   if (shot.isBaseline)
-                    const Chip(label: Text('Baseline'), avatar: Icon(Icons.star, size: 18)),
+                    const Chip(
+                      label: Text('Baseline'),
+                      avatar: Icon(Icons.star, size: 18),
+                    ),
                 ],
               ),
               const SizedBox(height: 6),
@@ -7888,7 +9198,9 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
                       const SizedBox(height: 6),
                       Text('Cold bore time: ${_fmtDateTime(shot.time)}'),
                       const SizedBox(height: 6),
-                      Text('Location: ${s.locationName.isEmpty ? '-' : s.locationName}'),
+                      Text(
+                        'Location: ${s.locationName.isEmpty ? '-' : s.locationName}',
+                      ),
                       const SizedBox(height: 6),
                       Text('Weather: ${weatherLine()}'),
                       const SizedBox(height: 6),
@@ -7905,7 +9217,9 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
                       ],
                       if (s.latitude != null && s.longitude != null) ...[
                         const SizedBox(height: 6),
-                        Text('GPS: ${s.latitude!.toStringAsFixed(6)}, ${s.longitude!.toStringAsFixed(6)}'),
+                        Text(
+                          'GPS: ${s.latitude!.toStringAsFixed(6)}, ${s.longitude!.toStringAsFixed(6)}',
+                        ),
                       ],
                     ],
                   ),
@@ -7916,25 +9230,25 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
                 _SectionTitle('Impact Offset'),
                 const SizedBox(height: 8),
                 Builder(
-                builder: (_) {
-                  final x = shot.offsetX ?? 0.0;
-                  final y = shot.offsetY ?? 0.0;
-                  final horiz = x == 0
-                      ? '0'
-                      : x > 0
-                          ? 'Right ${x.abs().toStringAsFixed(2)}'
-                          : 'Left ${x.abs().toStringAsFixed(2)}';
-                  final vert = y == 0
-                      ? '0'
-                      : y > 0
-                          ? 'Up ${y.abs().toStringAsFixed(2)}'
-                          : 'Down ${y.abs().toStringAsFixed(2)}';
-                  return Text('$horiz  •  $vert (${shot.offsetUnit})');
-                },
-              ),
+                  builder: (_) {
+                    final x = shot.offsetX ?? 0.0;
+                    final y = shot.offsetY ?? 0.0;
+                    final horiz = x == 0
+                        ? '0'
+                        : x > 0
+                        ? 'Right ${x.abs().toStringAsFixed(2)}'
+                        : 'Left ${x.abs().toStringAsFixed(2)}';
+                    final vert = y == 0
+                        ? '0'
+                        : y > 0
+                        ? 'Up ${y.abs().toStringAsFixed(2)}'
+                        : 'Down ${y.abs().toStringAsFixed(2)}';
+                    return Text('$horiz  •  $vert (${shot.offsetUnit})');
+                  },
+                ),
                 const SizedBox(height: 16),
               ],
-_SectionTitle('Cold Bore Photos'),
+              _SectionTitle('Cold Bore Photos'),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
@@ -7962,7 +9276,8 @@ _SectionTitle('Cold Bore Photos'),
                 _HintCard(
                   icon: Icons.photo_outlined,
                   title: 'No cold bore photos yet',
-                  message: 'Add a photo here. These photos stay attached to this cold bore entry only.',
+                  message:
+                      'Add a photo here. These photos stay attached to this cold bore entry only.',
                 )
               else
                 Wrap(
@@ -7985,7 +9300,11 @@ _SectionTitle('Cold Bore Photos'),
               const SizedBox(height: 16),
               Text(
                 'Tip: Set a baseline once, then open another cold bore entry and tap Compare.',
-                style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7)),
+                style: TextStyle(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.7),
+                ),
               ),
             ],
           ),
@@ -8020,9 +9339,7 @@ class _EndSessionRifleCount {
 class _EndSessionDialog extends StatefulWidget {
   final List<_EndSessionRifleCount> rifleCounts;
 
-  const _EndSessionDialog({
-    required this.rifleCounts,
-  });
+  const _EndSessionDialog({required this.rifleCounts});
 
   @override
   State<_EndSessionDialog> createState() => _EndSessionDialogState();
@@ -8059,15 +9376,21 @@ class _EndSessionDialogState extends State<_EndSessionDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Save the confirmed shot count and close the current session.'),
+            const Text(
+              'Save the confirmed shot count and close the current session.',
+            ),
             const SizedBox(height: 12),
             if (widget.rifleCounts.isEmpty)
-              const Text('No rifles with logged shots were detected in this session yet.')
+              const Text(
+                'No rifles with logged shots were detected in this session yet.',
+              )
             else
               ...List.generate(widget.rifleCounts.length, (index) {
                 final rifle = widget.rifleCounts[index];
                 return Padding(
-                  padding: EdgeInsets.only(bottom: index == widget.rifleCounts.length - 1 ? 0 : 12),
+                  padding: EdgeInsets.only(
+                    bottom: index == widget.rifleCounts.length - 1 ? 0 : 12,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -8079,18 +9402,24 @@ class _EndSessionDialogState extends State<_EndSessionDialog> {
                       TextField(
                         controller: _shotCountCtrls[index],
                         keyboardType: TextInputType.number,
-                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                        ],
                         decoration: const InputDecoration(
                           labelText: 'Shots for this rifle',
-                          helperText: 'Edit if the detected count needs correction.',
+                          helperText:
+                              'Edit if the detected count needs correction.',
                         ),
                       ),
                       SwitchListTile(
                         contentPadding: EdgeInsets.zero,
                         value: _applyToRifle[index],
-                        onChanged: (value) => setState(() => _applyToRifle[index] = value),
+                        onChanged: (value) =>
+                            setState(() => _applyToRifle[index] = value),
                         title: const Text('Apply to rifle rounds'),
-                        subtitle: const Text('This updates the rifle round count when the session ends.'),
+                        subtitle: const Text(
+                          'This updates the rifle round count when the session ends.',
+                        ),
                       ),
                     ],
                   ),
@@ -8194,7 +9523,6 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
     );
   }
 
-
   Future<void> _editRifle(Rifle r) async {
     final res = await showDialog<_NewRifleResult>(
       context: context,
@@ -8260,7 +9588,10 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
         title: Text(title),
         content: Text(message),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.of(context).pop(true),
@@ -8313,8 +9644,16 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
               children: [
                 SegmentedButton<int>(
                   segments: const [
-                    ButtonSegment(value: 0, label: Text('Rifles'), icon: Icon(Icons.sports_martial_arts_outlined)),
-                    ButtonSegment(value: 1, label: Text('Ammo'), icon: Icon(Icons.inventory_2_outlined)),
+                    ButtonSegment(
+                      value: 0,
+                      label: Text('Rifles'),
+                      icon: Icon(Icons.sports_martial_arts_outlined),
+                    ),
+                    ButtonSegment(
+                      value: 1,
+                      label: Text('Ammo'),
+                      icon: Icon(Icons.inventory_2_outlined),
+                    ),
                   ],
                   selected: {_seg},
                   onSelectionChanged: (s) => setState(() => _seg = s.first),
@@ -8324,20 +9663,48 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                   child: _seg == 0
                       ? _EquipmentList(
                           emptyTitle: 'No rifles yet',
-                          emptyMessage: 'Tap "Add Rifle" to create your first rifle.',
+                          emptyMessage:
+                              'Tap "Add Rifle" to create your first rifle.',
                           items: rifles
                               .map(
                                 (r) => ListTile(
-                                  leading: const Icon(Icons.sports_martial_arts_outlined),
-                                  title: Text((('${(r.manufacturer ?? '').trim()} ${(r.model ?? '').trim()}').trim().isNotEmpty) ? ('${(r.manufacturer ?? '').trim()} ${(r.model ?? '').trim()}').trim() : (((r.name ?? '').trim().isNotEmpty) ? (r.name ?? '').trim() : 'Rifle')),
+                                  leading: const Icon(
+                                    Icons.sports_martial_arts_outlined,
+                                  ),
+                                  title: Text(
+                                    (('${(r.manufacturer ?? '').trim()} ${(r.model ?? '').trim()}')
+                                            .trim()
+                                            .isNotEmpty)
+                                        ? ('${(r.manufacturer ?? '').trim()} ${(r.model ?? '').trim()}')
+                                              .trim()
+                                        : (((r.name ?? '').trim().isNotEmpty)
+                                              ? (r.name ?? '').trim()
+                                              : 'Rifle'),
+                                  ),
                                   subtitle: Text(
-                                    r.caliber + (((r.name ?? '').trim().isEmpty) ? '' : ' • Nickname: ${(r.name ?? '').trim()}') +
-                                        (((r.manufacturer ?? '').trim().isEmpty) ? '' : ' • ${(r.manufacturer ?? '').trim()}') +
-                                        (((r.model ?? '').trim().isEmpty) ? '' : ' • ${(r.model ?? '').trim()}') +
-                                        ((r.serialNumber == null || r.serialNumber!.isEmpty) ? '' : ' • SN ${r.serialNumber!}') +
-                                        (r.purchaseDate == null ? '' : ' • ${_fmtDate(r.purchaseDate!)}') +
-                                        (r.notes.isEmpty ? '' : ' • ${r.notes}') +
-                                        (r.dope.trim().isEmpty ? '' : ' • DOPE saved'),
+                                    r.caliber +
+                                        (((r.name ?? '').trim().isEmpty)
+                                            ? ''
+                                            : ' • Nickname: ${(r.name ?? '').trim()}') +
+                                        (((r.manufacturer ?? '').trim().isEmpty)
+                                            ? ''
+                                            : ' • ${(r.manufacturer ?? '').trim()}') +
+                                        (((r.model ?? '').trim().isEmpty)
+                                            ? ''
+                                            : ' • ${(r.model ?? '').trim()}') +
+                                        ((r.serialNumber == null ||
+                                                r.serialNumber!.isEmpty)
+                                            ? ''
+                                            : ' • SN ${r.serialNumber!}') +
+                                        (r.purchaseDate == null
+                                            ? ''
+                                            : ' • ${_fmtDate(r.purchaseDate!)}') +
+                                        (r.notes.isEmpty
+                                            ? ''
+                                            : ' • ${r.notes}') +
+                                        (r.dope.trim().isEmpty
+                                            ? ''
+                                            : ' • DOPE saved'),
                                   ),
                                   trailing: PopupMenuButton<String>(
                                     onSelected: (v) async {
@@ -8346,21 +9713,28 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                                         return;
                                       }
                                       if (v == 'dope') {
-                                        final updated = await showDialog<String>(
-                                          context: context,
-                                          builder: (_) => _EditDopeDialog(initialValue: r.dope),
-                                        );
+                                        final updated =
+                                            await showDialog<String>(
+                                              context: context,
+                                              builder: (_) => _EditDopeDialog(
+                                                initialValue: r.dope,
+                                              ),
+                                            );
                                         if (updated == null) return;
-                                        widget.state.updateRifleDope(rifleId: r.id, dope: updated);
+                                        widget.state.updateRifleDope(
+                                          rifleId: r.id,
+                                          dope: updated,
+                                        );
                                         return;
                                       }
                                       if (v == 'service') {
                                         await Navigator.of(context).push(
                                           MaterialPageRoute(
-                                            builder: (_) => RifleServiceLogScreen(
-                                              state: widget.state,
-                                              rifleId: r.id,
-                                            ),
+                                            builder: (_) =>
+                                                RifleServiceLogScreen(
+                                                  state: widget.state,
+                                                  rifleId: r.id,
+                                                ),
                                           ),
                                         );
                                         return;
@@ -8371,11 +9745,23 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                                       }
                                     },
                                     itemBuilder: (context) => const [
-                                      PopupMenuItem(value: 'edit', child: Text('Edit rifle')),
-                                      PopupMenuItem(value: 'dope', child: Text('Edit DOPE')),
-                                      PopupMenuItem(value: 'service', child: Text('Service log')),
+                                      PopupMenuItem(
+                                        value: 'edit',
+                                        child: Text('Edit rifle'),
+                                      ),
+                                      PopupMenuItem(
+                                        value: 'dope',
+                                        child: Text('Edit DOPE'),
+                                      ),
+                                      PopupMenuItem(
+                                        value: 'service',
+                                        child: Text('Service log'),
+                                      ),
                                       PopupMenuDivider(),
-                                      PopupMenuItem(value: 'delete', child: Text('Delete')),
+                                      PopupMenuItem(
+                                        value: 'delete',
+                                        child: Text('Delete'),
+                                      ),
                                     ],
                                   ),
                                 ),
@@ -8384,17 +9770,33 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                         )
                       : _EquipmentList(
                           emptyTitle: 'No ammo lots yet',
-                          emptyMessage: 'Tap "Add Ammo" to create your first ammo lot.',
+                          emptyMessage:
+                              'Tap "Add Ammo" to create your first ammo lot.',
                           items: ammo
                               .map(
                                 (a) => ListTile(
-                                  leading: const Icon(Icons.inventory_2_outlined),
-                                  title: Text('${a.caliber} - ${a.grain}gr - ${a.bullet}${((a.name ?? '').trim().isEmpty) ? '' : ' (${(a.name ?? '').trim()})'}'.trim()),
+                                  leading: const Icon(
+                                    Icons.inventory_2_outlined,
+                                  ),
+                                  title: Text(
+                                    '${a.caliber} - ${a.grain}gr - ${a.bullet}${((a.name ?? '').trim().isEmpty) ? '' : ' (${(a.name ?? '').trim()})'}'
+                                        .trim(),
+                                  ),
                                   subtitle: Text(
-                                    ((a.manufacturer == null || a.manufacturer!.isEmpty) ? '' : '${a.manufacturer!} • ') +
-                                        ((a.lotNumber == null || a.lotNumber!.isEmpty) ? '' : 'Lot ${a.lotNumber!} • ') +
-                                        (a.purchaseDate == null ? '' : '${_fmtDate(a.purchaseDate!)} • ') +
-                                        (a.ballisticCoefficient == null ? '' : 'BC ${a.ballisticCoefficient} • ') +
+                                    ((a.manufacturer == null ||
+                                                a.manufacturer!.isEmpty)
+                                            ? ''
+                                            : '${a.manufacturer!} • ') +
+                                        ((a.lotNumber == null ||
+                                                a.lotNumber!.isEmpty)
+                                            ? ''
+                                            : 'Lot ${a.lotNumber!} • ') +
+                                        (a.purchaseDate == null
+                                            ? ''
+                                            : '${_fmtDate(a.purchaseDate!)} • ') +
+                                        (a.ballisticCoefficient == null
+                                            ? ''
+                                            : 'BC ${a.ballisticCoefficient} • ') +
                                         (a.notes.isEmpty ? '' : a.notes),
                                   ),
                                   trailing: PopupMenuButton<String>(
@@ -8408,9 +9810,15 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                                       }
                                     },
                                     itemBuilder: (context) => const [
-                                      PopupMenuItem(value: 'edit', child: Text('Edit ammo')),
+                                      PopupMenuItem(
+                                        value: 'edit',
+                                        child: Text('Edit ammo'),
+                                      ),
                                       PopupMenuDivider(),
-                                      PopupMenuItem(value: 'delete', child: Text('Delete')),
+                                      PopupMenuItem(
+                                        value: 'delete',
+                                        child: Text('Delete'),
+                                      ),
                                     ],
                                   ),
                                   onTap: () => _editAmmo(a),
@@ -8462,8 +9870,11 @@ class ExportPlaceholderScreen extends StatefulWidget {
   const ExportPlaceholderScreen({super.key, required this.state});
 
   @override
-  State<ExportPlaceholderScreen> createState() => _ExportPlaceholderScreenState();
+  State<ExportPlaceholderScreen> createState() =>
+      _ExportPlaceholderScreenState();
 }
+
+enum _PdfSessionFilterMode { all, selected, dateRange }
 
 class _PdfExportOptions {
   final bool includeSummary;
@@ -8473,6 +9884,11 @@ class _PdfExportOptions {
   final bool includeUsedAmmo;
   final bool includeMaintenance;
   final bool includeEverything;
+  final bool includeSessionDetails;
+  final _PdfSessionFilterMode sessionFilterMode;
+  final List<String> selectedSessionIds;
+  final DateTime? startDate;
+  final DateTime? endDate;
 
   const _PdfExportOptions({
     required this.includeSummary,
@@ -8482,17 +9898,27 @@ class _PdfExportOptions {
     required this.includeUsedAmmo,
     required this.includeMaintenance,
     required this.includeEverything,
+    required this.includeSessionDetails,
+    required this.sessionFilterMode,
+    this.selectedSessionIds = const [],
+    this.startDate,
+    this.endDate,
   });
 
   Map<String, dynamic> toMap() => <String, dynamic>{
-        'includeSummary': includeSummary,
-        'includeCharts': includeCharts,
-        'includeRecentSessions': includeRecentSessions,
-        'includeUsedRifles': includeUsedRifles,
-        'includeUsedAmmo': includeUsedAmmo,
-        'includeMaintenance': includeMaintenance,
-        'includeEverything': includeEverything,
-      };
+    'includeSummary': includeSummary,
+    'includeCharts': includeCharts,
+    'includeRecentSessions': includeRecentSessions,
+    'includeUsedRifles': includeUsedRifles,
+    'includeUsedAmmo': includeUsedAmmo,
+    'includeMaintenance': includeMaintenance,
+    'includeEverything': includeEverything,
+    'includeSessionDetails': includeSessionDetails,
+    'sessionFilterMode': sessionFilterMode.name,
+    'selectedSessionIds': selectedSessionIds,
+    'startDate': startDate?.toIso8601String(),
+    'endDate': endDate?.toIso8601String(),
+  };
 
   factory _PdfExportOptions.fromMap(Map<String, dynamic> map) {
     return _PdfExportOptions(
@@ -8503,6 +9929,20 @@ class _PdfExportOptions {
       includeUsedAmmo: map['includeUsedAmmo'] != false,
       includeMaintenance: map['includeMaintenance'] != false,
       includeEverything: map['includeEverything'] == true,
+      includeSessionDetails: map['includeSessionDetails'] != false,
+      sessionFilterMode: _PdfSessionFilterMode.values.firstWhere(
+        (mode) => mode.name == (map['sessionFilterMode'] ?? 'all').toString(),
+        orElse: () => _PdfSessionFilterMode.all,
+      ),
+      selectedSessionIds: ((map['selectedSessionIds'] as List?) ?? const [])
+          .map((e) => e.toString())
+          .toList(),
+      startDate: map['startDate'] == null
+          ? null
+          : DateTime.tryParse(map['startDate'].toString()),
+      endDate: map['endDate'] == null
+          ? null
+          : DateTime.tryParse(map['endDate'].toString()),
     );
   }
 }
@@ -8514,15 +9954,17 @@ class _PdfExportPreset {
   const _PdfExportPreset({required this.name, required this.options});
 
   Map<String, dynamic> toMap() => <String, dynamic>{
-        'name': name,
-        'options': options.toMap(),
-      };
+    'name': name,
+    'options': options.toMap(),
+  };
 
   factory _PdfExportPreset.fromMap(Map<String, dynamic> map) {
     return _PdfExportPreset(
       name: (map['name'] ?? 'Preset').toString(),
       options: _PdfExportOptions.fromMap(
-        Map<String, dynamic>.from((map['options'] as Map?) ?? const <String, dynamic>{}),
+        Map<String, dynamic>.from(
+          (map['options'] as Map?) ?? const <String, dynamic>{},
+        ),
       ),
     );
   }
@@ -8539,55 +9981,63 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
   }
 
   List<_PdfExportPreset> get _builtinPdfPresets => const [
-        _PdfExportPreset(
-          name: 'Professional',
-          options: _PdfExportOptions(
-            includeSummary: true,
-            includeCharts: false,
-            includeRecentSessions: true,
-            includeUsedRifles: true,
-            includeUsedAmmo: true,
-            includeMaintenance: true,
-            includeEverything: false,
-          ),
-        ),
-        _PdfExportPreset(
-          name: 'Personal Log',
-          options: _PdfExportOptions(
-            includeSummary: true,
-            includeCharts: true,
-            includeRecentSessions: true,
-            includeUsedRifles: true,
-            includeUsedAmmo: true,
-            includeMaintenance: false,
-            includeEverything: false,
-          ),
-        ),
-        _PdfExportPreset(
-          name: 'Maintenance',
-          options: _PdfExportOptions(
-            includeSummary: true,
-            includeCharts: false,
-            includeRecentSessions: false,
-            includeUsedRifles: true,
-            includeUsedAmmo: false,
-            includeMaintenance: true,
-            includeEverything: false,
-          ),
-        ),
-        _PdfExportPreset(
-          name: 'Complete',
-          options: _PdfExportOptions(
-            includeSummary: true,
-            includeCharts: true,
-            includeRecentSessions: true,
-            includeUsedRifles: true,
-            includeUsedAmmo: true,
-            includeMaintenance: true,
-            includeEverything: true,
-          ),
-        ),
-      ];
+    _PdfExportPreset(
+      name: 'Professional',
+      options: _PdfExportOptions(
+        includeSummary: true,
+        includeCharts: false,
+        includeRecentSessions: true,
+        includeUsedRifles: true,
+        includeUsedAmmo: true,
+        includeMaintenance: true,
+        includeEverything: false,
+        includeSessionDetails: false,
+        sessionFilterMode: _PdfSessionFilterMode.all,
+      ),
+    ),
+    _PdfExportPreset(
+      name: 'Personal Log',
+      options: _PdfExportOptions(
+        includeSummary: true,
+        includeCharts: true,
+        includeRecentSessions: true,
+        includeUsedRifles: true,
+        includeUsedAmmo: true,
+        includeMaintenance: false,
+        includeEverything: false,
+        includeSessionDetails: false,
+        sessionFilterMode: _PdfSessionFilterMode.all,
+      ),
+    ),
+    _PdfExportPreset(
+      name: 'Maintenance',
+      options: _PdfExportOptions(
+        includeSummary: true,
+        includeCharts: false,
+        includeRecentSessions: false,
+        includeUsedRifles: true,
+        includeUsedAmmo: false,
+        includeMaintenance: true,
+        includeEverything: false,
+        includeSessionDetails: false,
+        sessionFilterMode: _PdfSessionFilterMode.all,
+      ),
+    ),
+    _PdfExportPreset(
+      name: 'Complete',
+      options: _PdfExportOptions(
+        includeSummary: true,
+        includeCharts: true,
+        includeRecentSessions: true,
+        includeUsedRifles: true,
+        includeUsedAmmo: true,
+        includeMaintenance: true,
+        includeEverything: true,
+        includeSessionDetails: true,
+        sessionFilterMode: _PdfSessionFilterMode.all,
+      ),
+    ),
+  ];
 
   Future<void> _loadPdfPresets() async {
     try {
@@ -8597,7 +10047,10 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
       final decoded = jsonDecode(raw);
       if (decoded is! List) return;
       final presets = decoded
-          .map((e) => _PdfExportPreset.fromMap(Map<String, dynamic>.from(e as Map)))
+          .map(
+            (e) =>
+                _PdfExportPreset.fromMap(Map<String, dynamic>.from(e as Map)),
+          )
           .toList();
       if (!mounted) return;
       setState(() => _savedPdfPresets = presets);
@@ -8612,7 +10065,10 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
     );
   }
 
-  Future<void> _saveCurrentOptionsAsPreset(BuildContext context, _PdfExportOptions options) async {
+  Future<void> _saveCurrentOptionsAsPreset(
+    BuildContext context,
+    _PdfExportOptions options,
+  ) async {
     final controller = TextEditingController();
     final name = await showDialog<String>(
       context: context,
@@ -8624,7 +10080,10 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
           textInputAction: TextInputAction.done,
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(controller.text.trim()),
             child: const Text('Save'),
@@ -8635,14 +10094,18 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
     if (name == null || name.trim().isEmpty) return;
 
     final preset = _PdfExportPreset(name: name.trim(), options: options);
-    final next = [..._savedPdfPresets.where((p) => p.name.toLowerCase() != preset.name.toLowerCase()), preset]
-      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    final next = [
+      ..._savedPdfPresets.where(
+        (p) => p.name.toLowerCase() != preset.name.toLowerCase(),
+      ),
+      preset,
+    ]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     setState(() => _savedPdfPresets = next);
     await _savePdfPresets();
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Saved PDF preset: ${preset.name}')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Saved PDF preset: ${preset.name}')));
   }
 
   String _pdfAmmoLabel(String? ammoId) {
@@ -8650,12 +10113,37 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
     final ammo = widget.state.findAmmoLotById(ammoId);
     if (ammo == null) return 'Deleted ($ammoId)';
     final parts = <String>[];
-    if ((ammo.name ?? '').trim().isNotEmpty) parts.add((ammo.name ?? '').trim());
-    if ((ammo.manufacturer ?? '').trim().isNotEmpty) parts.add((ammo.manufacturer ?? '').trim());
+    if ((ammo.name ?? '').trim().isNotEmpty) {
+      parts.add((ammo.name ?? '').trim());
+    }
+    if ((ammo.manufacturer ?? '').trim().isNotEmpty) {
+      parts.add((ammo.manufacturer ?? '').trim());
+    }
     if (ammo.caliber.trim().isNotEmpty) parts.add(ammo.caliber.trim());
     if (ammo.grain > 0) parts.add('${ammo.grain}gr');
     if (ammo.bullet.trim().isNotEmpty) parts.add(ammo.bullet.trim());
     return parts.isEmpty ? 'Ammo' : parts.join(' ');
+  }
+
+  String _pdfSessionLabel(TrainingSession s) {
+    final location = s.locationName.trim().isEmpty
+        ? 'No location'
+        : s.locationName.trim();
+    final rifle = _pdfRifleLabel(s.rifleId);
+    final ammo = _pdfAmmoLabel(s.ammoLotId);
+    return '${_pdfDateTime(s.dateTime)} | $location | $rifle | $ammo';
+  }
+
+  Future<DateTime?> _pickPdfFilterDate(
+    BuildContext context, {
+    required DateTime initialDate,
+  }) async {
+    return showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
   }
 
   Future<_PdfExportOptions?> _pickPdfOptions(BuildContext context) async {
@@ -8666,8 +10154,18 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
     var includeUsedAmmo = true;
     var includeMaintenance = true;
     var includeEverything = false;
+    var includeSessionDetails = true;
+    var sessionFilterMode = _PdfSessionFilterMode.all;
+    final selectedSessionIds = <String>{};
+    DateTime? startDate;
+    DateTime? endDate;
+    final availableSessions = [...widget.state.allSessions]
+      ..sort((a, b) => b.dateTime.compareTo(a.dateTime));
 
-    void applyPreset(_PdfExportOptions options, void Function(void Function()) setLocalState) {
+    void applyPreset(
+      _PdfExportOptions options,
+      void Function(void Function()) setLocalState,
+    ) {
       setLocalState(() {
         includeSummary = options.includeSummary;
         includeCharts = options.includeCharts;
@@ -8676,6 +10174,13 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
         includeUsedAmmo = options.includeUsedAmmo;
         includeMaintenance = options.includeMaintenance;
         includeEverything = options.includeEverything;
+        includeSessionDetails = options.includeSessionDetails;
+        sessionFilterMode = options.sessionFilterMode;
+        selectedSessionIds
+          ..clear()
+          ..addAll(options.selectedSessionIds);
+        startDate = options.startDate;
+        endDate = options.endDate;
       });
     }
 
@@ -8690,10 +10195,17 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('PDF Export Options', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                const Text(
+                  'PDF Export Options',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                ),
                 const SizedBox(height: 10),
-                if (_builtinPdfPresets.isNotEmpty || _savedPdfPresets.isNotEmpty) ...[
-                  const Text('Presets', style: TextStyle(fontWeight: FontWeight.w700)),
+                if (_builtinPdfPresets.isNotEmpty ||
+                    _savedPdfPresets.isNotEmpty) ...[
+                  const Text(
+                    'Presets',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
@@ -8702,13 +10214,15 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                       for (final preset in _builtinPdfPresets)
                         ActionChip(
                           label: Text(preset.name),
-                          onPressed: () => applyPreset(preset.options, setLocalState),
+                          onPressed: () =>
+                              applyPreset(preset.options, setLocalState),
                         ),
                       for (final preset in _savedPdfPresets)
                         ActionChip(
                           avatar: const Icon(Icons.bookmark_outline, size: 18),
                           label: Text(preset.name),
-                          onPressed: () => applyPreset(preset.options, setLocalState),
+                          onPressed: () =>
+                              applyPreset(preset.options, setLocalState),
                         ),
                     ],
                   ),
@@ -8716,53 +10230,210 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                 ],
                 CheckboxListTile(
                   value: includeSummary,
-                  onChanged: (v) => setLocalState(() => includeSummary = v ?? false),
+                  onChanged: (v) =>
+                      setLocalState(() => includeSummary = v ?? false),
                   title: const Text('Summary cards (sessions, shots, average)'),
                   controlAffinity: ListTileControlAffinity.leading,
                   contentPadding: EdgeInsets.zero,
                 ),
                 CheckboxListTile(
                   value: includeCharts,
-                  onChanged: (v) => setLocalState(() => includeCharts = v ?? false),
+                  onChanged: (v) =>
+                      setLocalState(() => includeCharts = v ?? false),
                   title: const Text('Charts (top rifles and monthly shots)'),
                   controlAffinity: ListTileControlAffinity.leading,
                   contentPadding: EdgeInsets.zero,
                 ),
                 CheckboxListTile(
                   value: includeRecentSessions,
-                  onChanged: (v) => setLocalState(() => includeRecentSessions = v ?? false),
+                  onChanged: (v) =>
+                      setLocalState(() => includeRecentSessions = v ?? false),
                   title: const Text('Recent sessions table (with location)'),
                   controlAffinity: ListTileControlAffinity.leading,
                   contentPadding: EdgeInsets.zero,
                 ),
                 CheckboxListTile(
                   value: includeUsedRifles,
-                  onChanged: (v) => setLocalState(() => includeUsedRifles = v ?? false),
+                  onChanged: (v) =>
+                      setLocalState(() => includeUsedRifles = v ?? false),
                   title: const Text('Rifles used in sessions'),
                   controlAffinity: ListTileControlAffinity.leading,
                   contentPadding: EdgeInsets.zero,
                 ),
                 CheckboxListTile(
                   value: includeUsedAmmo,
-                  onChanged: (v) => setLocalState(() => includeUsedAmmo = v ?? false),
+                  onChanged: (v) =>
+                      setLocalState(() => includeUsedAmmo = v ?? false),
                   title: const Text('Ammo lots used in sessions'),
                   controlAffinity: ListTileControlAffinity.leading,
                   contentPadding: EdgeInsets.zero,
                 ),
                 CheckboxListTile(
                   value: includeMaintenance,
-                  onChanged: (v) => setLocalState(() => includeMaintenance = v ?? false),
+                  onChanged: (v) =>
+                      setLocalState(() => includeMaintenance = v ?? false),
                   title: const Text('Maintenance / service history'),
                   controlAffinity: ListTileControlAffinity.leading,
                   contentPadding: EdgeInsets.zero,
                 ),
                 CheckboxListTile(
                   value: includeEverything,
-                  onChanged: (v) => setLocalState(() => includeEverything = v ?? false),
-                  title: const Text('Complete app-data appendix (all sessions, strings, DOPE, rifles, ammo)'),
+                  onChanged: (v) =>
+                      setLocalState(() => includeEverything = v ?? false),
+                  title: const Text(
+                    'Complete app-data appendix (all sessions, strings, DOPE, rifles, ammo)',
+                  ),
                   controlAffinity: ListTileControlAffinity.leading,
                   contentPadding: EdgeInsets.zero,
                 ),
+                CheckboxListTile(
+                  value: includeSessionDetails,
+                  onChanged: (v) =>
+                      setLocalState(() => includeSessionDetails = v ?? false),
+                  title: const Text(
+                    'Session detail pages (notes, photos, cold-bore targets)',
+                  ),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  contentPadding: EdgeInsets.zero,
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Session Filter',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    ChoiceChip(
+                      label: const Text('All sessions'),
+                      selected: sessionFilterMode == _PdfSessionFilterMode.all,
+                      onSelected: (_) => setLocalState(
+                        () => sessionFilterMode = _PdfSessionFilterMode.all,
+                      ),
+                    ),
+                    ChoiceChip(
+                      label: const Text('Selected sessions'),
+                      selected:
+                          sessionFilterMode == _PdfSessionFilterMode.selected,
+                      onSelected: (_) => setLocalState(
+                        () =>
+                            sessionFilterMode = _PdfSessionFilterMode.selected,
+                      ),
+                    ),
+                    ChoiceChip(
+                      label: const Text('Date range'),
+                      selected:
+                          sessionFilterMode == _PdfSessionFilterMode.dateRange,
+                      onSelected: (_) => setLocalState(
+                        () =>
+                            sessionFilterMode = _PdfSessionFilterMode.dateRange,
+                      ),
+                    ),
+                  ],
+                ),
+                if (sessionFilterMode == _PdfSessionFilterMode.selected) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      TextButton(
+                        onPressed: () => setLocalState(() {
+                          selectedSessionIds
+                            ..clear()
+                            ..addAll(availableSessions.map((s) => s.id));
+                        }),
+                        child: const Text('Select all'),
+                      ),
+                      TextButton(
+                        onPressed: () =>
+                            setLocalState(selectedSessionIds.clear),
+                        child: const Text('Clear'),
+                      ),
+                    ],
+                  ),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 240),
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: availableSessions.map((s) {
+                        final checked = selectedSessionIds.contains(s.id);
+                        return CheckboxListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          value: checked,
+                          title: Text(
+                            _pdfSessionLabel(s),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          onChanged: (value) => setLocalState(() {
+                            if (value == true) {
+                              selectedSessionIds.add(s.id);
+                            } else {
+                              selectedSessionIds.remove(s.id);
+                            }
+                          }),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ],
+                if (sessionFilterMode == _PdfSessionFilterMode.dateRange) ...[
+                  const SizedBox(height: 8),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Start date'),
+                    subtitle: Text(
+                      startDate == null ? 'Not set' : _pdfDate(startDate!),
+                    ),
+                    trailing: const Icon(Icons.calendar_today_outlined),
+                    onTap: () async {
+                      final picked = await _pickPdfFilterDate(
+                        context,
+                        initialDate:
+                            startDate ??
+                            (availableSessions.isNotEmpty
+                                ? availableSessions.last.dateTime
+                                : DateTime.now()),
+                      );
+                      if (picked != null) {
+                        setLocalState(() => startDate = picked);
+                      }
+                    },
+                  ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('End date'),
+                    subtitle: Text(
+                      endDate == null ? 'Not set' : _pdfDate(endDate!),
+                    ),
+                    trailing: const Icon(Icons.calendar_today_outlined),
+                    onTap: () async {
+                      final picked = await _pickPdfFilterDate(
+                        context,
+                        initialDate:
+                            endDate ??
+                            (availableSessions.isNotEmpty
+                                ? availableSessions.first.dateTime
+                                : DateTime.now()),
+                      );
+                      if (picked != null) {
+                        setLocalState(() => endDate = picked);
+                      }
+                    },
+                  ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton(
+                      onPressed: () => setLocalState(() {
+                        startDate = null;
+                        endDate = null;
+                      }),
+                      child: const Text('Clear date range'),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 8),
                 Row(
                   children: [
@@ -8778,6 +10449,23 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                             includeUsedAmmo: includeUsedAmmo,
                             includeMaintenance: includeMaintenance,
                             includeEverything: includeEverything,
+                            includeSessionDetails: includeSessionDetails,
+                            sessionFilterMode: sessionFilterMode,
+                            selectedSessionIds:
+                                sessionFilterMode ==
+                                    _PdfSessionFilterMode.selected
+                                ? selectedSessionIds.toList()
+                                : const [],
+                            startDate:
+                                sessionFilterMode ==
+                                    _PdfSessionFilterMode.dateRange
+                                ? startDate
+                                : null,
+                            endDate:
+                                sessionFilterMode ==
+                                    _PdfSessionFilterMode.dateRange
+                                ? endDate
+                                : null,
                           ),
                         );
                         if (!context.mounted) return;
@@ -8801,6 +10489,23 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                             includeUsedAmmo: includeUsedAmmo,
                             includeMaintenance: includeMaintenance,
                             includeEverything: includeEverything,
+                            includeSessionDetails: includeSessionDetails,
+                            sessionFilterMode: sessionFilterMode,
+                            selectedSessionIds:
+                                sessionFilterMode ==
+                                    _PdfSessionFilterMode.selected
+                                ? selectedSessionIds.toList()
+                                : const [],
+                            startDate:
+                                sessionFilterMode ==
+                                    _PdfSessionFilterMode.dateRange
+                                ? startDate
+                                : null,
+                            endDate:
+                                sessionFilterMode ==
+                                    _PdfSessionFilterMode.dateRange
+                                ? endDate
+                                : null,
                           ),
                         );
                       },
@@ -8817,6 +10522,13 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
   }
 
   String _pdfDate(DateTime d) {
+    final m = d.month.toString().padLeft(2, '0');
+    final day = d.day.toString().padLeft(2, '0');
+    final y = d.year.toString().padLeft(4, '0');
+    return '$m/$day/$y';
+  }
+
+  String _pdfFileDate(DateTime d) {
     final y = d.year.toString().padLeft(4, '0');
     final m = d.month.toString().padLeft(2, '0');
     final day = d.day.toString().padLeft(2, '0');
@@ -8853,12 +10565,12 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
   }
 
   String _pdfDateTime(DateTime d) {
-    final y = d.year.toString().padLeft(4, '0');
     final m = d.month.toString().padLeft(2, '0');
     final day = d.day.toString().padLeft(2, '0');
+    final y = d.year.toString().padLeft(4, '0');
     final hh = d.hour.toString().padLeft(2, '0');
     final mm = d.minute.toString().padLeft(2, '0');
-    return '$y-$m-$day $hh:$mm';
+    return '$m/$day/$y $hh:$mm';
   }
 
   String _pdfRifleLabel(String? rifleId) {
@@ -8899,7 +10611,10 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        pw.Text(title, style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 13)),
+        pw.Text(
+          title,
+          style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 13),
+        ),
         pw.SizedBox(height: 8),
         ...entries.map((e) {
           final width = 220 * (e.value / maxValue);
@@ -8907,10 +10622,7 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
             padding: const pw.EdgeInsets.only(bottom: 7),
             child: pw.Row(
               children: [
-                pw.SizedBox(
-                  width: 125,
-                  child: pw.Text(e.key, maxLines: 1),
-                ),
+                pw.SizedBox(width: 125, child: pw.Text(e.key, maxLines: 1)),
                 pw.Container(
                   width: width,
                   height: 10,
@@ -8937,22 +10649,257 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
       await _exportPdfReportWithOptions(context, options);
     } catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('PDF export failed: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('PDF export failed: $e')));
     }
   }
 
-  Future<void> _exportPdfReportWithOptions(BuildContext context, _PdfExportOptions options) async {
+  Future<void> _exportPdfReportWithOptions(
+    BuildContext context,
+    _PdfExportOptions options,
+  ) async {
     try {
-
-      final sessions = [...widget.state.allSessions]
+      final allSessions = [...widget.state.allSessions]
         ..sort((a, b) => b.dateTime.compareTo(a.dateTime));
+
+      final sessions = switch (options.sessionFilterMode) {
+        _PdfSessionFilterMode.all => allSessions,
+        _PdfSessionFilterMode.selected =>
+          allSessions
+              .where(
+                (session) => options.selectedSessionIds.contains(session.id),
+              )
+              .toList(),
+        _PdfSessionFilterMode.dateRange => allSessions.where((session) {
+          final sessionDate = DateTime(
+            session.dateTime.year,
+            session.dateTime.month,
+            session.dateTime.day,
+          );
+          final startDate = options.startDate == null
+              ? null
+              : DateTime(
+                  options.startDate!.year,
+                  options.startDate!.month,
+                  options.startDate!.day,
+                );
+          final endDate = options.endDate == null
+              ? null
+              : DateTime(
+                  options.endDate!.year,
+                  options.endDate!.month,
+                  options.endDate!.day,
+                );
+          final afterStart =
+              startDate == null || !sessionDate.isBefore(startDate);
+          final beforeEnd = endDate == null || !sessionDate.isAfter(endDate);
+          return afterStart && beforeEnd;
+        }).toList(),
+      };
+
+      if (sessions.isEmpty) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No sessions matched the selected export filter.'),
+          ),
+        );
+        return;
+      }
+
+      int sessionShotCount(TrainingSession s) {
+        final byStrings = s.shotsByString.values.fold<int>(
+          0,
+          (sum, list) => sum + list.length,
+        );
+        final fallback = s.shots.length >= byStrings
+            ? s.shots.length
+            : byStrings;
+        return s.confirmedShotCount ?? fallback;
+      }
+
+      List<pw.Widget> buildSessionDetailSection(TrainingSession session) {
+        final coldBoreShots = session.shots
+            .where((shot) => shot.isColdBore)
+            .toList();
+        final widgets = <pw.Widget>[
+          pw.Container(
+            margin: const pw.EdgeInsets.only(top: 16, bottom: 8),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(
+                  _pdfSessionLabel(session),
+                  style: pw.TextStyle(
+                    fontSize: 14,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+                pw.SizedBox(height: 4),
+                pw.Text(
+                  'Rounds: ${sessionShotCount(session)}   Strings: ${session.strings.length}   Cold bore: ${coldBoreShots.length}',
+                ),
+              ],
+            ),
+          ),
+        ];
+
+        if (session.notes.trim().isNotEmpty) {
+          widgets.addAll([
+            pw.Text(
+              'Session Notes',
+              style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 4),
+            pw.Text(session.notes.trim()),
+            pw.SizedBox(height: 8),
+          ]);
+        }
+
+        if (session.photos.isNotEmpty) {
+          widgets.addAll([
+            pw.Text(
+              'Photo Notes',
+              style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 4),
+            ...session.photos.map(
+              (photoNote) => pw.Padding(
+                padding: const pw.EdgeInsets.only(bottom: 4),
+                child: pw.Text(
+                  '${_pdfDateTime(photoNote.time)} - ${photoNote.caption.trim().isEmpty ? 'No note' : photoNote.caption.trim()}',
+                ),
+              ),
+            ),
+            pw.SizedBox(height: 8),
+          ]);
+        }
+
+        if (session.sessionPhotos.isNotEmpty) {
+          widgets.addAll([
+            pw.Text(
+              'Session Photos',
+              style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 6),
+            pw.Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final photo in session.sessionPhotos)
+                  pw.Container(
+                    width: 145,
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Container(
+                          width: 145,
+                          height: 100,
+                          decoration: pw.BoxDecoration(
+                            border: pw.Border.all(
+                              color: PdfColors.grey500,
+                              width: 0.5,
+                            ),
+                          ),
+                          child: pw.Image(
+                            pw.MemoryImage(photo.bytes),
+                            fit: pw.BoxFit.cover,
+                          ),
+                        ),
+                        pw.SizedBox(height: 3),
+                        pw.Text(
+                          photo.caption.trim().isEmpty
+                              ? _pdfDateTime(photo.time)
+                              : '${_pdfDateTime(photo.time)} - ${photo.caption.trim()}',
+                          style: const pw.TextStyle(fontSize: 8),
+                          maxLines: 3,
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+            pw.SizedBox(height: 8),
+          ]);
+        }
+
+        if (coldBoreShots.isNotEmpty) {
+          widgets.addAll([
+            pw.Text(
+              'Cold-Bore Targets',
+              style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 6),
+            for (final shot in coldBoreShots)
+              pw.Container(
+                margin: const pw.EdgeInsets.only(bottom: 10),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      '${_pdfDateTime(shot.time)} | ${shot.result.trim().isEmpty ? '-' : shot.result.trim()} | ${shot.distance.trim().isEmpty ? '-' : shot.distance.trim()}',
+                      style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                    ),
+                    if (shot.notes.trim().isNotEmpty) ...[
+                      pw.SizedBox(height: 2),
+                      pw.Text(shot.notes.trim()),
+                    ],
+                    if (shot.photos.isNotEmpty) ...[
+                      pw.SizedBox(height: 6),
+                      pw.Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final photo in shot.photos)
+                            pw.Container(
+                              width: 140,
+                              child: pw.Column(
+                                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                                children: [
+                                  pw.Container(
+                                    width: 140,
+                                    height: 95,
+                                    decoration: pw.BoxDecoration(
+                                      border: pw.Border.all(
+                                        color: PdfColors.grey500,
+                                        width: 0.5,
+                                      ),
+                                    ),
+                                    child: pw.Image(
+                                      pw.MemoryImage(photo.bytes),
+                                      fit: pw.BoxFit.cover,
+                                    ),
+                                  ),
+                                  pw.SizedBox(height: 3),
+                                  pw.Text(
+                                    photo.caption.trim().isEmpty
+                                        ? _pdfDateTime(photo.time)
+                                        : '${_pdfDateTime(photo.time)} - ${photo.caption.trim()}',
+                                    style: const pw.TextStyle(fontSize: 8),
+                                    maxLines: 3,
+                                  ),
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            pw.SizedBox(height: 4),
+          ]);
+        }
+
+        widgets.add(pw.Divider());
+        return widgets;
+      }
 
       final totalSessions = sessions.length;
       final totalShots = sessions.fold<int>(
         0,
-        (total, s) => total + (s.confirmedShotCount ?? s.shots.length),
+        (total, s) => total + sessionShotCount(s),
       );
       final avgShots = totalSessions == 0 ? 0.0 : totalShots / totalSessions;
 
@@ -8960,22 +10907,28 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
       for (final s in sessions) {
         final rifleId = s.rifleId;
         if (rifleId == null) continue;
-        final count = s.confirmedShotCount ?? s.shots.length;
+        final count = sessionShotCount(s);
         byRifle.update(rifleId, (v) => v + count, ifAbsent: () => count);
       }
 
-      final topRifles = byRifle.entries
-          .map((e) => MapEntry(_pdfRifleLabel(e.key), e.value))
-          .toList()
-        ..sort((a, b) => b.value.compareTo(a.value));
+      final topRifles =
+          byRifle.entries
+              .map((e) => MapEntry(_pdfRifleLabel(e.key), e.value))
+              .toList()
+            ..sort((a, b) => b.value.compareTo(a.value));
 
       final monthShots = <String, int>{};
       for (final s in sessions) {
-        final key = '${s.dateTime.year}-${s.dateTime.month.toString().padLeft(2, '0')}';
-        monthShots.update(key, (v) => v + (s.confirmedShotCount ?? s.shots.length), ifAbsent: () => (s.confirmedShotCount ?? s.shots.length));
+        final key =
+            '${s.dateTime.year}-${s.dateTime.month.toString().padLeft(2, '0')}';
+        final count = sessionShotCount(s);
+        monthShots.update(key, (v) => v + count, ifAbsent: () => count);
       }
-      final monthSeries = monthShots.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
-      final recentMonths = monthSeries.length > 6 ? monthSeries.sublist(monthSeries.length - 6) : monthSeries;
+      final monthSeries = monthShots.entries.toList()
+        ..sort((a, b) => a.key.compareTo(b.key));
+      final recentMonths = monthSeries.length > 6
+          ? monthSeries.sublist(monthSeries.length - 6)
+          : monthSeries;
 
       final usedRifleIds = <String>{};
       final usedAmmoIds = <String>{};
@@ -8987,10 +10940,16 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
           if (st.ammoLotId != null) usedAmmoIds.add(st.ammoLotId!);
         }
       }
-      final usedRifles = widget.state.rifles.where((r) => usedRifleIds.contains(r.id)).toList();
-      final usedAmmo = widget.state.ammoLots.where((a) => usedAmmoIds.contains(a.id)).toList();
-      final allRifles = [...widget.state.rifles]..sort((a, b) => _pdfRifleLabel(a.id).compareTo(_pdfRifleLabel(b.id)));
-      final allAmmo = [...widget.state.ammoLots]..sort((a, b) => _pdfAmmoLabel(a.id).compareTo(_pdfAmmoLabel(b.id)));
+      final usedRifles = widget.state.rifles
+          .where((r) => usedRifleIds.contains(r.id))
+          .toList();
+      final usedAmmo = widget.state.ammoLots
+          .where((a) => usedAmmoIds.contains(a.id))
+          .toList();
+      final allRifles = [...widget.state.rifles]
+        ..sort((a, b) => _pdfRifleLabel(a.id).compareTo(_pdfRifleLabel(b.id)));
+      final allAmmo = [...widget.state.ammoLots]
+        ..sort((a, b) => _pdfAmmoLabel(a.id).compareTo(_pdfAmmoLabel(b.id)));
 
       final doc = pw.Document();
 
@@ -8999,7 +10958,10 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
           pageFormat: PdfPageFormat.a4,
           margin: const pw.EdgeInsets.all(24),
           build: (_) => [
-            pw.Text('Cold Bore - Range Report', style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold)),
+            pw.Text(
+              'Cold Bore - Range Report',
+              style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold),
+            ),
             pw.SizedBox(height: 4),
             pw.Text('Generated ${_pdfDateTime(DateTime.now())}'),
             if (options.includeSummary) ...[
@@ -9011,32 +10973,77 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                   pw.Container(
                     width: 165,
                     padding: const pw.EdgeInsets.all(10),
-                    decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey400), borderRadius: pw.BorderRadius.circular(8)),
-                    child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-                      pw.Text('Sessions', style: const pw.TextStyle(fontSize: 10)),
-                      pw.SizedBox(height: 4),
-                      pw.Text('$totalSessions', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
-                    ]),
+                    decoration: pw.BoxDecoration(
+                      border: pw.Border.all(color: PdfColors.grey400),
+                      borderRadius: pw.BorderRadius.circular(8),
+                    ),
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text(
+                          'Sessions',
+                          style: const pw.TextStyle(fontSize: 10),
+                        ),
+                        pw.SizedBox(height: 4),
+                        pw.Text(
+                          '$totalSessions',
+                          style: pw.TextStyle(
+                            fontSize: 18,
+                            fontWeight: pw.FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   pw.Container(
                     width: 165,
                     padding: const pw.EdgeInsets.all(10),
-                    decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey400), borderRadius: pw.BorderRadius.circular(8)),
-                    child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-                      pw.Text('Total shots', style: const pw.TextStyle(fontSize: 10)),
-                      pw.SizedBox(height: 4),
-                      pw.Text('$totalShots', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
-                    ]),
+                    decoration: pw.BoxDecoration(
+                      border: pw.Border.all(color: PdfColors.grey400),
+                      borderRadius: pw.BorderRadius.circular(8),
+                    ),
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text(
+                          'Total shots',
+                          style: const pw.TextStyle(fontSize: 10),
+                        ),
+                        pw.SizedBox(height: 4),
+                        pw.Text(
+                          '$totalShots',
+                          style: pw.TextStyle(
+                            fontSize: 18,
+                            fontWeight: pw.FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   pw.Container(
                     width: 165,
                     padding: const pw.EdgeInsets.all(10),
-                    decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey400), borderRadius: pw.BorderRadius.circular(8)),
-                    child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-                      pw.Text('Average shots/session', style: const pw.TextStyle(fontSize: 10)),
-                      pw.SizedBox(height: 4),
-                      pw.Text(avgShots.toStringAsFixed(1), style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
-                    ]),
+                    decoration: pw.BoxDecoration(
+                      border: pw.Border.all(color: PdfColors.grey400),
+                      borderRadius: pw.BorderRadius.circular(8),
+                    ),
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text(
+                          'Average shots/session',
+                          style: const pw.TextStyle(fontSize: 10),
+                        ),
+                        pw.SizedBox(height: 4),
+                        pw.Text(
+                          avgShots.toStringAsFixed(1),
+                          style: pw.TextStyle(
+                            fontSize: 18,
+                            fontWeight: pw.FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -9056,36 +11063,66 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
             ],
             if (options.includeRecentSessions) ...[
               pw.SizedBox(height: 16),
-              pw.Text('Recent Sessions', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+              pw.Text(
+                'Recent Sessions',
+                style: pw.TextStyle(
+                  fontSize: 14,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
               pw.SizedBox(height: 6),
               pw.Table.fromTextArray(
-                border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.5),
+                border: pw.TableBorder.all(
+                  color: PdfColors.grey400,
+                  width: 0.5,
+                ),
                 headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-                headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                headerDecoration: const pw.BoxDecoration(
+                  color: PdfColors.grey200,
+                ),
                 cellStyle: const pw.TextStyle(fontSize: 9),
                 headers: const ['Date', 'Location', 'Rifle', 'Ammo', 'Shots'],
                 data: sessions.take(30).map((s) {
-                  final location = s.locationName.isEmpty ? '-' : s.locationName;
+                  final location = s.locationName.isEmpty
+                      ? '-'
+                      : s.locationName;
                   return [
                     _pdfDate(s.dateTime),
                     location,
                     _pdfRifleLabel(s.rifleId),
                     _pdfAmmoLabel(s.ammoLotId),
-                    '${s.confirmedShotCount ?? s.shots.length}',
+                    '${sessionShotCount(s)}',
                   ];
                 }).toList(),
               ),
             ],
             if (options.includeUsedRifles) ...[
               pw.SizedBox(height: 16),
-              pw.Text('Rifles Used', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+              pw.Text(
+                'Rifles Used',
+                style: pw.TextStyle(
+                  fontSize: 14,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
               pw.SizedBox(height: 6),
               pw.Table.fromTextArray(
-                border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.5),
+                border: pw.TableBorder.all(
+                  color: PdfColors.grey400,
+                  width: 0.5,
+                ),
                 headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-                headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                headerDecoration: const pw.BoxDecoration(
+                  color: PdfColors.grey200,
+                ),
                 cellStyle: const pw.TextStyle(fontSize: 9),
-                headers: const ['Name', 'Caliber', 'Rounds', 'Barrel Rounds', 'Serial'],
+                headers: const [
+                  'Name',
+                  'Caliber',
+                  'Rounds',
+                  'Barrel Rounds',
+                  'Serial',
+                ],
                 data: usedRifles.map((r) {
                   final display = (r.name ?? '').trim().isNotEmpty
                       ? (r.name ?? '').trim()
@@ -9098,28 +11135,45 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                     r.caliber,
                     '${r.manualRoundCount}',
                     '${r.barrelRoundCount}',
-                    (r.serialNumber ?? '').trim().isEmpty ? '-' : (r.serialNumber ?? '').trim(),
+                    (r.serialNumber ?? '').trim().isEmpty
+                        ? '-'
+                        : (r.serialNumber ?? '').trim(),
                   ];
                 }).toList(),
               ),
             ],
             if (options.includeUsedAmmo) ...[
               pw.SizedBox(height: 16),
-              pw.Text('Ammo Used', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+              pw.Text(
+                'Ammo Used',
+                style: pw.TextStyle(
+                  fontSize: 14,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
               pw.SizedBox(height: 6),
               pw.Table.fromTextArray(
-                border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.5),
+                border: pw.TableBorder.all(
+                  color: PdfColors.grey400,
+                  width: 0.5,
+                ),
                 headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-                headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                headerDecoration: const pw.BoxDecoration(
+                  color: PdfColors.grey200,
+                ),
                 cellStyle: const pw.TextStyle(fontSize: 9),
                 headers: const ['Name', 'Caliber', 'Bullet', 'Lot', 'BC'],
                 data: usedAmmo.map((a) {
-                  final display = (a.name ?? '').trim().isEmpty ? 'Ammo lot' : (a.name ?? '').trim();
+                  final display = (a.name ?? '').trim().isEmpty
+                      ? 'Ammo lot'
+                      : (a.name ?? '').trim();
                   return [
                     display,
                     a.caliber,
                     '${a.grain}gr ${a.bullet}',
-                    ((a.lotNumber ?? '').trim().isEmpty) ? '-' : (a.lotNumber ?? '').trim(),
+                    ((a.lotNumber ?? '').trim().isEmpty)
+                        ? '-'
+                        : (a.lotNumber ?? '').trim(),
                     a.ballisticCoefficient?.toStringAsFixed(3) ?? '-',
                   ];
                 }).toList(),
@@ -9127,103 +11181,217 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
             ],
             if (options.includeMaintenance) ...[
               pw.SizedBox(height: 16),
-              pw.Text('Maintenance / Service History', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+              pw.Text(
+                'Maintenance / Service History',
+                style: pw.TextStyle(
+                  fontSize: 14,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
               pw.SizedBox(height: 6),
-              for (final r in usedRifles)
-                ...[
-                  pw.Text(
-                    _pdfRifleLabel(r.id),
-                    style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold),
+              for (final r in usedRifles) ...[
+                pw.Text(
+                  _pdfRifleLabel(r.id),
+                  style: pw.TextStyle(
+                    fontSize: 11,
+                    fontWeight: pw.FontWeight.bold,
                   ),
-                  pw.SizedBox(height: 4),
-                  if (r.services.isEmpty)
-                    pw.Text('No service entries logged.')
-                  else
-                    pw.Table.fromTextArray(
-                      border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.5),
-                      headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-                      headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
-                      cellStyle: const pw.TextStyle(fontSize: 9),
-                      headers: const ['Date', 'Service', 'Rounds', 'Notes'],
-                      data: r.services
-                          .map((svc) => [
-                                _pdfDate(svc.date),
-                                svc.service,
-                                '${svc.roundsAtService}',
-                                svc.notes.isEmpty ? '-' : svc.notes,
-                              ])
-                          .toList(),
+                ),
+                pw.SizedBox(height: 4),
+                if (r.services.isEmpty)
+                  pw.Text('No service entries logged.')
+                else
+                  pw.Table.fromTextArray(
+                    border: pw.TableBorder.all(
+                      color: PdfColors.grey400,
+                      width: 0.5,
                     ),
-                  pw.SizedBox(height: 8),
-                ],
+                    headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                    headerDecoration: const pw.BoxDecoration(
+                      color: PdfColors.grey200,
+                    ),
+                    cellStyle: const pw.TextStyle(fontSize: 9),
+                    headers: const ['Date', 'Service', 'Rounds', 'Notes'],
+                    data: r.services
+                        .map(
+                          (svc) => [
+                            _pdfDate(svc.date),
+                            svc.service,
+                            '${svc.roundsAtService}',
+                            svc.notes.isEmpty ? '-' : svc.notes,
+                          ],
+                        )
+                        .toList(),
+                  ),
+                pw.SizedBox(height: 8),
+              ],
+            ],
+            if (options.includeSessionDetails) ...[
+              pw.SizedBox(height: 16),
+              pw.Text(
+                'Session Detail Pages',
+                style: pw.TextStyle(
+                  fontSize: 14,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+              pw.SizedBox(height: 6),
+              ...sessions.expand(buildSessionDetailSection),
             ],
             if (options.includeEverything) ...[
               pw.SizedBox(height: 18),
-              pw.Text('Complete App Data Appendix', style: pw.TextStyle(fontSize: 15, fontWeight: pw.FontWeight.bold)),
+              pw.Text(
+                'Complete App Data Appendix',
+                style: pw.TextStyle(
+                  fontSize: 15,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
               pw.SizedBox(height: 8),
-              pw.Text('All Rifles', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+              pw.Text(
+                'All Rifles',
+                style: pw.TextStyle(
+                  fontSize: 12,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
               pw.SizedBox(height: 6),
               pw.Table.fromTextArray(
-                border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.5),
+                border: pw.TableBorder.all(
+                  color: PdfColors.grey400,
+                  width: 0.5,
+                ),
                 headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-                headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                headerDecoration: const pw.BoxDecoration(
+                  color: PdfColors.grey200,
+                ),
                 cellStyle: const pw.TextStyle(fontSize: 9),
-                headers: const ['Name', 'Caliber', 'Round Count', 'Barrel Rounds', 'Serial'],
-                data: allRifles.map((r) => [
-                      _pdfRifleLabel(r.id),
-                      r.caliber,
-                      '${r.manualRoundCount}',
-                      '${r.barrelRoundCount}',
-                      (r.serialNumber ?? '').trim().isEmpty ? '-' : (r.serialNumber ?? '').trim(),
-                    ]).toList(),
+                headers: const [
+                  'Name',
+                  'Caliber',
+                  'Round Count',
+                  'Barrel Rounds',
+                  'Serial',
+                ],
+                data: allRifles
+                    .map(
+                      (r) => [
+                        _pdfRifleLabel(r.id),
+                        r.caliber,
+                        '${r.manualRoundCount}',
+                        '${r.barrelRoundCount}',
+                        (r.serialNumber ?? '').trim().isEmpty
+                            ? '-'
+                            : (r.serialNumber ?? '').trim(),
+                      ],
+                    )
+                    .toList(),
               ),
               pw.SizedBox(height: 12),
-              pw.Text('All Ammo Lots', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+              pw.Text(
+                'All Ammo Lots',
+                style: pw.TextStyle(
+                  fontSize: 12,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
               pw.SizedBox(height: 6),
               pw.Table.fromTextArray(
-                border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.5),
+                border: pw.TableBorder.all(
+                  color: PdfColors.grey400,
+                  width: 0.5,
+                ),
                 headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-                headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                headerDecoration: const pw.BoxDecoration(
+                  color: PdfColors.grey200,
+                ),
                 cellStyle: const pw.TextStyle(fontSize: 9),
                 headers: const ['Name', 'Caliber', 'Bullet', 'Lot', 'BC'],
-                data: allAmmo.map((a) => [
-                      _pdfAmmoLabel(a.id),
-                      a.caliber,
-                      '${a.grain}gr ${a.bullet}'.trim(),
-                      ((a.lotNumber ?? '').trim().isEmpty) ? '-' : (a.lotNumber ?? '').trim(),
-                      a.ballisticCoefficient?.toStringAsFixed(3) ?? '-',
-                    ]).toList(),
+                data: allAmmo
+                    .map(
+                      (a) => [
+                        _pdfAmmoLabel(a.id),
+                        a.caliber,
+                        '${a.grain}gr ${a.bullet}'.trim(),
+                        ((a.lotNumber ?? '').trim().isEmpty)
+                            ? '-'
+                            : (a.lotNumber ?? '').trim(),
+                        a.ballisticCoefficient?.toStringAsFixed(3) ?? '-',
+                      ],
+                    )
+                    .toList(),
               ),
               pw.SizedBox(height: 12),
-              pw.Text('All Sessions', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+              pw.Text(
+                'All Sessions',
+                style: pw.TextStyle(
+                  fontSize: 12,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
               pw.SizedBox(height: 6),
               pw.Table.fromTextArray(
-                border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.5),
+                border: pw.TableBorder.all(
+                  color: PdfColors.grey400,
+                  width: 0.5,
+                ),
                 headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-                headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                headerDecoration: const pw.BoxDecoration(
+                  color: PdfColors.grey200,
+                ),
                 cellStyle: const pw.TextStyle(fontSize: 9),
-                headers: const ['Date', 'Location', 'Rifle', 'Ammo', 'Shots', 'Strings', 'DOPE'],
-                data: sessions.map((s) => [
-                      _pdfDate(s.dateTime),
-                      s.locationName.isEmpty ? '-' : s.locationName,
-                      _pdfRifleLabel(s.rifleId),
-                      _pdfAmmoLabel(s.ammoLotId),
-                      '${s.confirmedShotCount ?? s.shots.length}',
-                      '${s.strings.length}',
-                      '${s.trainingDope.length}',
-                    ]).toList(),
+                headers: const [
+                  'Date',
+                  'Location',
+                  'Rifle',
+                  'Ammo',
+                  'Shots',
+                  'Strings',
+                  'DOPE',
+                ],
+                data: sessions
+                    .map(
+                      (s) => [
+                        _pdfDate(s.dateTime),
+                        s.locationName.isEmpty ? '-' : s.locationName,
+                        _pdfRifleLabel(s.rifleId),
+                        _pdfAmmoLabel(s.ammoLotId),
+                        '${sessionShotCount(s)}',
+                        '${s.strings.length}',
+                        '${s.trainingDope.length}',
+                      ],
+                    )
+                    .toList(),
               ),
               pw.SizedBox(height: 12),
-              pw.Text('All Session Strings', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+              pw.Text(
+                'All Session Strings',
+                style: pw.TextStyle(
+                  fontSize: 12,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
               pw.SizedBox(height: 6),
               pw.Table.fromTextArray(
-                border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.5),
+                border: pw.TableBorder.all(
+                  color: PdfColors.grey400,
+                  width: 0.5,
+                ),
                 headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-                headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                headerDecoration: const pw.BoxDecoration(
+                  color: PdfColors.grey200,
+                ),
                 cellStyle: const pw.TextStyle(fontSize: 9),
-                headers: const ['Session Date', 'String #', 'Rifle', 'Ammo', 'Shots', 'DOPE Entries'],
+                headers: const [
+                  'Session Date',
+                  'String #',
+                  'Rifle',
+                  'Ammo',
+                  'Shots',
+                  'DOPE Entries',
+                ],
                 data: [
-                  for (final s in sessions)
+                  for (final s in sessions) ...[
                     for (var i = 0; i < s.strings.length; i++)
                       [
                         _pdfDate(s.dateTime),
@@ -9233,17 +11401,51 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                         '${(s.shotsByString[s.strings[i].id] ?? const <ShotEntry>[]).length}',
                         '${(s.trainingDopeByString[s.strings[i].id] ?? const <DopeEntry>[]).length}',
                       ],
+                    if (sessionShotCount(s) >
+                        s.shotsByString.values.fold<int>(
+                          0,
+                          (sum, list) => sum + list.length,
+                        ))
+                      [
+                        _pdfDate(s.dateTime),
+                        'Unassigned',
+                        _pdfRifleLabel(s.rifleId),
+                        _pdfAmmoLabel(s.ammoLotId),
+                        '${sessionShotCount(s) - s.shotsByString.values.fold<int>(0, (sum, list) => sum + list.length)}',
+                        '0',
+                      ],
+                  ],
                 ],
               ),
               pw.SizedBox(height: 12),
-              pw.Text('Cold Bore Entries', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+              pw.Text(
+                'Cold Bore Entries',
+                style: pw.TextStyle(
+                  fontSize: 12,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
               pw.SizedBox(height: 6),
               pw.Table.fromTextArray(
-                border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.5),
+                border: pw.TableBorder.all(
+                  color: PdfColors.grey400,
+                  width: 0.5,
+                ),
                 headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-                headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                headerDecoration: const pw.BoxDecoration(
+                  color: PdfColors.grey200,
+                ),
                 cellStyle: const pw.TextStyle(fontSize: 9),
-                headers: const ['Session Date', 'Shot Time', 'Rifle', 'Ammo', 'Distance', 'Result', 'Baseline', 'Notes'],
+                headers: const [
+                  'Session Date',
+                  'Shot Time',
+                  'Rifle',
+                  'Ammo',
+                  'Distance',
+                  'Result',
+                  'Baseline',
+                  'Notes',
+                ],
                 data: [
                   for (final s in sessions)
                     for (final shot in s.shots.where((x) => x.isColdBore))
@@ -9252,7 +11454,9 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                         _pdfDateTime(shot.time),
                         _pdfRifleLabel(s.rifleId),
                         _pdfAmmoLabel(s.ammoLotId),
-                        shot.distance.trim().isEmpty ? '-' : shot.distance.trim(),
+                        shot.distance.trim().isEmpty
+                            ? '-'
+                            : shot.distance.trim(),
                         shot.result.trim().isEmpty ? '-' : shot.result.trim(),
                         shot.isBaseline ? 'Yes' : 'No',
                         shot.notes.trim().isEmpty ? '-' : shot.notes.trim(),
@@ -9260,14 +11464,116 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                 ],
               ),
               pw.SizedBox(height: 12),
-              pw.Text('Working DOPE (Rifle + Ammo)', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+              pw.Text(
+                'Cold Bore Display Targets',
+                style: pw.TextStyle(
+                  fontSize: 12,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+              pw.SizedBox(height: 6),
+              ...[
+                for (final s in sessions)
+                  for (final shot in s.shots.where((x) => x.isColdBore))
+                    pw.Container(
+                      margin: const pw.EdgeInsets.only(bottom: 8),
+                      padding: const pw.EdgeInsets.all(8),
+                      decoration: pw.BoxDecoration(
+                        border: pw.Border.all(
+                          color: PdfColors.grey400,
+                          width: 0.5,
+                        ),
+                        borderRadius: pw.BorderRadius.circular(6),
+                      ),
+                      child: pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Text(
+                            '${_pdfDateTime(shot.time)} | ${_pdfRifleLabel(s.rifleId)} | ${_pdfAmmoLabel(s.ammoLotId)}',
+                            style: pw.TextStyle(
+                              fontSize: 9,
+                              fontWeight: pw.FontWeight.bold,
+                            ),
+                          ),
+                          pw.SizedBox(height: 4),
+                          if (shot.photos.isEmpty)
+                            pw.Text(
+                              'No display target image attached.',
+                              style: const pw.TextStyle(fontSize: 9),
+                            )
+                          else
+                            pw.Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                for (final p in shot.photos)
+                                  pw.Column(
+                                    crossAxisAlignment:
+                                        pw.CrossAxisAlignment.start,
+                                    children: [
+                                      pw.Container(
+                                        width: 130,
+                                        height: 130,
+                                        decoration: pw.BoxDecoration(
+                                          border: pw.Border.all(
+                                            color: PdfColors.grey500,
+                                            width: 0.5,
+                                          ),
+                                        ),
+                                        child: pw.Image(
+                                          pw.MemoryImage(p.bytes),
+                                          fit: pw.BoxFit.cover,
+                                        ),
+                                      ),
+                                      if (p.caption.trim().isNotEmpty)
+                                        pw.Padding(
+                                          padding: const pw.EdgeInsets.only(
+                                            top: 2,
+                                          ),
+                                          child: pw.Text(
+                                            p.caption.trim(),
+                                            style: const pw.TextStyle(
+                                              fontSize: 8,
+                                            ),
+                                            maxLines: 2,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                              ],
+                            ),
+                        ],
+                      ),
+                    ),
+              ],
+              pw.SizedBox(height: 12),
+              pw.Text(
+                'Working DOPE (Rifle + Ammo)',
+                style: pw.TextStyle(
+                  fontSize: 12,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
               pw.SizedBox(height: 6),
               pw.Table.fromTextArray(
-                border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.5),
+                border: pw.TableBorder.all(
+                  color: PdfColors.grey400,
+                  width: 0.5,
+                ),
                 headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-                headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                headerDecoration: const pw.BoxDecoration(
+                  color: PdfColors.grey200,
+                ),
                 cellStyle: const pw.TextStyle(fontSize: 9),
-                headers: const ['Rifle', 'Ammo', 'Distance', 'Elevation', 'Wind', 'L', 'R'],
+                headers: const [
+                  'Rifle',
+                  'Ammo',
+                  'Distance',
+                  'Elevation',
+                  'Wind',
+                  'L',
+                  'R',
+                ],
                 data: [
                   for (final bucket in widget.state.workingDopeRifleAmmo.values)
                     for (final dope in bucket.values)
@@ -9276,21 +11582,40 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                         _pdfAmmoLabel(dope.ammoLotId),
                         '${dope.distance} ${_distanceUnitLabel(dope.distanceUnit)}',
                         '${dope.elevation} ${_elevationUnitLabel(dope.elevationUnit)}',
-                        '${_windTypeLabel(dope.windType)} ${dope.windValue}'.trim(),
+                        '${_windTypeLabel(dope.windType)} ${dope.windValue}'
+                            .trim(),
                         dope.windageLeft.toStringAsFixed(2),
                         dope.windageRight.toStringAsFixed(2),
                       ],
                 ],
               ),
               pw.SizedBox(height: 12),
-              pw.Text('Working DOPE (Rifle Only)', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+              pw.Text(
+                'Working DOPE (Rifle Only)',
+                style: pw.TextStyle(
+                  fontSize: 12,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
               pw.SizedBox(height: 6),
               pw.Table.fromTextArray(
-                border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.5),
+                border: pw.TableBorder.all(
+                  color: PdfColors.grey400,
+                  width: 0.5,
+                ),
                 headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-                headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                headerDecoration: const pw.BoxDecoration(
+                  color: PdfColors.grey200,
+                ),
                 cellStyle: const pw.TextStyle(fontSize: 9),
-                headers: const ['Rifle', 'Distance', 'Elevation', 'Wind', 'L', 'R'],
+                headers: const [
+                  'Rifle',
+                  'Distance',
+                  'Elevation',
+                  'Wind',
+                  'L',
+                  'R',
+                ],
                 data: [
                   for (final bucket in widget.state.workingDopeRifleOnly.values)
                     for (final dope in bucket.values)
@@ -9298,7 +11623,8 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                         _pdfRifleLabel(dope.rifleId),
                         '${dope.distance} ${_distanceUnitLabel(dope.distanceUnit)}',
                         '${dope.elevation} ${_elevationUnitLabel(dope.elevationUnit)}',
-                        '${_windTypeLabel(dope.windType)} ${dope.windValue}'.trim(),
+                        '${_windTypeLabel(dope.windType)} ${dope.windValue}'
+                            .trim(),
                         dope.windageLeft.toStringAsFixed(2),
                         dope.windageRight.toStringAsFixed(2),
                       ],
@@ -9310,18 +11636,18 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
       );
 
       final bytes = await doc.save();
-      final filename = 'cold_bore_report_${_pdfDate(DateTime.now())}.pdf';
+      final filename = 'cold_bore_report_${_pdfFileDate(DateTime.now())}.pdf';
       await Printing.sharePdf(bytes: bytes, filename: filename);
 
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('PDF report generated.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('PDF report generated.')));
     } catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('PDF export failed: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('PDF export failed: $e')));
     }
   }
 
@@ -9339,8 +11665,9 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
             onPressed: () async {
               await Clipboard.setData(ClipboardData(text: text));
               if (!mounted) return;
-              ScaffoldMessenger.of(context)
-                  .showSnackBar(const SnackBar(content: Text('Copied to clipboard.')));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Copied to clipboard.')),
+              );
             },
             child: const Text('Copy'),
           ),
@@ -9361,7 +11688,10 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
               },
               child: const Text('Download'),
             ),
-          ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
         ],
       ),
     );
@@ -9389,7 +11719,10 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                     title: const Text('CSV bundle'),
                     onTap: () => _showExportText(
                       'CSV bundle',
-                      _buildCsvBundle(widget.state, redactLocation: _redactLocation),
+                      _buildCsvBundle(
+                        widget.state,
+                        redactLocation: _redactLocation,
+                      ),
                     ),
                   ),
                 ),
@@ -9397,13 +11730,19 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                   child: ListTile(
                     leading: const Icon(Icons.picture_as_pdf_outlined),
                     title: const Text('PDF report (choose sections)'),
-                    subtitle: const Text('Select what to include: charts, sessions, rifles, ammo, maintenance.'),
+                    subtitle: const Text(
+                      'Select what to include: charts, sessions, rifles, ammo, maintenance.',
+                    ),
                     onTap: () => _exportPdfReport(context),
                   ),
                 ),
-                if (_builtinPdfPresets.isNotEmpty || _savedPdfPresets.isNotEmpty) ...[
+                if (_builtinPdfPresets.isNotEmpty ||
+                    _savedPdfPresets.isNotEmpty) ...[
                   const SizedBox(height: 8),
-                  const Text('Quick PDF presets', style: TextStyle(fontWeight: FontWeight.w700)),
+                  const Text(
+                    'Quick PDF presets',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
@@ -9412,13 +11751,19 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                       for (final preset in _builtinPdfPresets)
                         ActionChip(
                           label: Text(preset.name),
-                          onPressed: () => _exportPdfReportWithOptions(context, preset.options),
+                          onPressed: () => _exportPdfReportWithOptions(
+                            context,
+                            preset.options,
+                          ),
                         ),
                       for (final preset in _savedPdfPresets)
                         ActionChip(
                           avatar: const Icon(Icons.bookmark, size: 18),
                           label: Text(preset.name),
-                          onPressed: () => _exportPdfReportWithOptions(context, preset.options),
+                          onPressed: () => _exportPdfReportWithOptions(
+                            context,
+                            preset.options,
+                          ),
                         ),
                     ],
                   ),
@@ -9427,7 +11772,9 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                   child: ListTile(
                     leading: const Icon(Icons.swap_vert),
                     title: const Text('Backup / restore (JSON)'),
-                    subtitle: const Text('Download a backup file or import one (merge: scope/data only).'),
+                    subtitle: const Text(
+                      'Download a backup file or import one (merge: scope/data only).',
+                    ),
                     onTap: () {
                       Navigator.of(context).push(
                         MaterialPageRoute(
@@ -9445,7 +11792,6 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
     );
   }
 }
-
 
 ///
 /// Widgets
@@ -9477,7 +11823,10 @@ class _EmptyState extends StatelessWidget {
           children: [
             Icon(icon, size: 56, color: cs.onSurface.withValues(alpha: 0.7)),
             const SizedBox(height: 12),
-            Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+            Text(
+              title,
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+            ),
             const SizedBox(height: 8),
             Text(message, textAlign: TextAlign.center),
             if (actionLabel != null && onAction != null) ...[
@@ -9491,8 +11840,6 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-
-
 class _StringSummaryCard extends StatelessWidget {
   final AppState state;
   final TrainingSession session;
@@ -9500,20 +11847,42 @@ class _StringSummaryCard extends StatelessWidget {
 
   String _rifleLabel(String? id) {
     if (id == null) return '—';
-    final r = state.rifles.firstWhere((x) => x.id == id, orElse: () => Rifle(id: id, caliber: '', notes: '', dope: '', dopeEntries: const [], preferredUnit: ElevationUnit.mil));
+    final r = state.rifles.firstWhere(
+      (x) => x.id == id,
+      orElse: () => Rifle(
+        id: id,
+        caliber: '',
+        notes: '',
+        dope: '',
+        dopeEntries: const [],
+        preferredUnit: ElevationUnit.mil,
+      ),
+    );
     final parts = <String>[];
-    if (r.manufacturer != null && r.manufacturer!.trim().isNotEmpty) parts.add(r.manufacturer!.trim());
-    if (r.model != null && r.model!.trim().isNotEmpty) parts.add(r.model!.trim());
+    if (r.manufacturer != null && r.manufacturer!.trim().isNotEmpty) {
+      parts.add(r.manufacturer!.trim());
+    }
+    if (r.model != null && r.model!.trim().isNotEmpty) {
+      parts.add(r.model!.trim());
+    }
     if (r.caliber.trim().isNotEmpty) parts.add(r.caliber.trim());
-    if (r.name != null && r.name!.trim().isNotEmpty) parts.add('"${r.name!.trim()}"');
+    if (r.name != null && r.name!.trim().isNotEmpty) {
+      parts.add('"${r.name!.trim()}"');
+    }
     return parts.isEmpty ? id : parts.join(' • ');
   }
 
   String _ammoLabel(String? id) {
     if (id == null) return '—';
-    final a = state.ammoLots.firstWhere((x) => x.id == id, orElse: () => AmmoLot(id: id, caliber: '', grain: 0, bullet: '', notes: ''));
+    final a = state.ammoLots.firstWhere(
+      (x) => x.id == id,
+      orElse: () =>
+          AmmoLot(id: id, caliber: '', grain: 0, bullet: '', notes: ''),
+    );
     final parts = <String>[];
-    if (a.manufacturer != null && a.manufacturer!.trim().isNotEmpty) parts.add(a.manufacturer!.trim());
+    if (a.manufacturer != null && a.manufacturer!.trim().isNotEmpty) {
+      parts.add(a.manufacturer!.trim());
+    }
     if (a.name != null && a.name!.trim().isNotEmpty) parts.add(a.name!.trim());
     final bullet = a.bullet.trim().isEmpty ? null : a.bullet.trim();
     if (bullet != null) parts.add(bullet);
@@ -9530,7 +11899,9 @@ class _StringSummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final total = session.strings.length;
-    final activeIdx = session.strings.indexWhere((x) => x.id == session.activeStringId);
+    final activeIdx = session.strings.indexWhere(
+      (x) => x.id == session.activeStringId,
+    );
     final n = (activeIdx >= 0) ? (activeIdx + 1) : total;
     final active = (activeIdx >= 0) ? session.strings[activeIdx] : null;
 
@@ -9539,7 +11910,9 @@ class _StringSummaryCard extends StatelessWidget {
     return Card(
       child: ListTile(
         title: Text('String $n of $total'),
-        subtitle: Text('Started: $started\nRifle: ${_rifleLabel(active?.rifleId)}\nAmmo: ${_ammoLabel(active?.ammoLotId)}'),
+        subtitle: Text(
+          'Started: $started\nRifle: ${_rifleLabel(active?.rifleId)}\nAmmo: ${_ammoLabel(active?.ammoLotId)}',
+        ),
         trailing: const Icon(Icons.list),
         onTap: () {
           showDialog(
@@ -9564,20 +11937,42 @@ class _StringsDialog extends StatelessWidget {
 
   String _rifleLabel(String? id) {
     if (id == null) return '—';
-    final r = state.rifles.firstWhere((x) => x.id == id, orElse: () => Rifle(id: id, caliber: '', notes: '', dope: '', dopeEntries: const [], preferredUnit: ElevationUnit.mil));
+    final r = state.rifles.firstWhere(
+      (x) => x.id == id,
+      orElse: () => Rifle(
+        id: id,
+        caliber: '',
+        notes: '',
+        dope: '',
+        dopeEntries: const [],
+        preferredUnit: ElevationUnit.mil,
+      ),
+    );
     final parts = <String>[];
-    if (r.manufacturer != null && r.manufacturer!.trim().isNotEmpty) parts.add(r.manufacturer!.trim());
-    if (r.model != null && r.model!.trim().isNotEmpty) parts.add(r.model!.trim());
+    if (r.manufacturer != null && r.manufacturer!.trim().isNotEmpty) {
+      parts.add(r.manufacturer!.trim());
+    }
+    if (r.model != null && r.model!.trim().isNotEmpty) {
+      parts.add(r.model!.trim());
+    }
     if (r.caliber.trim().isNotEmpty) parts.add(r.caliber.trim());
-    if (r.name != null && r.name!.trim().isNotEmpty) parts.add('"${r.name!.trim()}"');
+    if (r.name != null && r.name!.trim().isNotEmpty) {
+      parts.add('"${r.name!.trim()}"');
+    }
     return parts.isEmpty ? id : parts.join(' • ');
   }
 
   String _ammoLabel(String? id) {
     if (id == null) return '—';
-    final a = state.ammoLots.firstWhere((x) => x.id == id, orElse: () => AmmoLot(id: id, caliber: '', grain: 0, bullet: '', notes: ''));
+    final a = state.ammoLots.firstWhere(
+      (x) => x.id == id,
+      orElse: () =>
+          AmmoLot(id: id, caliber: '', grain: 0, bullet: '', notes: ''),
+    );
     final parts = <String>[];
-    if (a.manufacturer != null && a.manufacturer!.trim().isNotEmpty) parts.add(a.manufacturer!.trim());
+    if (a.manufacturer != null && a.manufacturer!.trim().isNotEmpty) {
+      parts.add(a.manufacturer!.trim());
+    }
     if (a.name != null && a.name!.trim().isNotEmpty) parts.add(a.name!.trim());
     final bullet = a.bullet.trim().isEmpty ? null : a.bullet.trim();
     if (bullet != null) parts.add(bullet);
@@ -9621,7 +12016,10 @@ class _StringsDialog extends StatelessWidget {
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Close'),
+        ),
       ],
     );
   }
@@ -9660,23 +12058,26 @@ class _HintCard extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Icon(icon),
-            ),
+            Padding(padding: const EdgeInsets.only(top: 2), child: Icon(icon)),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+                  Text(
+                    title,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
                   const SizedBox(height: 6),
                   Text(message),
                   if (actionLabel != null && onAction != null) ...[
                     const SizedBox(height: 10),
                     Align(
                       alignment: Alignment.centerLeft,
-                      child: OutlinedButton(onPressed: onAction, child: Text(actionLabel!)),
+                      child: OutlinedButton(
+                        onPressed: onAction,
+                        child: Text(actionLabel!),
+                      ),
                     ),
                   ],
                 ],
@@ -9732,9 +12133,7 @@ class _NewUserDialogState extends State<_NewUserDialog> {
           const SizedBox(height: 8),
           Row(
             children: [
-              const Expanded(
-                child: Text('Load from Files'),
-              ),
+              const Expanded(child: Text('Load from Files')),
               TextButton.icon(
                 onPressed: () async {
                   final res = await FilePicker.platform.pickFiles(
@@ -9747,7 +12146,7 @@ class _NewUserDialogState extends State<_NewUserDialog> {
                   if (bytes == null) return;
                   setState(() {
                     _id.text = utf8.decode(bytes);
-});
+                  });
                 },
                 icon: const Icon(Icons.folder_open),
                 label: const Text('Browse'),
@@ -9762,14 +12161,24 @@ class _NewUserDialogState extends State<_NewUserDialog> {
         ],
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
         ElevatedButton(
           onPressed: () {
             final nameRaw = _name.text.trim();
             final name = nameRaw.isEmpty ? null : nameRaw;
             final identifier = _id.text.trim();
             if (identifier.isEmpty) return;
-            Navigator.of(context).pop(_NewUserResult(((name ?? '').trim().isEmpty) ? identifier : (name ?? '').trim(), identifier));
+            Navigator.of(context).pop(
+              _NewUserResult(
+                ((name ?? '').trim().isEmpty)
+                    ? identifier
+                    : (name ?? '').trim(),
+                identifier,
+              ),
+            );
           },
           child: const Text('Add'),
         ),
@@ -9825,7 +12234,8 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
   Future<void> _grabWeather() async {
     await _fetchWeather();
   }
-@override
+
+  @override
   void dispose() {
     _location.dispose();
     _notes.dispose();
@@ -9835,7 +12245,6 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
     super.dispose();
   }
 
-  
   Future<void> _useGps() async {
     setState(() {
       _busy = true;
@@ -9852,15 +12261,19 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
       if (perm == LocationPermission.denied) {
         perm = await Geolocator.requestPermission();
       }
-      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
+      if (perm == LocationPermission.denied ||
+          perm == LocationPermission.deniedForever) {
         setState(() => _gpsError = 'Location permission denied.');
         return;
       }
 
-      final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      final pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
       _lat = pos.latitude;
       _lon = pos.longitude;
-      _location.text = '${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)}';
+      _location.text =
+          '${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)}';
     } catch (e) {
       setState(() => _gpsError = 'GPS failed: $e');
     } finally {
@@ -9904,7 +12317,7 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
     }
   }
 
-Future<void> _pickDateTime() async {
+  Future<void> _pickDateTime() async {
     final now = DateTime.now();
     final d = await showDatePicker(
       context: context,
@@ -9932,102 +12345,120 @@ Future<void> _pickDateTime() async {
     return AlertDialog(
       title: const Text('New session'),
       content: ConstrainedBox(
-          constraints: const BoxConstraints(minWidth: 320, maxWidth: 520),
-          child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: _location,
-            decoration: const InputDecoration(labelText: 'Location *'),
-            maxLines: 1,
-            textInputAction: TextInputAction.next,
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _notes,
-            decoration: const InputDecoration(labelText: 'Notes (optional)'),
-            maxLines: 2,
-          ),
-          
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(child: Text('Date/Time: ${_fmtDateTime(_dateTime)}')),
-              TextButton.icon(
-                onPressed: _pickDateTime,
-                icon: const Icon(Icons.event),
-                label: const Text('Change'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-Column(
-  crossAxisAlignment: CrossAxisAlignment.start,
-  children: [
-    Text(
-      _lat == null || _lon == null
-          ? (_gpsError ?? 'GPS: not set')
-          : 'GPS: ${_lat!.toStringAsFixed(5)}, ${_lon!.toStringAsFixed(5)}',
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-    ),
-    const SizedBox(height: 8),
-    Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        FilledButton.tonal(
-          onPressed: _busy ? null : _fillGps,
-          child: Text(_busy ? '...' : 'Use GPS'),
-        ),
-        FilledButton.tonal(
-          onPressed: _busy ? null : _grabWeather,
-          child: Text(_busy ? '...' : 'Grab Weather'),
-        ),
-      ],
-    ),
-  ],
-),
+        constraints: const BoxConstraints(minWidth: 320, maxWidth: 520),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _location,
+              decoration: const InputDecoration(labelText: 'Location *'),
+              maxLines: 1,
+              textInputAction: TextInputAction.next,
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _notes,
+              decoration: const InputDecoration(labelText: 'Notes (optional)'),
+              maxLines: 2,
+            ),
 
-const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _tempF,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Temp (°F)'),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(child: Text('Date/Time: ${_fmtDateTime(_dateTime)}')),
+                TextButton.icon(
+                  onPressed: _pickDateTime,
+                  icon: const Icon(Icons.event),
+                  label: const Text('Change'),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TextField(
-                  controller: _windMph,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Wind (mph)'),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _lat == null || _lon == null
+                      ? (_gpsError ?? 'GPS: not set')
+                      : 'GPS: ${_lat!.toStringAsFixed(5)}, ${_lon!.toStringAsFixed(5)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TextField(
-                  controller: _windDir,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Wind dir (°)'),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    FilledButton.tonal(
+                      onPressed: _busy ? null : _fillGps,
+                      child: Text(_busy ? '...' : 'Use GPS'),
+                    ),
+                    FilledButton.tonal(
+                      onPressed: _busy ? null : _grabWeather,
+                      child: Text(_busy ? '...' : 'Grab Weather'),
+                    ),
+                  ],
                 ),
-              ),
-            ],
-          ),
-        ],
-      ),
+              ],
+            ),
+
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _tempF,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(labelText: 'Temp (°F)'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: _windMph,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(labelText: 'Wind (mph)'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: _windDir,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Wind dir (°)',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
+      ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
         ElevatedButton(
           onPressed: () {
             final loc = _location.text.trim();
             if (loc.isEmpty) return;
             Navigator.of(context).pop(
-              _NewSessionResult(locationName: loc, dateTime: _dateTime, notes: _notes.text, latitude: _lat, longitude: _lon, temperatureF: double.tryParse(_tempF.text.trim()), windSpeedMph: double.tryParse(_windMph.text.trim()), windDirectionDeg: int.tryParse(_windDir.text.trim())),
+              _NewSessionResult(
+                locationName: loc,
+                dateTime: _dateTime,
+                notes: _notes.text,
+                latitude: _lat,
+                longitude: _lon,
+                temperatureF: double.tryParse(_tempF.text.trim()),
+                windSpeedMph: double.tryParse(_windMph.text.trim()),
+                windDirectionDeg: int.tryParse(_windDir.text.trim()),
+              ),
             );
           },
           child: const Text('Create'),
@@ -10060,7 +12491,8 @@ class _ColdBoreResult {
 }
 
 class _ColdBoreDialog extends StatefulWidget {
-  _ColdBoreDialog({DateTime? defaultTime}) : defaultTime = defaultTime ?? DateTime.now();
+  _ColdBoreDialog({DateTime? defaultTime})
+    : defaultTime = defaultTime ?? DateTime.now();
 
   final DateTime defaultTime;
 
@@ -10069,6 +12501,16 @@ class _ColdBoreDialog extends StatefulWidget {
 }
 
 class _ColdBoreDialogState extends State<_ColdBoreDialog> {
+  static const List<String> _resultPresets = <String>[
+    'Impact OK',
+    'High',
+    'Low',
+    'Left',
+    'Right',
+    'Miss',
+    'Called flyer',
+  ];
+
   final _distance = TextEditingController(text: '100 yd');
   final _result = TextEditingController(text: 'Impact OK');
   final _notes = TextEditingController();
@@ -10082,7 +12524,7 @@ class _ColdBoreDialogState extends State<_ColdBoreDialog> {
 
   Uint8List? _photoBytes;
 
-late DateTime _time;
+  late DateTime _time;
 
   @override
   void initState() {
@@ -10098,7 +12540,9 @@ late DateTime _time;
     _hOffsetCtrl.dispose();
     _vOffsetCtrl.dispose();
     super.dispose();
-  }  Future<void> _pickTime() async {
+  }
+
+  Future<void> _pickTime() async {
     final t = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(_time),
@@ -10108,7 +12552,6 @@ late DateTime _time;
       _time = DateTime(_time.year, _time.month, _time.day, t.hour, t.minute);
     });
   }
-
 
   Future<void> _pickPhoto(ImageSource source) async {
     try {
@@ -10164,164 +12607,208 @@ late DateTime _time;
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-          Row(
-            children: [
-              Expanded(child: Text('Time: ${_fmtDateTime(_time)}')),
-              TextButton(onPressed: _pickTime, child: const Text('Edit')),
-            ],
-          ),
-          TextField(
-            controller: _distance,
-            decoration: const InputDecoration(labelText: 'Distance'),
-            textInputAction: TextInputAction.next,
-          ),
-          TextField(
-            controller: _result,
-            decoration: const InputDecoration(labelText: 'Result'),
-            textInputAction: TextInputAction.next,
-          ),
-          TextField(
-            controller: _notes,
-            decoration: const InputDecoration(labelText: 'Notes (optional)'),
-            maxLines: 2,
-          ),
-          const SizedBox(height: 12),
-
-          // Photo
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  _photoBytes == null ? 'Photo: none' : 'Photo: attached',
+              Row(
+                children: [
+                  Expanded(child: Text('Time: ${_fmtDateTime(_time)}')),
+                  TextButton(onPressed: _pickTime, child: const Text('Edit')),
+                ],
+              ),
+              TextField(
+                controller: _distance,
+                decoration: const InputDecoration(labelText: 'Distance'),
+                textInputAction: TextInputAction.next,
+              ),
+              TextField(
+                controller: _result,
+                decoration: const InputDecoration(
+                  labelText: 'Result',
+                  helperText: 'Pick a quick result below or type your own.',
+                ),
+                textInputAction: TextInputAction.next,
+              ),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _resultPresets.map((preset) {
+                    final selected =
+                        _result.text.trim().toLowerCase() ==
+                        preset.toLowerCase();
+                    return ChoiceChip(
+                      label: Text(preset),
+                      selected: selected,
+                      onSelected: (_) => setState(() => _result.text = preset),
+                    );
+                  }).toList(),
                 ),
               ),
-              TextButton(
-                onPressed: _choosePhoto,
-                child: Text(_photoBytes == null ? 'Add photo' : 'Replace'),
+              TextField(
+                controller: _notes,
+                decoration: const InputDecoration(
+                  labelText: 'Notes (optional)',
+                ),
+                maxLines: 2,
+              ),
+              const SizedBox(height: 12),
+
+              // Photo
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _photoBytes == null ? 'Photo: none' : 'Photo: attached',
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _choosePhoto,
+                    child: Text(_photoBytes == null ? 'Add photo' : 'Replace'),
+                  ),
+                  if (_photoBytes != null)
+                    IconButton(
+                      tooltip: 'Remove photo',
+                      onPressed: () => setState(() => _photoBytes = null),
+                      icon: const Icon(Icons.delete_outline),
+                    ),
+                ],
               ),
               if (_photoBytes != null)
-                IconButton(
-                  tooltip: 'Remove photo',
-                  onPressed: () => setState(() => _photoBytes = null),
-                  icon: const Icon(Icons.delete_outline),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.memory(
+                      _photoBytes!,
+                      height: 120,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
                 ),
-            ],
-          ),
-          if (_photoBytes != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.memory(_photoBytes!, height: 120, fit: BoxFit.cover),
+              const Text(
+                'Tip: For best results, use a 1-inch grid target and take the photo straight-on.',
+                style: TextStyle(fontSize: 12),
               ),
-            ),
-          const Text(
-            'Tip: For best results, use a 1-inch grid target and take the photo straight-on.',
-            style: TextStyle(fontSize: 12),
-          ),
-          const SizedBox(height: 12),
+              const SizedBox(height: 12),
 
-          
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Impact Offset', style: TextStyle(fontWeight: FontWeight.w600)),
-            subtitle: const Text('Optional: pick a direction and type the amount'),
-            value: _hasOffset,
-            onChanged: (v) => setState(() => _hasOffset = v),
-          ),
-          if (_hasOffset) ...[
-            const SizedBox(height: 8),
-            DropdownButtonFormField<String>(
-              initialValue: _offsetUnit,
-              items: const [
-                DropdownMenuItem(value: 'in', child: Text('Inches')),
-                DropdownMenuItem(value: 'moa', child: Text('MOA')),
-                DropdownMenuItem(value: 'mil', child: Text('Mil')),
-              ],
-              onChanged: (v) => setState(() {
-                _offsetUnit = v ?? 'in';
-              }),
-              decoration: const InputDecoration(labelText: 'Units'),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Horizontal'),
-                      const SizedBox(height: 6),
-                      Wrap(
-                        spacing: 8,
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text(
+                  'Impact Offset',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                subtitle: const Text(
+                  'Optional: pick a direction and type the amount',
+                ),
+                value: _hasOffset,
+                onChanged: (v) => setState(() => _hasOffset = v),
+              ),
+              if (_hasOffset) ...[
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  initialValue: _offsetUnit,
+                  items: const [
+                    DropdownMenuItem(value: 'in', child: Text('Inches')),
+                    DropdownMenuItem(value: 'moa', child: Text('MOA')),
+                    DropdownMenuItem(value: 'mil', child: Text('Mil')),
+                  ],
+                  onChanged: (v) => setState(() {
+                    _offsetUnit = v ?? 'in';
+                  }),
+                  decoration: const InputDecoration(labelText: 'Units'),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          ChoiceChip(
-                            label: const Text('Left'),
-                            selected: !_horizontalRight,
-                            onSelected: (_) => setState(() => _horizontalRight = false),
+                          const Text('Horizontal'),
+                          const SizedBox(height: 6),
+                          Wrap(
+                            spacing: 8,
+                            children: [
+                              ChoiceChip(
+                                label: const Text('Left'),
+                                selected: !_horizontalRight,
+                                onSelected: (_) =>
+                                    setState(() => _horizontalRight = false),
+                              ),
+                              ChoiceChip(
+                                label: const Text('Right'),
+                                selected: _horizontalRight,
+                                onSelected: (_) =>
+                                    setState(() => _horizontalRight = true),
+                              ),
+                            ],
                           ),
-                          ChoiceChip(
-                            label: const Text('Right'),
-                            selected: _horizontalRight,
-                            onSelected: (_) => setState(() => _horizontalRight = true),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: _hOffsetCtrl,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            decoration: InputDecoration(
+                              labelText:
+                                  'Amount (${_offsetUnit.toUpperCase()})',
+                              helperText: 'Type the horizontal amount',
+                            ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _hOffsetCtrl,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        decoration: InputDecoration(
-                          labelText: 'Amount (${_offsetUnit.toUpperCase()})',
-                          helperText: 'Type the horizontal amount',
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Vertical'),
-                      const SizedBox(height: 6),
-                      Wrap(
-                        spacing: 8,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          ChoiceChip(
-                            label: const Text('Up'),
-                            selected: _verticalUp,
-                            onSelected: (_) => setState(() => _verticalUp = true),
+                          const Text('Vertical'),
+                          const SizedBox(height: 6),
+                          Wrap(
+                            spacing: 8,
+                            children: [
+                              ChoiceChip(
+                                label: const Text('Up'),
+                                selected: _verticalUp,
+                                onSelected: (_) =>
+                                    setState(() => _verticalUp = true),
+                              ),
+                              ChoiceChip(
+                                label: const Text('Down'),
+                                selected: !_verticalUp,
+                                onSelected: (_) =>
+                                    setState(() => _verticalUp = false),
+                              ),
+                            ],
                           ),
-                          ChoiceChip(
-                            label: const Text('Down'),
-                            selected: !_verticalUp,
-                            onSelected: (_) => setState(() => _verticalUp = false),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: _vOffsetCtrl,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            decoration: InputDecoration(
+                              labelText:
+                                  'Amount (${_offsetUnit.toUpperCase()})',
+                              helperText: 'Type the vertical amount',
+                            ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _vOffsetCtrl,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        decoration: InputDecoration(
-                          labelText: 'Amount (${_offsetUnit.toUpperCase()})',
-                          helperText: 'Type the vertical amount',
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ],
-            ),
-          ],
             ],
           ),
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
         ElevatedButton(
           onPressed: () {
             final distance = _distance.text.trim();
@@ -10404,18 +12891,23 @@ class _EditNotesDialogState extends State<_EditNotesDialog> {
           children: [
             TextField(
               controller: _c,
-              decoration: const InputDecoration(labelText: 'DOPE notes (optional)'),
+              decoration: const InputDecoration(
+                labelText: 'Session notes (optional)',
+              ),
               maxLines: 3,
             ),
             const SizedBox(height: 12),
             const Text(
-              'Tip: Keep this in whatever format you prefer (e.g., come-ups, holds, or a quick reference table).',
+              'Tip: Use this for anything session-related (conditions, plan, observations, reminders, etc.).',
             ),
           ],
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
         ElevatedButton(
           onPressed: () => Navigator.of(context).pop(_c.text),
           child: const Text('Save'),
@@ -10424,9 +12916,6 @@ class _EditNotesDialogState extends State<_EditNotesDialog> {
     );
   }
 }
-
-
-
 
 class _PhotoNoteDialog extends StatefulWidget {
   const _PhotoNoteDialog();
@@ -10457,7 +12946,10 @@ class _PhotoNoteDialogState extends State<_PhotoNoteDialog> {
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
         ElevatedButton(
           onPressed: () => Navigator.of(context).pop(_c.text.trim()),
           child: const Text('Save'),
@@ -10503,7 +12995,10 @@ class _EditDopeDialogState extends State<_EditDopeDialog> {
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
         ElevatedButton(
           onPressed: () => Navigator.of(context).pop(_c.text.trim()),
           child: const Text('Save'),
@@ -10512,7 +13007,6 @@ class _EditDopeDialogState extends State<_EditDopeDialog> {
     );
   }
 }
-
 
 class _ShareSessionDialog extends StatefulWidget {
   final String sessionTitle;
@@ -10566,7 +13060,10 @@ class _ShareSessionDialogState extends State<_ShareSessionDialog> {
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
         ElevatedButton(
           onPressed: () => Navigator.of(context).pop(_selected),
           child: const Text('Share'),
@@ -10575,7 +13072,6 @@ class _ShareSessionDialogState extends State<_ShareSessionDialog> {
     );
   }
 }
-
 
 class _NewRifleDialog extends StatefulWidget {
   const _NewRifleDialog({this.existing});
@@ -10657,13 +13153,12 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
   void _save() {
     final caliber = _caliber.text.trim();
     if (caliber.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Caliber is required')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Caliber is required')));
       return;
     }
 
-    
     final man = _manufacturer.text.trim();
     final mod = _model.text.trim();
     if (man.isEmpty || mod.isEmpty) {
@@ -10673,31 +13168,56 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
       return;
     }
 
-Navigator.of(context).pop(
+    Navigator.of(context).pop(
       _NewRifleResult(
-      scopeUnit: _scopeUnit,
+        scopeUnit: _scopeUnit,
         manualRoundCount: widget.existing?.manualRoundCount ?? 0,
-        barrelRoundCount: widget.existing?.barrelRoundCount ?? widget.existing?.manualRoundCount ?? 0,
+        barrelRoundCount:
+            widget.existing?.barrelRoundCount ??
+            widget.existing?.manualRoundCount ??
+            0,
         barrelInstalledDate: widget.existing?.barrelInstalledDate,
         barrelNotes: widget.existing?.barrelNotes ?? '',
-        scopeMake: _scopeMake.text.trim().isEmpty ? null : _scopeMake.text.trim(),
-        scopeModel: _scopeModel.text.trim().isEmpty ? null : _scopeModel.text.trim(),
-        scopeSerial: _scopeSerial.text.trim().isEmpty ? null : _scopeSerial.text.trim(),
-        scopeMount: _scopeMount.text.trim().isEmpty ? null : _scopeMount.text.trim(),
-        scopeNotes: _scopeNotes.text.trim().isEmpty ? null : _scopeNotes.text.trim(),
-name: _name.text.trim().isEmpty ? null : _name.text.trim(),
+        scopeMake: _scopeMake.text.trim().isEmpty
+            ? null
+            : _scopeMake.text.trim(),
+        scopeModel: _scopeModel.text.trim().isEmpty
+            ? null
+            : _scopeModel.text.trim(),
+        scopeSerial: _scopeSerial.text.trim().isEmpty
+            ? null
+            : _scopeSerial.text.trim(),
+        scopeMount: _scopeMount.text.trim().isEmpty
+            ? null
+            : _scopeMount.text.trim(),
+        scopeNotes: _scopeNotes.text.trim().isEmpty
+            ? null
+            : _scopeNotes.text.trim(),
+        name: _name.text.trim().isEmpty ? null : _name.text.trim(),
         caliber: caliber,
         notes: _notes.text.trim(),
         dope: _dope.text.trim(),
         dopeEntries: widget.existing?.dopeEntries ?? const [],
-        manufacturer: _manufacturer.text.trim().isEmpty ? null : _manufacturer.text.trim(),
+        manufacturer: _manufacturer.text.trim().isEmpty
+            ? null
+            : _manufacturer.text.trim(),
         model: _model.text.trim().isEmpty ? null : _model.text.trim(),
-        serialNumber: _serialNumber.text.trim().isEmpty ? null : _serialNumber.text.trim(),
-        barrelLength: _barrelLength.text.trim().isEmpty ? null : _barrelLength.text.trim(),
-        twistRate: _twistRate.text.trim().isEmpty ? null : _twistRate.text.trim(),
+        serialNumber: _serialNumber.text.trim().isEmpty
+            ? null
+            : _serialNumber.text.trim(),
+        barrelLength: _barrelLength.text.trim().isEmpty
+            ? null
+            : _barrelLength.text.trim(),
+        twistRate: _twistRate.text.trim().isEmpty
+            ? null
+            : _twistRate.text.trim(),
         purchaseDate: _purchaseDate,
-        purchasePrice: _purchasePrice.text.trim().isEmpty ? null : _purchasePrice.text.trim(),
-        purchaseLocation: _purchaseLocation.text.trim().isEmpty ? null : _purchaseLocation.text.trim(),
+        purchasePrice: _purchasePrice.text.trim().isEmpty
+            ? null
+            : _purchasePrice.text.trim(),
+        purchaseLocation: _purchaseLocation.text.trim().isEmpty
+            ? null
+            : _purchaseLocation.text.trim(),
       ),
     );
   }
@@ -10710,10 +13230,11 @@ name: _name.text.trim().isEmpty ? null : _name.text.trim(),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-
             TextField(
               controller: _caliber,
-              decoration: const InputDecoration(labelText: 'Caliber (ex: .308) *'),
+              decoration: const InputDecoration(
+                labelText: 'Caliber (ex: .308) *',
+              ),
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
@@ -10743,7 +13264,9 @@ name: _name.text.trim().isEmpty ? null : _name.text.trim(),
                 const SizedBox(height: 8),
                 TextField(
                   controller: _serialNumber,
-                  decoration: const InputDecoration(labelText: 'Serial number (optional)'),
+                  decoration: const InputDecoration(
+                    labelText: 'Serial number (optional)',
+                  ),
                   textInputAction: TextInputAction.next,
                 ),
                 const SizedBox(height: 12),
@@ -10752,7 +13275,9 @@ name: _name.text.trim().isEmpty ? null : _name.text.trim(),
                     Expanded(
                       child: TextField(
                         controller: _barrelLength,
-                        decoration: const InputDecoration(labelText: 'Barrel length (optional)'),
+                        decoration: const InputDecoration(
+                          labelText: 'Barrel length (optional)',
+                        ),
                         textInputAction: TextInputAction.next,
                       ),
                     ),
@@ -10760,7 +13285,9 @@ name: _name.text.trim().isEmpty ? null : _name.text.trim(),
                     Expanded(
                       child: TextField(
                         controller: _twistRate,
-                        decoration: const InputDecoration(labelText: 'Twist rate (optional)'),
+                        decoration: const InputDecoration(
+                          labelText: 'Twist rate (optional)',
+                        ),
                         textInputAction: TextInputAction.next,
                       ),
                     ),
@@ -10770,9 +13297,11 @@ name: _name.text.trim().isEmpty ? null : _name.text.trim(),
                 Row(
                   children: [
                     Expanded(
-                      child: Text(_purchaseDate == null
-                          ? 'Purchase date (optional)'
-                          : 'Purchase date: ${_purchaseDate!.month}/${_purchaseDate!.day}/${_purchaseDate!.year}'),
+                      child: Text(
+                        _purchaseDate == null
+                            ? 'Purchase date (optional)'
+                            : 'Purchase date: ${_purchaseDate!.month}/${_purchaseDate!.day}/${_purchaseDate!.year}',
+                      ),
                     ),
                     TextButton(
                       onPressed: () async {
@@ -10793,20 +13322,26 @@ name: _name.text.trim().isEmpty ? null : _name.text.trim(),
                 const SizedBox(height: 12),
                 TextField(
                   controller: _purchasePrice,
-                  decoration: const InputDecoration(labelText: 'Purchase price (optional)'),
+                  decoration: const InputDecoration(
+                    labelText: 'Purchase price (optional)',
+                  ),
                   keyboardType: TextInputType.numberWithOptions(decimal: true),
                   textInputAction: TextInputAction.next,
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: _purchaseLocation,
-                  decoration: const InputDecoration(labelText: 'Purchase location (optional)'),
+                  decoration: const InputDecoration(
+                    labelText: 'Purchase location (optional)',
+                  ),
                   textInputAction: TextInputAction.next,
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: _notes,
-                  decoration: const InputDecoration(labelText: 'Notes (optional)'),
+                  decoration: const InputDecoration(
+                    labelText: 'Notes (optional)',
+                  ),
                   maxLines: 2,
                 ),
                 const SizedBox(height: 8),
@@ -10818,55 +13353,78 @@ name: _name.text.trim().isEmpty ? null : _name.text.trim(),
             ExpansionTile(
               tilePadding: EdgeInsets.zero,
               title: const Text('Scope'),
-              subtitle: Text('Adjustment unit: ${_scopeUnit.name.toUpperCase()}'),
+              subtitle: Text(
+                'Adjustment unit: ${_scopeUnit.name.toUpperCase()}',
+              ),
               children: [
                 const SizedBox(height: 8),
                 DropdownButtonFormField<ScopeUnit>(
                   initialValue: _scopeUnit,
-                  decoration: const InputDecoration(labelText: 'Adjustment unit'),
+                  decoration: const InputDecoration(
+                    labelText: 'Adjustment unit',
+                  ),
                   items: ScopeUnit.values
-                      .map((u) => DropdownMenuItem(value: u, child: Text(u.name.toUpperCase())))
+                      .map(
+                        (u) => DropdownMenuItem(
+                          value: u,
+                          child: Text(u.name.toUpperCase()),
+                        ),
+                      )
                       .toList(),
-                  onChanged: (v) => setState(() => _scopeUnit = v ?? ScopeUnit.mil),
+                  onChanged: (v) =>
+                      setState(() => _scopeUnit = v ?? ScopeUnit.mil),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: _scopeMake,
-                  decoration: const InputDecoration(labelText: 'Scope make (optional)'),
+                  decoration: const InputDecoration(
+                    labelText: 'Scope make (optional)',
+                  ),
                   textInputAction: TextInputAction.next,
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: _scopeModel,
-                  decoration: const InputDecoration(labelText: 'Scope model (optional)'),
+                  decoration: const InputDecoration(
+                    labelText: 'Scope model (optional)',
+                  ),
                   textInputAction: TextInputAction.next,
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: _scopeSerial,
-                  decoration: const InputDecoration(labelText: 'Scope serial (optional)'),
+                  decoration: const InputDecoration(
+                    labelText: 'Scope serial (optional)',
+                  ),
                   textInputAction: TextInputAction.next,
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: _scopeMount,
-                  decoration: const InputDecoration(labelText: 'Mount/rings (optional)'),
+                  decoration: const InputDecoration(
+                    labelText: 'Mount/rings (optional)',
+                  ),
                   textInputAction: TextInputAction.next,
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: _scopeNotes,
-                  decoration: const InputDecoration(labelText: 'Scope notes (optional)'),
+                  decoration: const InputDecoration(
+                    labelText: 'Scope notes (optional)',
+                  ),
                   maxLines: 2,
                 ),
                 const SizedBox(height: 8),
               ],
             ),
-],
+          ],
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
         ElevatedButton(onPressed: _save, child: const Text('Save')),
       ],
     );
@@ -10886,7 +13444,7 @@ class _NewRifleResult {
   final String? scopeMount;
   final String? scopeNotes;
 
-final String? name;
+  final String? name;
   final String caliber;
   final String notes;
   final String dope;
@@ -10914,7 +13472,7 @@ final String? name;
     this.scopeNotes,
     this.name,
     required this.caliber,
-required this.notes,
+    required this.notes,
     required this.dope,
     this.dopeEntries = const [],
     this.manufacturer,
@@ -10928,13 +13486,11 @@ required this.notes,
   });
 }
 
-
-
 class _NewAmmoResult {
   _NewAmmoResult({
     this.name,
     required this.caliber,
-required this.grain,
+    required this.grain,
     required this.bullet,
     this.ballisticCoefficient,
     this.manufacturer,
@@ -10975,7 +13531,6 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
   final _notes = TextEditingController();
   DateTime? _purchaseDate;
   final _purchasePrice = TextEditingController();
-
 
   @override
   void initState() {
@@ -11019,27 +13574,37 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
           children: [
             TextField(
               controller: _caliber,
-              decoration: const InputDecoration(labelText: 'Caliber (ex: .308) *'),
+              decoration: const InputDecoration(
+                labelText: 'Caliber (ex: .308) *',
+              ),
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _bullet,
-              decoration: const InputDecoration(labelText: 'Bullet (ex: SMK) *'),
+              decoration: const InputDecoration(
+                labelText: 'Bullet (ex: SMK) *',
+              ),
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _grain,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Bullet grain (ex: 175) *'),
+              decoration: const InputDecoration(
+                labelText: 'Bullet grain (ex: 175) *',
+              ),
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _bc,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(labelText: 'Ballistic coefficient (optional)'),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const InputDecoration(
+                labelText: 'Ballistic coefficient (optional)',
+              ),
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
@@ -11051,7 +13616,9 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
             const SizedBox(height: 12),
             TextField(
               controller: _lot,
-              decoration: const InputDecoration(labelText: 'Lot number (optional)'),
+              decoration: const InputDecoration(
+                labelText: 'Lot number (optional)',
+              ),
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
@@ -11075,7 +13642,9 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
                     final now = DateTime.now();
                     final picked = await showDatePicker(
                       context: context,
-                      initialDate: _purchaseDate ?? DateTime(now.year, now.month, now.day),
+                      initialDate:
+                          _purchaseDate ??
+                          DateTime(now.year, now.month, now.day),
                       firstDate: DateTime(1990),
                       lastDate: DateTime(now.year + 2),
                     );
@@ -11094,7 +13663,9 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
             const SizedBox(height: 12),
             TextField(
               controller: _purchasePrice,
-              decoration: const InputDecoration(labelText: 'Purchase price (optional)'),
+              decoration: const InputDecoration(
+                labelText: 'Purchase price (optional)',
+              ),
               keyboardType: TextInputType.number,
               textInputAction: TextInputAction.next,
             ),
@@ -11128,7 +13699,9 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
             final name = nameRaw.isEmpty ? null : nameRaw;
 
             final manufacturerRaw = _manufacturer.text.trim();
-            final manufacturer = manufacturerRaw.isEmpty ? null : manufacturerRaw;
+            final manufacturer = manufacturerRaw.isEmpty
+                ? null
+                : manufacturerRaw;
 
             final lotRaw = _lot.text.trim();
             final lot = lotRaw.isEmpty ? null : lotRaw;
@@ -11196,15 +13769,17 @@ double _shotOffsetToInches(ShotEntry shot, double value) {
 class DopeManagerScreen extends StatelessWidget {
   final AppState state;
   final Rifle rifle;
-  const DopeManagerScreen({super.key, required this.state, required this.rifle});
+  const DopeManagerScreen({
+    super.key,
+    required this.state,
+    required this.rifle,
+  });
 
   @override
   Widget build(BuildContext context) {
     final entries = rifle.dopeEntries;
     return Scaffold(
-      appBar: AppBar(
-        title: Text('DOPE • ${rifle.name}'),
-      ),
+      appBar: AppBar(title: Text('DOPE • ${rifle.name}')),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
           final res = await showDialog<RifleDopeEntry>(
@@ -11257,7 +13832,9 @@ class DopeManagerScreen extends StatelessWidget {
               itemBuilder: (context, i) {
                 final e = entries[i];
                 return ListTile(
-                  title: Text('${e.distance} • Elev ${e.elevation} • Wind ${e.windage}'),
+                  title: Text(
+                    '${e.distance} • Elev ${e.elevation} • Wind ${e.windage}',
+                  ),
                   subtitle: e.notes.trim().isEmpty ? null : Text(e.notes),
                   onTap: () async {
                     final edited = await showDialog<RifleDopeEntry>(
@@ -11360,7 +13937,9 @@ class _RifleDopeEntryDialogState extends State<_RifleDopeEntryDialog> {
             const SizedBox(height: 10),
             TextField(
               controller: _wind,
-              decoration: const InputDecoration(labelText: 'Windage (e.g., R0.2 / L0.1 / 0)'),
+              decoration: const InputDecoration(
+                labelText: 'Windage (e.g., R0.2 / L0.1 / 0)',
+              ),
             ),
             const SizedBox(height: 10),
             TextField(
@@ -11393,10 +13972,8 @@ class _RifleDopeEntryDialogState extends State<_RifleDopeEntryDialog> {
         ),
       ],
     );
-
   }
 }
-
 
 class MaintenanceHubScreen extends StatelessWidget {
   final AppState state;
@@ -11429,7 +14006,9 @@ class MaintenanceHubScreen extends StatelessWidget {
             itemBuilder: (context, i) {
               final r = rifles[i];
               final total = state.totalRoundsForRifle(r.id);
-              final barrelDate = r.barrelInstalledDate == null ? null : _fmtDate(r.barrelInstalledDate!);
+              final barrelDate = r.barrelInstalledDate == null
+                  ? null
+                  : _fmtDate(r.barrelInstalledDate!);
               return ListTile(
                 leading: const Icon(Icons.build_outlined),
                 title: Text(_rifleLabel(r)),
@@ -11440,7 +14019,8 @@ class MaintenanceHubScreen extends StatelessWidget {
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => RifleServiceLogScreen(state: state, rifleId: r.id),
+                      builder: (_) =>
+                          RifleServiceLogScreen(state: state, rifleId: r.id),
                     ),
                   );
                 },
@@ -11456,7 +14036,11 @@ class MaintenanceHubScreen extends StatelessWidget {
 class RifleServiceLogScreen extends StatefulWidget {
   final AppState state;
   final String rifleId;
-  const RifleServiceLogScreen({super.key, required this.state, required this.rifleId});
+  const RifleServiceLogScreen({
+    super.key,
+    required this.state,
+    required this.rifleId,
+  });
 
   @override
   State<RifleServiceLogScreen> createState() => _RifleServiceLogScreenState();
@@ -11466,7 +14050,8 @@ class _RifleServiceLogScreenState extends State<RifleServiceLogScreen> {
   Future<void> _addService() async {
     final res = await showDialog<RifleServiceEntry>(
       context: context,
-      builder: (_) => _AddRifleServiceDialog(state: widget.state, rifleId: widget.rifleId),
+      builder: (_) =>
+          _AddRifleServiceDialog(state: widget.state, rifleId: widget.rifleId),
     );
     if (res == null) return;
     widget.state.addRifleService(rifleId: widget.rifleId, entry: res);
@@ -11487,7 +14072,9 @@ class _RifleServiceLogScreenState extends State<RifleServiceLogScreen> {
     );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Rifle round count reset for the new barrel.')),
+      const SnackBar(
+        content: Text('Rifle round count reset for the new barrel.'),
+      ),
     );
   }
 
@@ -11515,7 +14102,9 @@ class _RifleServiceLogScreenState extends State<RifleServiceLogScreen> {
           final services = rifle?.services ?? const <RifleServiceEntry>[];
           final roundCount = widget.state.totalRoundsForRifle(widget.rifleId);
 
-          if (rifle == null) return const Center(child: Text('Rifle not found.'));
+          if (rifle == null) {
+            return const Center(child: Text('Rifle not found.'));
+          }
 
           return ListView.separated(
             padding: const EdgeInsets.all(12),
@@ -11535,7 +14124,9 @@ class _RifleServiceLogScreenState extends State<RifleServiceLogScreen> {
                         ),
                         if (rifle.barrelInstalledDate != null) ...[
                           const SizedBox(height: 4),
-                          Text('Current barrel installed: ${_fmtDate(rifle.barrelInstalledDate!)}'),
+                          Text(
+                            'Current barrel installed: ${_fmtDate(rifle.barrelInstalledDate!)}',
+                          ),
                         ],
                         if (rifle.barrelNotes.trim().isNotEmpty) ...[
                           const SizedBox(height: 4),
@@ -11543,7 +14134,9 @@ class _RifleServiceLogScreenState extends State<RifleServiceLogScreen> {
                         ],
                         if (services.isEmpty) ...[
                           const SizedBox(height: 12),
-                          const Text('No services logged yet. Tap + to add a service entry.'),
+                          const Text(
+                            'No services logged yet. Tap + to add a service entry.',
+                          ),
                         ],
                       ],
                     ),
@@ -11554,7 +14147,9 @@ class _RifleServiceLogScreenState extends State<RifleServiceLogScreen> {
               final s = services[i - 1];
               return ListTile(
                 title: Text(s.service),
-                subtitle: Text('${_fmtDate(s.date)} • ${s.roundsAtService} rds${s.notes.trim().isEmpty ? '' : ' • ${s.notes.trim()}'}'),
+                subtitle: Text(
+                  '${_fmtDate(s.date)} • ${s.roundsAtService} rds${s.notes.trim().isEmpty ? '' : ' • ${s.notes.trim()}'}',
+                ),
                 trailing: IconButton(
                   icon: const Icon(Icons.delete_outline),
                   onPressed: () async {
@@ -11564,13 +14159,22 @@ class _RifleServiceLogScreenState extends State<RifleServiceLogScreen> {
                         title: const Text('Delete service entry?'),
                         content: const Text('This cannot be undone.'),
                         actions: [
-                          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('Cancel'),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            child: const Text('Delete'),
+                          ),
                         ],
                       ),
                     );
                     if (ok == true) {
-                      widget.state.deleteRifleService(rifleId: widget.rifleId, serviceId: s.id);
+                      widget.state.deleteRifleService(
+                        rifleId: widget.rifleId,
+                        serviceId: s.id,
+                      );
                     }
                   },
                 ),
@@ -11648,14 +14252,18 @@ class _AddRifleServiceDialogState extends State<_AddRifleServiceDialog> {
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('Use current rifle rounds'),
-              subtitle: Text(_useCurrentRounds ? '$currentRounds rds' : 'Enter manually'),
+              subtitle: Text(
+                _useCurrentRounds ? '$currentRounds rds' : 'Enter manually',
+              ),
               value: _useCurrentRounds,
               onChanged: (v) => setState(() => _useCurrentRounds = v),
             ),
             if (!_useCurrentRounds)
               TextField(
                 controller: _roundsCtrl,
-                decoration: const InputDecoration(labelText: 'Rounds at service'),
+                decoration: const InputDecoration(
+                  labelText: 'Rounds at service',
+                ),
                 keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               ),
@@ -11663,7 +14271,10 @@ class _AddRifleServiceDialogState extends State<_AddRifleServiceDialog> {
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
         TextButton(
           onPressed: () {
             final service = _serviceCtrl.text.trim();
@@ -11694,10 +14305,7 @@ class _ResetBarrelResult {
   final DateTime installedDate;
   final String notes;
 
-  const _ResetBarrelResult({
-    required this.installedDate,
-    required this.notes,
-  });
+  const _ResetBarrelResult({required this.installedDate, required this.notes});
 }
 
 class _ResetBarrelDialog extends StatefulWidget {
@@ -11735,7 +14343,9 @@ class _ResetBarrelDialogState extends State<_ResetBarrelDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Use this when a new barrel is installed. Lifetime rounds stay unchanged.'),
+            const Text(
+              'Use this when a new barrel is installed. Lifetime rounds stay unchanged.',
+            ),
             const SizedBox(height: 12),
             ListTile(
               contentPadding: EdgeInsets.zero,
@@ -11758,7 +14368,9 @@ class _ResetBarrelDialogState extends State<_ResetBarrelDialog> {
             TextField(
               controller: _notesCtrl,
               maxLines: 3,
-              decoration: const InputDecoration(labelText: 'Barrel notes (optional)'),
+              decoration: const InputDecoration(
+                labelText: 'Barrel notes (optional)',
+              ),
             ),
           ],
         ),
@@ -11785,10 +14397,16 @@ class _ResetBarrelDialogState extends State<_ResetBarrelDialog> {
   }
 }
 
-
 class _BackupScreen extends StatelessWidget {
   final AppState state;
   const _BackupScreen({required this.state});
+
+  Rect _shareOriginRect(BuildContext context) {
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return const Rect.fromLTWH(0, 0, 1, 1);
+    final origin = box.localToGlobal(Offset.zero);
+    return origin & box.size;
+  }
 
   Future<void> _ensureFirebaseInitializedForCloud() async {
     if (defaultTargetPlatform == TargetPlatform.iOS) return;
@@ -11822,7 +14440,10 @@ class _BackupScreen extends StatelessWidget {
     }
     try {
       final user = await _ensureCloudUser();
-      final doc = await FirebaseFirestore.instance.collection('cloud_backups').doc(user.uid).get();
+      final doc = await FirebaseFirestore.instance
+          .collection('cloud_backups')
+          .doc(user.uid)
+          .get();
       return doc.data();
     } catch (_) {
       return null;
@@ -11851,13 +14472,17 @@ class _BackupScreen extends StatelessWidget {
             ListTile(
               leading: const Icon(Icons.merge_type),
               title: const Text('Merge (recommended)'),
-              subtitle: const Text('Overwrite scope fields; keep IDs & history'),
+              subtitle: const Text(
+                'Overwrite scope fields; keep IDs & history',
+              ),
               onTap: () => Navigator.of(context).pop(_ImportMode.merge),
             ),
             ListTile(
               leading: const Icon(Icons.warning_amber_outlined),
               title: const Text('Replace equipment'),
-              subtitle: const Text('Replace rifles & ammo lists (history stays)'),
+              subtitle: const Text(
+                'Replace rifles & ammo lists (history stays)',
+              ),
               onTap: () => Navigator.of(context).pop(_ImportMode.replace),
             ),
           ],
@@ -11869,29 +14494,37 @@ class _BackupScreen extends StatelessWidget {
   Future<void> _exportBackupFile(BuildContext context) async {
     try {
       final ts = DateTime.now();
-      final fname = 'cold_bore_backup_${ts.year.toString().padLeft(4,'0')}-${ts.month.toString().padLeft(2,'0')}-${ts.day.toString().padLeft(2,'0')}.json';
+      final fname =
+          'cold_bore_backup_${ts.year.toString().padLeft(4, '0')}-${ts.month.toString().padLeft(2, '0')}-${ts.day.toString().padLeft(2, '0')}.json';
       final json = state.exportBackupJson();
 
       // Web: download directly (no sandboxed filesystem)
       if (kIsWeb) {
         _downloadTextFileWeb(fname, json, mimeType: 'application/json');
         if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Backup downloaded.')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Backup downloaded.')));
         return;
       }
 
-      // Mobile/Desktop: write file then share
-      final dir = await getApplicationDocumentsDirectory();
-      final file = File('${dir.path}/$fname');
-      await file.writeAsString(json, flush: true);
-      await Share.shareXFiles([XFile(file.path)], text: 'Cold Bore backup');
-} catch (_) {
+      // Mobile/Desktop: share in-memory JSON file payload.
+      final bytes = Uint8List.fromList(utf8.encode(json));
+      await Share.shareXFiles(
+        [XFile.fromData(bytes, mimeType: 'application/json', name: fname)],
+        text: 'Cold Bore backup',
+        sharePositionOrigin: _shareOriginRect(context),
+      );
+
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Export failed.')),
+        const SnackBar(content: Text('Backup export ready to save/share.')),
       );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Export failed: $e')));
     }
   }
 
@@ -11905,9 +14538,9 @@ class _BackupScreen extends StatelessWidget {
       }
     } catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Cloud backup failed: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Cloud backup failed: $e')));
     }
   }
 
@@ -11919,7 +14552,7 @@ class _BackupScreen extends StatelessWidget {
         'backupData': json,
         'timestamp': DateTime.now().toUtc().toIso8601String(),
       });
-      
+
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(result ?? 'Cloud backup uploaded to iCloud.')),
@@ -11938,13 +14571,13 @@ class _BackupScreen extends StatelessWidget {
     final appUser = state.activeUser;
     final json = state.exportBackupJson();
     final bytes = Uint8List.fromList(utf8.encode(json));
-    final backupId = DateTime.now().toUtc().toIso8601String().replaceAll(':', '-');
+    final backupId = DateTime.now().toUtc().toIso8601String().replaceAll(
+      ':',
+      '-',
+    );
     final path = 'backups/${firebaseUser.uid}/$backupId.json';
     final ref = FirebaseStorage.instance.ref(path);
-    await ref.putData(
-      bytes,
-      SettableMetadata(contentType: 'application/json'),
-    );
+    await ref.putData(bytes, SettableMetadata(contentType: 'application/json'));
 
     final meta = <String, dynamic>{
       'path': path,
@@ -11959,7 +14592,9 @@ class _BackupScreen extends StatelessWidget {
       'ammoCount': state.ammoLots.length,
     };
 
-    final root = FirebaseFirestore.instance.collection('cloud_backups').doc(firebaseUser.uid);
+    final root = FirebaseFirestore.instance
+        .collection('cloud_backups')
+        .doc(firebaseUser.uid);
     await root.set({
       ...meta,
       'latestBackupId': backupId,
@@ -11969,9 +14604,9 @@ class _BackupScreen extends StatelessWidget {
     await root.collection('history').doc(backupId).set(meta);
 
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Cloud backup uploaded.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Cloud backup uploaded.')));
   }
 
   Future<void> _restoreFromCloud(BuildContext context) async {
@@ -11984,9 +14619,9 @@ class _BackupScreen extends StatelessWidget {
       }
     } catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Cloud restore failed: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Cloud restore failed: $e')));
     }
   }
 
@@ -12010,7 +14645,7 @@ class _BackupScreen extends StatelessWidget {
       } else {
         state.importBackupJson(result, replaceExisting: true);
       }
-      
+
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Cloud restore complete from iCloud.')),
@@ -12038,7 +14673,9 @@ class _BackupScreen extends StatelessWidget {
       return;
     }
 
-    final bytes = await FirebaseStorage.instance.ref(path).getData(20 * 1024 * 1024);
+    final bytes = await FirebaseStorage.instance
+        .ref(path)
+        .getData(20 * 1024 * 1024);
     if (bytes == null) {
       throw StateError('Downloaded backup was empty.');
     }
@@ -12049,12 +14686,12 @@ class _BackupScreen extends StatelessWidget {
       state.importBackupJson(jsonText, replaceExisting: true);
     }
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Cloud restore complete.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Cloud restore complete.')));
   }
 
-@override
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Backup & Restore')),
@@ -12095,7 +14732,9 @@ class _BackupScreen extends StatelessWidget {
                   } catch (_) {
                     if (!context.mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Import failed. Invalid JSON.')),
+                      const SnackBar(
+                        content: Text('Import failed. Invalid JSON.'),
+                      ),
                     );
                   }
                   return;
@@ -12116,7 +14755,9 @@ class _BackupScreen extends StatelessWidget {
                   } catch (_) {
                     if (!context.mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Import failed. Invalid JSON.')),
+                      const SnackBar(
+                        content: Text('Import failed. Invalid JSON.'),
+                      ),
                     );
                   }
                   return;
@@ -12141,7 +14782,9 @@ class _BackupScreen extends StatelessWidget {
                 } catch (_) {
                   if (!context.mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Import failed. Invalid JSON.')),
+                    const SnackBar(
+                      content: Text('Import failed. Invalid JSON.'),
+                    ),
                   );
                 }
               },
@@ -12153,7 +14796,9 @@ class _BackupScreen extends StatelessWidget {
               final meta = snapshot.data;
               final activeUserName = (meta?['activeUserName'] ?? '').toString();
               final latestBackupId = (meta?['latestBackupId'] ?? '').toString();
-                final cloudProvider = defaultTargetPlatform == TargetPlatform.iOS ? 'iCloud' : 'Firebase cloud storage';
+              final cloudProvider = defaultTargetPlatform == TargetPlatform.iOS
+                  ? 'iCloud'
+                  : 'Firebase cloud storage';
               final cloudSubtitle = latestBackupId.isEmpty
                   ? 'Upload the full app backup to $cloudProvider'
                   : 'Latest: ${latestBackupId.split(".").first}${activeUserName.isEmpty ? "" : " | $activeUserName"}';
@@ -12171,7 +14816,9 @@ class _BackupScreen extends StatelessWidget {
                     child: ListTile(
                       leading: const Icon(Icons.cloud_download_outlined),
                       title: const Text('Restore from Cloud'),
-                      subtitle: const Text('Load the latest cloud backup into this device'),
+                      subtitle: const Text(
+                        'Load the latest cloud backup into this device',
+                      ),
                       onTap: () => _restoreFromCloud(context),
                     ),
                   ),
@@ -12179,7 +14826,6 @@ class _BackupScreen extends StatelessWidget {
               );
             },
           ),
-
         ],
       ),
     );
@@ -12193,6 +14839,7 @@ class _ImportBackupResult {
   final _ImportMode mode;
   const _ImportBackupResult({required this.jsonText, required this.mode});
 }
+
 class _ImportBackupDialog extends StatefulWidget {
   final _ImportMode initialMode;
   const _ImportBackupDialog({this.initialMode = _ImportMode.merge});
@@ -12211,23 +14858,23 @@ class _ImportBackupDialogState extends State<_ImportBackupDialog> {
     _mode = widget.initialMode;
   }
 
-Future<void> _browseJson() async {
-  final res = await FilePicker.platform.pickFiles(
-    type: FileType.custom,
-    allowedExtensions: const ['json'],
-    withData: true,
-  );
-  if (res == null || res.files.isEmpty) return;
+  Future<void> _browseJson() async {
+    final res = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['json'],
+      withData: true,
+    );
+    if (res == null || res.files.isEmpty) return;
 
-  final bytes = res.files.single.bytes;
-  if (bytes == null) return;
+    final bytes = res.files.single.bytes;
+    if (bytes == null) return;
 
-  setState(() {
-    _ctrl.text = utf8.decode(bytes);
-  });
-}
+    setState(() {
+      _ctrl.text = utf8.decode(bytes);
+    });
+  }
 
-@override
+  @override
   void dispose() {
     _ctrl.dispose();
     super.dispose();
@@ -12243,36 +14890,42 @@ Future<void> _browseJson() async {
           mainAxisSize: MainAxisSize.min,
           children: [
             Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Import mode'),
-              const SizedBox(height: 8),
-              RadioListTile<_ImportMode>(
-                value: _ImportMode.merge,
-                groupValue: _mode,
-                onChanged: (v) => setState(() => _mode = v ?? _ImportMode.merge),
-                title: const Text('Merge (recommended)'),
-                subtitle: const Text('Overwrite scope fields; keep equipment IDs & all history'),
-              ),
-              RadioListTile<_ImportMode>(
-                value: _ImportMode.replace,
-                groupValue: _mode,
-                onChanged: (v) => setState(() => _mode = v ?? _ImportMode.merge),
-                title: const Text('Replace equipment'),
-                subtitle: const Text('Replace rifles & ammo lists (history stays)'),
-              ),
-            ],
-          ),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Import mode'),
+                const SizedBox(height: 8),
+                RadioListTile<_ImportMode>(
+                  value: _ImportMode.merge,
+                  groupValue: _mode,
+                  onChanged: (v) =>
+                      setState(() => _mode = v ?? _ImportMode.merge),
+                  title: const Text('Merge (recommended)'),
+                  subtitle: const Text(
+                    'Overwrite scope fields; keep equipment IDs & all history',
+                  ),
+                ),
+                RadioListTile<_ImportMode>(
+                  value: _ImportMode.replace,
+                  groupValue: _mode,
+                  onChanged: (v) =>
+                      setState(() => _mode = v ?? _ImportMode.merge),
+                  title: const Text('Replace equipment'),
+                  subtitle: const Text(
+                    'Replace rifles & ammo lists (history stays)',
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 8),
-Align(
-  alignment: Alignment.centerRight,
-  child: OutlinedButton.icon(
-    onPressed: _browseJson,
-    icon: const Icon(Icons.folder_open),
-    label: const Text('Browse'),
-  ),
-),
-const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: OutlinedButton.icon(
+                onPressed: _browseJson,
+                icon: const Icon(Icons.folder_open),
+                label: const Text('Browse'),
+              ),
+            ),
+            const SizedBox(height: 8),
             TextField(
               controller: _ctrl,
               decoration: const InputDecoration(
@@ -12286,12 +14939,17 @@ const SizedBox(height: 8),
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
         FilledButton(
           onPressed: () {
             final t = _ctrl.text.trim();
             if (t.isEmpty) return;
-            Navigator.of(context).pop(_ImportBackupResult(jsonText: t, mode: _mode));
+            Navigator.of(
+              context,
+            ).pop(_ImportBackupResult(jsonText: t, mode: _mode));
           },
           child: const Text('Import'),
         ),
