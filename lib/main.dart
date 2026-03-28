@@ -2476,53 +2476,7 @@ class AppState extends ChangeNotifier {
     final payload = <String, dynamic>{
       'schema': kBackupSchemaVersion,
       'generatedAt': DateTime.now().toIso8601String(),
-      'rifles': _rifles
-          .map(
-            (r) => {
-              'id': r.id,
-              'name': r.name,
-              'caliber': r.caliber,
-              'manufacturer': r.manufacturer,
-              'model': r.model,
-              'serialNumber': r.serialNumber,
-              'barrelLength': r.barrelLength,
-              'twistRate': r.twistRate,
-              'scopeUnit': r.scopeUnit.name,
-              'notes': r.notes,
-              'dope': r.dope,
-              'manualRoundCount': r.manualRoundCount,
-              'barrelRoundCount': r.barrelRoundCount,
-              'barrelInstalledDate': r.barrelInstalledDate?.toIso8601String(),
-              'barrelNotes': r.barrelNotes,
-              'services': r.services.map((s) => s.toMap()).toList(),
-              'purchaseDate': r.purchaseDate?.toIso8601String(),
-              'purchasePrice': r.purchasePrice,
-              'purchaseLocation': r.purchaseLocation,
-              'scopeMake': r.scopeMake,
-              'scopeModel': r.scopeModel,
-              'scopeSerial': r.scopeSerial,
-              'scopeMount': r.scopeMount,
-              'scopeNotes': r.scopeNotes,
-            },
-          )
-          .toList(),
-      'ammoLots': _ammoLots
-          .map(
-            (a) => {
-              'id': a.id,
-              'name': a.name,
-              'caliber': a.caliber,
-              'manufacturer': a.manufacturer,
-              'grain': a.grain,
-              'bullet': a.bullet,
-              'notes': a.notes,
-              'lotNumber': a.lotNumber,
-              'purchaseDate': a.purchaseDate?.toIso8601String(),
-              'purchasePrice': a.purchasePrice,
-              'ballisticCoefficient': a.ballisticCoefficient,
-            },
-          )
-          .toList(),
+      ..._toMap(),
     };
     return const JsonEncoder.withIndent('  ').convert(payload);
   }
@@ -2531,6 +2485,19 @@ class AppState extends ChangeNotifier {
     final decoded = json.decode(jsonText);
     if (decoded is! Map) throw FormatException('Invalid backup JSON');
     final map = Map<String, dynamic>.from(decoded);
+
+    final hasFullAppState =
+        map.containsKey('users') ||
+        map.containsKey('sessions') ||
+        map.containsKey('activeUserId') ||
+        map.containsKey('shotTimerSettings') ||
+        map.containsKey('environment');
+
+    if (replaceExisting && hasFullAppState) {
+      _restoreFromMap(map);
+      notifyListeners();
+      return;
+    }
 
     int toInt(dynamic v) {
       if (v == null) return 0;
@@ -4859,6 +4826,31 @@ class _SessionsScreenState extends State<SessionsScreen> {
   int? _yearFilter;
   String? _monthFilter;
   String? _folderFilter;
+  final Set<String> _collapsedGroups = <String>{};
+  final Set<String> _initializedCollapsedGroups = <String>{};
+
+  String _groupStorageKey(String groupBy, String label) => '$groupBy::$label';
+
+  void _toggleGroupCollapsed(String groupBy, String label) {
+    final key = _groupStorageKey(groupBy, label);
+    setState(() {
+      _initializedCollapsedGroups.add(key);
+      if (_collapsedGroups.contains(key)) {
+        _collapsedGroups.remove(key);
+      } else {
+        _collapsedGroups.add(key);
+      }
+    });
+  }
+
+  void _collapseFiledFolderGroup(String folderName) {
+    final normalized = folderName.trim();
+    if (normalized.isEmpty) return;
+    _groupBy = 'folder';
+    final key = _groupStorageKey('folder', normalized);
+    _initializedCollapsedGroups.add(key);
+    _collapsedGroups.add(key);
+  }
 
   String _monthKey(DateTime dt) {
     return '${dt.year}-${dt.month.toString().padLeft(2, '0')}';
@@ -4984,6 +4976,10 @@ class _SessionsScreenState extends State<SessionsScreen> {
       );
       if (next == null) return;
       widget.state.updateSessionFolder(sessionId: session.id, folderName: next);
+      if (!mounted) return;
+      if (next.trim().isNotEmpty && _folderFilter == null) {
+        setState(() => _collapseFiledFolderGroup(next));
+      }
     } finally {
       ctrl.dispose();
     }
@@ -5091,6 +5087,10 @@ class _SessionsScreenState extends State<SessionsScreen> {
       if (next == null) return;
       for (final session in sessions) {
         widget.state.updateSessionFolder(sessionId: session.id, folderName: next);
+      }
+      if (!mounted) return;
+      if (next.trim().isNotEmpty && _folderFilter == null) {
+        setState(() => _collapseFiledFolderGroup(next));
       }
     } finally {
       ctrl.dispose();
@@ -5229,6 +5229,15 @@ class _SessionsScreenState extends State<SessionsScreen> {
               key = 'Sessions';
           }
           grouped.putIfAbsent(key, () => <TrainingSession>[]).add(s);
+        }
+
+        if (_groupBy == 'folder') {
+          for (final entry in grouped.entries) {
+            final key = _groupStorageKey('folder', entry.key);
+            if (_initializedCollapsedGroups.add(key) && entry.key != 'Unfiled') {
+              _collapsedGroups.add(key);
+            }
+          }
         }
 
         return Scaffold(
@@ -5372,28 +5381,43 @@ class _SessionsScreenState extends State<SessionsScreen> {
               else
                 ...grouped.entries.expand((entry) {
                   final children = <Widget>[];
-                  if (_groupBy != 'none') {
-                    children.add(
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(4, 6, 4, 6),
-                        child: Text(
-                          entry.key,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    );
-                  }
+                  final isCollapsible = _groupBy != 'none';
+                  final isCollapsed =
+                      isCollapsible &&
+                      _collapsedGroups.contains(
+                        _groupStorageKey(_groupBy, entry.key),
+                      );
                   children.add(
                     Card(
                       child: Column(
                         children: [
-                          for (var i = 0; i < entry.value.length; i++) ...[
-                            _sessionTile(context, entry.value[i]),
-                            if (i < entry.value.length - 1)
-                              const Divider(height: 1),
+                          if (isCollapsible)
+                            ListTile(
+                              leading: Icon(
+                                isCollapsed
+                                    ? Icons.chevron_right
+                                    : Icons.expand_more,
+                              ),
+                              title: Text(
+                                entry.key,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              subtitle: Text(
+                                '${entry.value.length} session${entry.value.length == 1 ? '' : 's'}',
+                              ),
+                              onTap: () =>
+                                  _toggleGroupCollapsed(_groupBy, entry.key),
+                            ),
+                          if (!isCollapsible || !isCollapsed) ...[
+                            if (isCollapsible) const Divider(height: 1),
+                            for (var i = 0; i < entry.value.length; i++) ...[
+                              _sessionTile(context, entry.value[i]),
+                              if (i < entry.value.length - 1)
+                                const Divider(height: 1),
+                            ],
                           ],
                         ],
                       ),
@@ -6246,8 +6270,12 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
                 Chip(label: Text('Marked shots: $totalShotsMarked')),
                 if (_startDelayMs > 0)
                   Chip(
+                    avatar: const Icon(
+                      Icons.hourglass_top_outlined,
+                      size: 18,
+                    ),
                     label: Text(
-                      'Delay: ${(_startDelayMs / 1000).toStringAsFixed(1)}s',
+                      'Delayed start: ${(_startDelayMs / 1000).toStringAsFixed(1)}s',
                     ),
                   ),
                 if (_goalMs > 0)
@@ -6284,8 +6312,8 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
                     ),
                     enabled: !isEnded && !_isActive,
                     decoration: const InputDecoration(
-                      labelText: 'Delay Start (sec)',
-                      helperText: 'Beep to begin',
+                      labelText: 'Delayed Start (sec)',
+                      helperText: 'Beep after delay',
                     ),
                   ),
                 ),
@@ -6495,7 +6523,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
                             Text(
                               [
                                 if (run.startDelayMs > 0)
-                                  'Delay ${_fmtMs(run.startDelayMs)}',
+                                  'Delayed start ${_fmtMs(run.startDelayMs)}',
                                 if (run.goalMs > 0)
                                   'Goal ${_fmtMs(run.goalMs)}',
                               ].join(' | '),
@@ -6988,8 +7016,12 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
                 Chip(label: Text('Marked shots: $totalShotsMarked')),
                 if (_startDelayMs > 0)
                   Chip(
+                    avatar: const Icon(
+                      Icons.hourglass_top_outlined,
+                      size: 18,
+                    ),
                     label: Text(
-                      'Delay: ${(_startDelayMs / 1000).toStringAsFixed(1)}s',
+                      'Delayed start: ${(_startDelayMs / 1000).toStringAsFixed(1)}s',
                     ),
                   ),
                 if (_goalMs > 0)
@@ -7026,8 +7058,8 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
                     ),
                     enabled: !_isActive,
                     decoration: const InputDecoration(
-                      labelText: 'Delay Start (sec)',
-                      helperText: 'Beep to begin',
+                      labelText: 'Delayed Start (sec)',
+                      helperText: 'Beep after delay',
                     ),
                   ),
                 ),
@@ -10499,7 +10531,6 @@ class _PdfExportPreset {
 }
 
 class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
-  bool _redactLocation = false;
   List<_PdfExportPreset> _savedPdfPresets = const [];
 
   @override
@@ -11292,6 +11323,61 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
     );
   }
 
+  pw.Widget _pdfDoubleBarChart({
+    required String title,
+    required List<MapEntry<String, double>> entries,
+    PdfColor color = PdfColors.orange700,
+  }) {
+    if (entries.isEmpty) {
+      return pw.Container(
+        padding: const pw.EdgeInsets.all(10),
+        decoration: pw.BoxDecoration(
+          border: pw.Border.all(color: PdfColors.grey400),
+          borderRadius: pw.BorderRadius.circular(8),
+        ),
+        child: pw.Text('$title: no data yet'),
+      );
+    }
+
+    var maxValue = 0.0;
+    for (final e in entries) {
+      if (e.value > maxValue) maxValue = e.value;
+    }
+    if (maxValue <= 0) maxValue = 1;
+
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Text(
+          title,
+          style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 13),
+        ),
+        pw.SizedBox(height: 8),
+        ...entries.map((e) {
+          final width = 220 * (e.value / maxValue);
+          return pw.Padding(
+            padding: const pw.EdgeInsets.only(bottom: 7),
+            child: pw.Row(
+              children: [
+                pw.SizedBox(width: 125, child: pw.Text(e.key, maxLines: 1)),
+                pw.Container(
+                  width: width,
+                  height: 10,
+                  decoration: pw.BoxDecoration(
+                    color: color,
+                    borderRadius: pw.BorderRadius.circular(4),
+                  ),
+                ),
+                pw.SizedBox(width: 8),
+                pw.Text('${e.value.toStringAsFixed(2)} in'),
+              ],
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
   List<_ColdBoreRow> _coldBoreRowsForSessions(List<TrainingSession> sessions) {
     final out = <_ColdBoreRow>[];
     for (final session in sessions) {
@@ -11454,6 +11540,61 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
     );
   }
 
+  pw.Widget _pdfColdBoreAdjustmentChart(List<_ColdBoreRow> rows) {
+    final plottedRows = rows
+        .where((row) => row.shot.offsetX != null && row.shot.offsetY != null)
+        .toList()
+      ..sort((a, b) => a.shot.time.compareTo(b.shot.time));
+
+    if (plottedRows.isEmpty) {
+      return pw.Container(
+        padding: const pw.EdgeInsets.all(10),
+        decoration: pw.BoxDecoration(
+          border: pw.Border.all(color: PdfColors.grey400, width: 0.7),
+          borderRadius: pw.BorderRadius.circular(6),
+        ),
+        child: pw.Text('No plotted cold bore impacts yet.'),
+      );
+    }
+
+    final byDate = <String, List<double>>{};
+    for (final row in plottedRows) {
+      final dx = _shotOffsetToInches(row.shot, row.shot.offsetX!);
+      final dy = _shotOffsetToInches(row.shot, row.shot.offsetY!);
+      final radialInches = math.sqrt((dx * dx) + (dy * dy));
+      final dateKey = _pdfDate(row.shot.time);
+      byDate.putIfAbsent(dateKey, () => <double>[]).add(radialInches);
+    }
+
+    final avgByDate = byDate.entries
+        .map((entry) {
+          final vals = entry.value;
+          final avg = vals.fold<double>(0, (sum, v) => sum + v) / vals.length;
+          return MapEntry(entry.key, avg);
+        })
+        .toList();
+
+    final recent = avgByDate.length > 10
+        ? avgByDate.sublist(avgByDate.length - 10)
+        : avgByDate;
+
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        _pdfDoubleBarChart(
+          title: 'Cold-bore adjustment trend by date',
+          entries: recent,
+          color: PdfColors.orange700,
+        ),
+        pw.SizedBox(height: 4),
+        pw.Text(
+          'Average radial offset from point of aim for each date.',
+          style: const pw.TextStyle(fontSize: 9),
+        ),
+      ],
+    );
+  }
+
   Future<void> _exportPdfReport(BuildContext context) async {
     try {
       final options = await _pickPdfOptions(context);
@@ -11559,7 +11700,6 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
         final coldBoreShots = session.shots
             .where((shot) => shot.isColdBore)
             .toList();
-        final coldBoreRows = _coldBoreRowsForSessions([session]);
         final widgets = <pw.Widget>[
           pw.Container(
             margin: const pw.EdgeInsets.only(top: 16, bottom: 8),
@@ -11664,11 +11804,14 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
         if (coldBoreShots.isNotEmpty) {
           widgets.addAll([
             pw.Text(
-              'Cold-Bore Targets',
+              'Cold-Bore Shots',
               style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
             ),
             pw.SizedBox(height: 6),
-            _pdfColdBoreTargetPlot(coldBoreRows),
+            pw.Text(
+              'See Charts for the combined impact plot and adjustment trend.',
+              style: const pw.TextStyle(fontSize: 9),
+            ),
             pw.SizedBox(height: 8),
             for (final shot in coldBoreShots)
               pw.Container(
@@ -11769,6 +11912,7 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
       final recentMonths = monthSeries.length > 6
           ? monthSeries.sublist(monthSeries.length - 6)
           : monthSeries;
+      final allColdBoreRows = _coldBoreRowsForSessions(sessions);
 
       final usedRifleIds = <String>{};
       final usedAmmoIds = <String>{};
@@ -11900,6 +12044,10 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                 entries: recentMonths,
                 color: PdfColors.teal700,
               ),
+              pw.SizedBox(height: 14),
+              _pdfColdBoreTargetPlot(allColdBoreRows),
+              pw.SizedBox(height: 12),
+              _pdfColdBoreAdjustmentChart(allColdBoreRows),
             ],
             if (options.includeRecentSessions) ...[
               pw.SizedBox(height: 16),
@@ -12491,52 +12639,6 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
     }
   }
 
-  Future<void> _showExportText(String title, String text) async {
-    await showDialog<void>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: Text(title),
-        content: SizedBox(
-          width: 520,
-          child: SingleChildScrollView(child: SelectableText(text)),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              await Clipboard.setData(ClipboardData(text: text));
-              if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Copied to clipboard.')),
-              );
-            },
-            child: const Text('Copy'),
-          ),
-          if (kIsWeb)
-            TextButton(
-              onPressed: () {
-                final safe = title
-                    .toLowerCase()
-                    .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
-                    .replaceAll(RegExp(r'_+'), '_')
-                    .replaceAll(RegExp(r'^_|_$'), '');
-                final ext = title.toLowerCase().contains('csv') ? 'csv' : 'txt';
-                _downloadTextFileWeb(
-                  'cold_bore_${safe.isEmpty ? 'export' : safe}.$ext',
-                  text,
-                  mimeType: ext == 'csv' ? 'text/csv' : 'text/plain',
-                );
-              },
-              child: const Text('Download'),
-            ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -12548,24 +12650,6 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
             child: ListView(
               children: [
                 const _SectionTitle('Export'),
-                SwitchListTile(
-                  value: _redactLocation,
-                  title: const Text('Redact location & GPS (text/CSV only)'),
-                  onChanged: (v) => setState(() => _redactLocation = v),
-                ),
-                Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.table_view_outlined),
-                    title: const Text('CSV bundle'),
-                    onTap: () => _showExportText(
-                      'CSV bundle',
-                      _buildCsvBundle(
-                        widget.state,
-                        redactLocation: _redactLocation,
-                      ),
-                    ),
-                  ),
-                ),
                 Card(
                   child: ListTile(
                     leading: const Icon(Icons.picture_as_pdf_outlined),
@@ -12613,7 +12697,7 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                     leading: const Icon(Icons.swap_vert),
                     title: const Text('Backup / restore (JSON)'),
                     subtitle: const Text(
-                      'Download a backup file or import one (merge: scope/data only).',
+                      'Full backup with session folders, strings, timer runs, shared users, and photo data.',
                     ),
                     onTap: () {
                       Navigator.of(context).push(
@@ -15311,17 +15395,17 @@ class _BackupScreen extends StatelessWidget {
           children: [
             ListTile(
               leading: const Icon(Icons.merge_type),
-              title: const Text('Merge (recommended)'),
+              title: const Text('Merge equipment into this device'),
               subtitle: const Text(
-                'Overwrite scope fields; keep IDs & history',
+                'Adds or updates rifles and ammo only. Does not restore sessions or users.',
               ),
               onTap: () => Navigator.of(context).pop(_ImportMode.merge),
             ),
             ListTile(
               leading: const Icon(Icons.warning_amber_outlined),
-              title: const Text('Replace equipment'),
+              title: const Text('Full restore from backup'),
               subtitle: const Text(
-                'Replace rifles & ammo lists (history stays)',
+                'Replace this device app data with the backup, including sessions and users.',
               ),
               onTap: () => Navigator.of(context).pop(_ImportMode.replace),
             ),
@@ -15542,7 +15626,9 @@ class _BackupScreen extends StatelessWidget {
             child: ListTile(
               leading: const Icon(Icons.save_alt_outlined),
               title: const Text('Backup (JSON)'),
-              subtitle: const Text('Copy a backup of rifles & ammo'),
+              subtitle: const Text(
+                'Export the full app backup, including sessions, users, timers, and photo data.',
+              ),
               onTap: () => _exportBackupFile(context),
             ),
           ),
@@ -15739,9 +15825,9 @@ class _ImportBackupDialogState extends State<_ImportBackupDialog> {
                   groupValue: _mode,
                   onChanged: (v) =>
                       setState(() => _mode = v ?? _ImportMode.merge),
-                  title: const Text('Merge (recommended)'),
+                  title: const Text('Merge equipment into this device'),
                   subtitle: const Text(
-                    'Overwrite scope fields; keep equipment IDs & all history',
+                    'Adds or updates rifles and ammo only. Sessions and users stay as-is.',
                   ),
                 ),
                 RadioListTile<_ImportMode>(
@@ -15749,9 +15835,9 @@ class _ImportBackupDialogState extends State<_ImportBackupDialog> {
                   groupValue: _mode,
                   onChanged: (v) =>
                       setState(() => _mode = v ?? _ImportMode.merge),
-                  title: const Text('Replace equipment'),
+                  title: const Text('Full restore from backup'),
                   subtitle: const Text(
-                    'Replace rifles & ammo lists (history stays)',
+                    'Replace the current app data with the backup, including sessions and users.',
                   ),
                 ),
               ],
