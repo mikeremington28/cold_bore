@@ -67,16 +67,9 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Allow microphone access for optional shot timer audio detection.</string>
 
-	<!-- Face ID -->
-	<key>NSFaceIDUsageDescription</key>
-	<string>Use Face ID to securely access your data.</string>
-
 	<!-- Location (THIS FIXES THE APPLE WARNING) -->
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>We use your location to save session GPS data and fetch weather when you choose to use GPS.</string>
-
-	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>Your location is used only during active shooting sessions to record GPS data and retrieve weather when requested.</string>
 
 	<!-- Encryption (THIS STOPS THE TESTFLIGHT PROMPT) -->
 	<key>ITSAppUsesNonExemptEncryption</key>

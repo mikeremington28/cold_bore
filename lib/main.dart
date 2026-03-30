@@ -10,10 +10,6 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'package:image_picker/image_picker.dart';
 import 'dart:async';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:noise_meter/noise_meter.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -22,9 +18,8 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
-import 'firebase_options.dart';
-
 import 'package:file_picker/file_picker.dart';
+import 'subscription_service.dart';
 
 const String kBackupSchemaVersion = '2026-02-05';
 const String kLocalStatePrefsKey = 'cold_bore.local_state.v1';
@@ -285,6 +280,11 @@ String _fmtDateTimeIso(DateTime d) {
   final mm = d.minute.toString().padLeft(2, '0');
   final ss = d.second.toString().padLeft(2, '0');
   return '$mdy $hh:$mm:$ss';
+}
+
+String _displayUserIdentifier(String identifier) {
+  if (identifier.trim().toUpperCase() == 'DEMO') return 'Owner';
+  return identifier;
 }
 
 const String kExportSchemaVersion = '2026-01-22';
@@ -781,48 +781,12 @@ class RifleDopeEntry {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  bool firebaseReady = false;
-  String? firebaseError;
-
-  // Initialize Firebase where options are configured for this app.
-  final shouldInitializeFirebase =
-      kIsWeb || defaultTargetPlatform == TargetPlatform.iOS;
-
-  if (shouldInitializeFirebase) {
-    try {
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
-      firebaseReady = true;
-    } catch (e, st) {
-      // Keep the app running even if Firebase fails (shows an in-app error banner).
-      firebaseReady = false;
-      firebaseError = e.toString();
-      // Optional: log for debugging
-      // ignore: avoid_print
-      print('Firebase init failed: $e');
-      // ignore: avoid_print
-      print(st);
-    }
-  } else {
-    // Non-configured platforms are allowed to run without Firebase startup.
-    firebaseReady = true;
-  }
-
-  runApp(
-    ColdBoreApp(firebaseReady: firebaseReady, firebaseError: firebaseError),
-  );
+  runApp(const ColdBoreApp());
 }
 
 class ColdBoreApp extends StatelessWidget {
-  final bool firebaseReady;
-  final String? firebaseError;
-
   const ColdBoreApp({
     super.key,
-    this.firebaseReady = false,
-    this.firebaseError,
   });
 
   @override
@@ -831,25 +795,7 @@ class ColdBoreApp extends StatelessWidget {
       title: 'Cold Bore',
       debugShowCheckedModeBanner: false,
       theme: _buildTacticalTheme(),
-      home: _LaunchSplashGate(
-        child: firebaseReady
-            ? const _AppRoot()
-            : Scaffold(
-                backgroundColor: Colors.black,
-                body: SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: SingleChildScrollView(
-                      child: Text(
-                        'Firebase failed to start.\n\n'
-                        'Error:\n${firebaseError ?? "Unknown"}',
-                        style: const TextStyle(color: Colors.white),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-      ),
+      home: _LaunchSplashGate(child: const _AppRoot()),
     );
   }
 }
@@ -925,20 +871,175 @@ class _AppRoot extends StatefulWidget {
   State<_AppRoot> createState() => _AppRootState();
 }
 
-class _AppRootState extends State<_AppRoot> {
+class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
   final AppState _state = AppState();
+  static const MethodChannel _iCloudChannel = MethodChannel(
+    'com.remington.coldbore/icloud',
+  );
+  static const String _autoICloudRestoreAttemptedPrefsKey =
+      'cold_bore.auto_icloud_restore_attempted.v1';
+  static const String _autoICloudRestoreSuccessPrefsKey =
+      'cold_bore.auto_icloud_restore_success.v1';
+  static const String _tutorialShownPrefsKey =
+      'cold_bore.tutorial_shown.v1';
+
+  Timer? _iCloudBackupDebounceTimer;
+  DateTime? _lastICloudBackupAt;
+  bool _iCloudBackupInFlight = false;
+  bool _iCloudBackupQueuedDuringInFlight = false;
+  bool _autoICloudBackupArmed = false;
+  bool _startGuidedTourOnHome = false;
   bool _ready = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     unawaited(_loadState());
   }
 
   Future<void> _loadState() async {
     await _state.loadPersistedState();
+    await _attemptAutoICloudRestoreIfEligible();
+    await _prepareFirstLaunchTutorialFlag();
+    await SubscriptionService().initialize();
+    _state.addListener(_onStateChanged);
+    _autoICloudBackupArmed = true;
     if (!mounted) return;
     setState(() => _ready = true);
+  }
+
+  Future<void> _prepareFirstLaunchTutorialFlag() async {
+    if (!_looksLikeFreshLocalInstall()) return;
+    final prefs = await SharedPreferences.getInstance();
+    final shown = prefs.getBool(_tutorialShownPrefsKey) == true;
+    if (shown) return;
+
+    await prefs.setBool(_tutorialShownPrefsKey, true);
+    _startGuidedTourOnHome = true;
+  }
+
+  bool _looksLikeFreshLocalInstall() {
+    if (_state.rifles.isNotEmpty || _state.ammoLots.isNotEmpty) return false;
+    final user = _state.activeUser;
+    if (user == null) return false;
+    if (_state.users.length != 1) return false;
+    if (user.identifier.trim().toUpperCase() != 'DEMO') return false;
+
+    // Fresh first-launch state may have no sessions yet.
+    if (_state.allSessions.length > 1) return false;
+    if (_state.allSessions.isEmpty) return true;
+
+    final session = _state.allSessions.first;
+    final hasUserData =
+        session.notes.trim().isNotEmpty ||
+        session.locationName.trim().isNotEmpty ||
+        session.rifleId != null ||
+        session.ammoLotId != null ||
+        session.shots.isNotEmpty ||
+        session.photos.isNotEmpty ||
+        session.sessionPhotos.isNotEmpty ||
+        session.trainingDope.isNotEmpty;
+    return !hasUserData;
+  }
+
+  Future<void> _attemptAutoICloudRestoreIfEligible() async {
+    if (!_canAutoBackupToICloud) return;
+    if (!_looksLikeFreshLocalInstall()) return;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final alreadyRestored =
+          prefs.getBool(_autoICloudRestoreSuccessPrefsKey) == true;
+      final alreadyAttempted =
+          prefs.getBool(_autoICloudRestoreAttemptedPrefsKey) == true;
+      if (alreadyRestored || alreadyAttempted) return;
+
+      await prefs.setBool(_autoICloudRestoreAttemptedPrefsKey, true);
+
+      final jsonText = await _iCloudChannel.invokeMethod<String>(
+        'restoreFromiCloud',
+      );
+      if (jsonText == null || jsonText.trim().isEmpty) return;
+
+      _state.importBackupJson(jsonText, replaceExisting: true);
+      await prefs.setBool(_autoICloudRestoreSuccessPrefsKey, true);
+      debugPrint('Auto iCloud restore applied on first launch.');
+    } catch (e, st) {
+      debugPrint('Auto iCloud restore skipped/failed: $e\n$st');
+    }
+  }
+
+  bool get _canAutoBackupToICloud =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+
+  void _onStateChanged() {
+    if (!_autoICloudBackupArmed || !_canAutoBackupToICloud || !_ready) return;
+    _scheduleAutoICloudBackup();
+  }
+
+  void _scheduleAutoICloudBackup() {
+    _iCloudBackupDebounceTimer?.cancel();
+    _iCloudBackupDebounceTimer = Timer(
+      const Duration(seconds: 20),
+      () => unawaited(_runICloudBackupNow()),
+    );
+  }
+
+  Future<void> _runICloudBackupNow() async {
+    if (!_canAutoBackupToICloud || !_autoICloudBackupArmed) return;
+
+    final now = DateTime.now();
+    if (_lastICloudBackupAt != null &&
+        now.difference(_lastICloudBackupAt!) < const Duration(seconds: 45)) {
+      return;
+    }
+
+    if (_iCloudBackupInFlight) {
+      _iCloudBackupQueuedDuringInFlight = true;
+      return;
+    }
+
+    _iCloudBackupInFlight = true;
+    try {
+      final payload = _state.exportBackupJson();
+      await _iCloudChannel.invokeMethod('backupToiCloud', {
+        'backupData': payload,
+        'timestamp': DateTime.now().toUtc().toIso8601String(),
+      });
+      _lastICloudBackupAt = DateTime.now();
+    } catch (e, st) {
+      debugPrint('Auto iCloud backup failed: $e\n$st');
+    } finally {
+      _iCloudBackupInFlight = false;
+      if (_iCloudBackupQueuedDuringInFlight) {
+        _iCloudBackupQueuedDuringInFlight = false;
+        _scheduleAutoICloudBackup();
+      }
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(SubscriptionService().refreshOnResume());
+    }
+    if (!_canAutoBackupToICloud) return;
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _iCloudBackupDebounceTimer?.cancel();
+      unawaited(_runICloudBackupNow());
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _state.removeListener(_onStateChanged);
+    _iCloudBackupDebounceTimer?.cancel();
+    _state.dispose();
+    super.dispose();
   }
 
   @override
@@ -946,7 +1047,153 @@ class _AppRootState extends State<_AppRoot> {
     if (!_ready) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    return HomeShell(state: _state);
+    return HomeShell(
+      state: _state,
+      startGuidedTour: _startGuidedTourOnHome,
+    );
+  }
+}
+
+// ── Subscription gate helper ───────────────────────────────────────────────
+/// Returns true if the action should proceed.
+/// If not entitled, shows the paywall and returns false.
+Future<bool> _guardWrite(BuildContext context) async {
+  if (SubscriptionService().isEntitled) return true;
+  await Navigator.of(context).push(
+    MaterialPageRoute(builder: (_) => const _PaywallScreen()),
+  );
+  return false;
+}
+
+// ── Paywall screen ─────────────────────────────────────────────────────────
+class _PaywallScreen extends StatefulWidget {
+  const _PaywallScreen();
+  @override
+  State<_PaywallScreen> createState() => _PaywallScreenState();
+}
+
+class _PaywallScreenState extends State<_PaywallScreen> {
+  final SubscriptionService _sub = SubscriptionService();
+  late final VoidCallback _listener;
+
+  @override
+  void initState() {
+    super.initState();
+    _listener = () {
+      if (!mounted) return;
+      setState(() {});
+      // Auto-dismiss when entitlement is granted.
+      if (_sub.isEntitled && mounted) Navigator.of(context).pop();
+    };
+    _sub.addListener(_listener);
+  }
+
+  @override
+  void dispose() {
+    _sub.removeListener(_listener);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final product = _sub.product;
+    final priceText = product?.price ?? '—';
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Cold Bore Pro')),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const SizedBox(height: 16),
+              const Icon(Icons.lock_open_outlined, size: 56),
+              const SizedBox(height: 16),
+              Text(
+                'Subscribe to keep adding data',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Your existing data is always available to view and export. '
+                'A Cold Bore Pro subscription lets you continue logging sessions, '
+                'shots, gear, and maintenance records.',
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              _FeatureRow(icon: Icons.event_note_outlined, label: 'Add new shooting sessions'),
+              _FeatureRow(icon: Icons.ac_unit_outlined, label: 'Log cold bore shots and strings'),
+              _FeatureRow(icon: Icons.build_outlined, label: 'Track gear and maintenance'),
+              _FeatureRow(icon: Icons.timer_outlined, label: 'Record timer runs'),
+              _FeatureRow(icon: Icons.picture_as_pdf_outlined, label: 'Export PDF reports (always free)'),
+              const Spacer(),
+              if (_sub.lastError != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    _sub.lastError!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              FilledButton(
+                onPressed: _sub.loading ? null : () => _sub.purchase(),
+                child: _sub.loading
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text('Subscribe — $priceText / year'),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton(
+                onPressed: _sub.loading
+                    ? null
+                    : () => _sub.restorePurchases(),
+                child: const Text('Restore purchases'),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Not now — view my data'),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Subscription auto-renews yearly. Cancel anytime in Settings.',
+                style: Theme.of(context).textTheme.bodySmall,
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FeatureRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  const _FeatureRow({required this.icon, required this.label});
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 20),
+          const SizedBox(width: 12),
+          Expanded(child: Text(label)),
+        ],
+      ),
+    );
   }
 }
 
@@ -1136,44 +1383,6 @@ class AppState extends ChangeNotifier {
     final u = UserProfile(id: _newId(), name: 'Demo User', identifier: 'DEMO');
     _users.add(u);
     _activeUser = u;
-
-    // Start with a clean slate (no placeholder rifle/ammo).
-    final sid = _newId();
-    _sessions.add(
-      TrainingSession(
-        id: _newId(),
-        userId: u.id,
-        memberUserIds: [u.id],
-        dateTime: DateTime.now(),
-        locationName: '',
-        folderName: '',
-        archived: false,
-        notes: '',
-        latitude: null,
-        longitude: null,
-        temperatureF: null,
-        windSpeedMph: null,
-        windDirectionDeg: null,
-        rifleId: null,
-        ammoLotId: null,
-        shots: const [],
-        photos: const [],
-        sessionPhotos: const [],
-        trainingDope: const [],
-        trainingDopeByString: {sid: const []},
-        shotsByString: {sid: const []},
-        strings: [
-          SessionStringMeta(
-            id: sid,
-            startedAt: DateTime.now(),
-            endedAt: null,
-            rifleId: null,
-            ammoLotId: null,
-          ),
-        ],
-        activeStringId: sid,
-      ),
-    );
   }
 
   Map<String, dynamic> _toMap() {
@@ -1270,6 +1479,19 @@ class AppState extends ChangeNotifier {
           _toNullableDouble(stMap['audioThresholdDb']) ?? _audioThresholdDb;
     }
 
+    if (_users.isEmpty) {
+      final fallbackUserId = _sessions
+          .map((s) => s.userId.trim())
+          .firstWhere((id) => id.isNotEmpty, orElse: () => '');
+      _users.add(
+        UserProfile(
+          id: fallbackUserId.isNotEmpty ? fallbackUserId : _newId(),
+          name: 'Imported User',
+          identifier: 'IMPORTED',
+        ),
+      );
+    }
+
     final activeUserId = map['activeUserId']?.toString();
     UserProfile? active;
     for (final user in _users) {
@@ -1279,6 +1501,35 @@ class AppState extends ChangeNotifier {
       }
     }
     _activeUser = active ?? (_users.isNotEmpty ? _users.first : null);
+
+    // Legacy backups may miss memberUserIds, which hides sessions in current views.
+    // Ensure each restored session is visible to at least one valid user.
+    final validUserIds = _users.map((u) => u.id).toSet();
+    final fallbackMember = _activeUser?.id;
+    if (fallbackMember != null) {
+      for (var i = 0; i < _sessions.length; i++) {
+        final session = _sessions[i];
+        var members = session.memberUserIds
+            .where((id) => validUserIds.contains(id))
+            .toList();
+        if (members.isEmpty) {
+          final ownerId = session.userId.trim();
+          if (ownerId.isNotEmpty && validUserIds.contains(ownerId)) {
+            members = [ownerId];
+          } else {
+            members = [fallbackMember];
+          }
+        }
+        final unchanged =
+            members.length == session.memberUserIds.length &&
+            members.asMap().entries.every(
+              (entry) => session.memberUserIds[entry.key] == entry.value,
+            );
+        if (!unchanged) {
+          _sessions[i] = session.copyWith(memberUserIds: members);
+        }
+      }
+    }
   }
 
   Map<String, Map<DistanceKey, DopeEntry>> _decodeWorkingDopeMap(dynamic raw) {
@@ -1318,6 +1569,7 @@ class AppState extends ChangeNotifier {
     int? barrelRoundCount,
     DateTime? barrelInstalledDate,
     String barrelNotes = '',
+    List<MaintenanceReminderRule>? maintenanceRules,
     String? scopeMake,
     String? scopeModel,
     String? scopeSerial,
@@ -1344,6 +1596,7 @@ class AppState extends ChangeNotifier {
         barrelRoundCount: barrelRoundCount ?? manualRoundCount,
         barrelInstalledDate: barrelInstalledDate,
         barrelNotes: barrelNotes.trim(),
+        maintenanceRules: maintenanceRules ?? _defaultMaintenanceRules(),
         scopeMake: scopeMake?.trim().isEmpty == true ? null : scopeMake?.trim(),
         scopeModel: scopeModel?.trim().isEmpty == true
             ? null
@@ -1394,6 +1647,7 @@ class AppState extends ChangeNotifier {
     int? barrelRoundCount,
     DateTime? barrelInstalledDate,
     String? barrelNotes,
+    List<MaintenanceReminderRule>? maintenanceRules,
     ElevationUnit? preferredUnit,
     ScopeUnit? scopeUnit,
     String? scopeMake,
@@ -1413,17 +1667,16 @@ class AppState extends ChangeNotifier {
     final idx = _rifles.indexWhere((r) => r.id == rifleId);
     if (idx < 0) return;
     final r = _rifles[idx];
-    final nextRoundCount =
-        manualRoundCount ?? barrelRoundCount ?? r.manualRoundCount;
     _rifles[idx] = r.copyWith(
       name: (name == null || name.trim().isEmpty) ? null : name.trim(),
       caliber: caliber.trim(),
       notes: notes.trim(),
       dope: dope.trim(),
-      manualRoundCount: nextRoundCount,
-      barrelRoundCount: nextRoundCount,
+      manualRoundCount: manualRoundCount ?? r.manualRoundCount,
+      barrelRoundCount: barrelRoundCount ?? r.barrelRoundCount,
       barrelInstalledDate: barrelInstalledDate ?? r.barrelInstalledDate,
       barrelNotes: barrelNotes ?? r.barrelNotes,
+      maintenanceRules: maintenanceRules ?? r.maintenanceRules,
       preferredUnit: preferredUnit ?? r.preferredUnit,
       manufacturer: manufacturer?.trim().isEmpty == true
           ? null
@@ -1837,6 +2090,13 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void deleteSession({required String sessionId}) {
+    final idx = _sessions.indexWhere((s) => s.id == sessionId);
+    if (idx < 0) return;
+    _sessions.removeAt(idx);
+    notifyListeners();
+  }
+
   void addColdBoreEntry({
     required String sessionId,
     required DateTime time,
@@ -2240,6 +2500,181 @@ class AppState extends ChangeNotifier {
 
   String newChildId() => _newId();
 
+  List<MaintenanceReminderRule> _defaultMaintenanceRules() {
+    return MaintenanceTaskType.values
+        .where(_isConfigurableMaintenanceTask)
+        .map(MaintenanceReminderRule.defaultFor)
+        .toList();
+  }
+
+  List<MaintenanceReminderRule> _normalizedMaintenanceRules(
+    List<MaintenanceReminderRule> rules,
+  ) {
+    final byType = <MaintenanceTaskType, MaintenanceReminderRule>{
+      for (final rule in rules)
+        if (_isConfigurableMaintenanceTask(rule.type)) rule.type: rule,
+    };
+    return MaintenanceTaskType.values
+        .where(_isConfigurableMaintenanceTask)
+        .map((type) => byType[type] ?? MaintenanceReminderRule.defaultFor(type))
+        .toList();
+  }
+
+  List<MaintenanceReminderRule> maintenanceRulesForRifle(String rifleId) {
+    final rifle = rifleById(rifleId);
+    if (rifle == null) return _defaultMaintenanceRules();
+    return _normalizedMaintenanceRules(rifle.maintenanceRules);
+  }
+
+  void updateRifleMaintenanceRules({
+    required String rifleId,
+    required List<MaintenanceReminderRule> rules,
+  }) {
+    final idx = _rifles.indexWhere((r) => r.id == rifleId);
+    if (idx < 0) return;
+    _rifles[idx] = _rifles[idx].copyWith(
+      maintenanceRules: _normalizedMaintenanceRules(rules),
+    );
+    notifyListeners();
+  }
+
+  List<RifleServiceEntry> _servicesForMaintenanceType(
+    Rifle rifle,
+    MaintenanceTaskType type,
+  ) {
+    final serviceType =
+        type == MaintenanceTaskType.barrelLife
+            ? MaintenanceTaskType.barrelChange
+            : type;
+    final services = rifle.services
+        .where((entry) => entry.taskType == serviceType)
+        .toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
+    return services;
+  }
+
+  DateTime? _baselineDateForMaintenanceType(
+    Rifle rifle,
+    MaintenanceTaskType type,
+    RifleServiceEntry? lastService,
+  ) {
+    if (lastService != null) return lastService.date;
+    switch (type) {
+      case MaintenanceTaskType.barrelLife:
+        return rifle.barrelInstalledDate;
+      case MaintenanceTaskType.cleaning:
+      case MaintenanceTaskType.deepCleaning:
+      case MaintenanceTaskType.torqueCheck:
+      case MaintenanceTaskType.zeroConfirm:
+        return rifle.barrelInstalledDate ?? rifle.purchaseDate;
+      case MaintenanceTaskType.general:
+      case MaintenanceTaskType.barrelChange:
+        return null;
+    }
+  }
+
+  int _roundDueSoonBuffer(int intervalRounds) {
+    return math.max(25, (intervalRounds * 0.1).round());
+  }
+
+  int _dayDueSoonBuffer(int intervalDays) {
+    return math.max(3, math.min(7, (intervalDays * 0.2).round()));
+  }
+
+  MaintenanceReminderStatus _buildMaintenanceStatus(
+    Rifle rifle,
+    MaintenanceReminderRule rule,
+  ) {
+    final services = _servicesForMaintenanceType(rifle, rule.type);
+    final lastService = services.isEmpty ? null : services.first;
+    final baselineDate = _baselineDateForMaintenanceType(rifle, rule.type, lastService);
+
+    int? roundsSince;
+    int? roundsRemaining;
+    if (rule.intervalRounds != null) {
+      if (rule.type == MaintenanceTaskType.barrelLife) {
+        roundsSince = rifle.barrelRoundCount;
+      } else {
+        roundsSince = math.max(
+          0,
+          rifle.manualRoundCount - (lastService?.roundsAtService ?? 0),
+        );
+      }
+      roundsRemaining = rule.intervalRounds! - roundsSince;
+    }
+
+    int? daysSince;
+    int? daysRemaining;
+    if (rule.intervalDays != null && baselineDate != null) {
+      final baselineOnly = DateTime(
+        baselineDate.year,
+        baselineDate.month,
+        baselineDate.day,
+      );
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      daysSince = today.difference(baselineOnly).inDays;
+      daysRemaining = rule.intervalDays! - daysSince;
+    }
+
+    final overdueRounds =
+        rule.intervalRounds != null && roundsRemaining != null && roundsRemaining <= 0;
+    final overdueDays =
+        rule.intervalDays != null && daysRemaining != null && daysRemaining <= 0;
+
+    final dueSoonRounds =
+        !overdueRounds &&
+        rule.intervalRounds != null &&
+        roundsRemaining != null &&
+        roundsRemaining <= _roundDueSoonBuffer(rule.intervalRounds!);
+    final dueSoonDays =
+        !overdueDays &&
+        rule.intervalDays != null &&
+        daysRemaining != null &&
+        daysRemaining <= _dayDueSoonBuffer(rule.intervalDays!);
+
+    final status =
+        (overdueRounds || overdueDays)
+            ? MaintenanceDueStatus.overdue
+            : ((dueSoonRounds || dueSoonDays)
+                  ? MaintenanceDueStatus.dueSoon
+                  : MaintenanceDueStatus.good);
+
+    return MaintenanceReminderStatus(
+      rule: rule,
+      status: status,
+      roundsSince: roundsSince,
+      roundsRemaining: roundsRemaining,
+      daysSince: daysSince,
+      daysRemaining: daysRemaining,
+      lastService: lastService,
+    );
+  }
+
+  RifleMaintenanceSnapshot maintenanceSnapshotForRifle(String rifleId) {
+    final rifle = rifleById(rifleId);
+    if (rifle == null) {
+      throw StateError('Rifle not found: $rifleId');
+    }
+    final rules = maintenanceRulesForRifle(rifleId)
+        .where((rule) => rule.enabled)
+        .toList();
+    final statuses = rules.map((rule) => _buildMaintenanceStatus(rifle, rule)).toList();
+    final lastService = [...rifle.services]
+      ..sort((a, b) => b.date.compareTo(a.date));
+    return RifleMaintenanceSnapshot(
+      rifle: rifle,
+      totalRounds: rifle.manualRoundCount,
+      barrelRounds: rifle.barrelRoundCount,
+      statuses: statuses,
+      lastService: lastService.isEmpty ? null : lastService.first,
+    );
+  }
+
+  List<RifleMaintenanceSnapshot> maintenanceSnapshots() {
+    return _rifles.map((rifle) => maintenanceSnapshotForRifle(rifle.id)).toList();
+  }
+
   int totalRoundsForRifle(String rifleId) {
     final r = rifleById(rifleId);
     if (r == null) return 0;
@@ -2247,7 +2682,9 @@ class AppState extends ChangeNotifier {
   }
 
   int currentBarrelRoundsForRifle(String rifleId) {
-    return totalRoundsForRifle(rifleId);
+    final r = rifleById(rifleId);
+    if (r == null) return 0;
+    return r.barrelRoundCount;
   }
 
   void addRifleService({
@@ -2261,6 +2698,29 @@ class AppState extends ChangeNotifier {
       ..sort((a, b) => b.date.compareTo(a.date));
     _rifles[idx] = r.copyWith(services: next);
     notifyListeners();
+  }
+
+  void logRifleMaintenanceTask({
+    required String rifleId,
+    required MaintenanceTaskType taskType,
+    DateTime? date,
+    String notes = '',
+    int? roundsAtService,
+    String? serviceLabel,
+  }) {
+    final rifle = rifleById(rifleId);
+    if (rifle == null) return;
+    addRifleService(
+      rifleId: rifleId,
+      entry: RifleServiceEntry(
+        id: _newId(),
+        service: serviceLabel ?? _maintenanceTaskLabel(taskType),
+        date: date ?? DateTime.now(),
+        roundsAtService: roundsAtService ?? rifle.manualRoundCount,
+        notes: notes.trim(),
+        taskType: taskType,
+      ),
+    );
   }
 
   void deleteRifleService({
@@ -2289,10 +2749,11 @@ class AppState extends ChangeNotifier {
     if (rifleIdx < 0) return;
 
     final rifle = _rifles[rifleIdx];
-    final nextRoundCount = rifle.manualRoundCount + shotCount;
+    final nextTotalRoundCount = rifle.manualRoundCount + shotCount;
+    final nextBarrelRoundCount = rifle.barrelRoundCount + shotCount;
     _rifles[rifleIdx] = rifle.copyWith(
-      manualRoundCount: nextRoundCount,
-      barrelRoundCount: nextRoundCount,
+      manualRoundCount: nextTotalRoundCount,
+      barrelRoundCount: nextBarrelRoundCount,
     );
     _sessions[sessionIdx] = session.copyWith(
       confirmedShotCount: shotCount,
@@ -2431,10 +2892,11 @@ class AppState extends ChangeNotifier {
         final rifleIdx = _rifles.indexWhere((r) => r.id == entry.key);
         if (rifleIdx >= 0) {
           final rifle = _rifles[rifleIdx];
-          final nextRoundCount = rifle.manualRoundCount + entry.value;
+          final nextTotalRoundCount = rifle.manualRoundCount + entry.value;
+          final nextBarrelRoundCount = rifle.barrelRoundCount + entry.value;
           _rifles[rifleIdx] = rifle.copyWith(
-            manualRoundCount: nextRoundCount,
-            barrelRoundCount: nextRoundCount,
+            manualRoundCount: nextTotalRoundCount,
+            barrelRoundCount: nextBarrelRoundCount,
           );
         }
       }
@@ -2447,10 +2909,11 @@ class AppState extends ChangeNotifier {
     final idx = _rifles.indexWhere((r) => r.id == rifleId);
     if (idx < 0) return;
     final rifle = _rifles[idx];
-    final nextRoundCount = rifle.manualRoundCount + roundCount;
+    final nextTotalRoundCount = rifle.manualRoundCount + roundCount;
+    final nextBarrelRoundCount = rifle.barrelRoundCount + roundCount;
     _rifles[idx] = rifle.copyWith(
-      manualRoundCount: nextRoundCount,
-      barrelRoundCount: nextRoundCount,
+      manualRoundCount: nextTotalRoundCount,
+      barrelRoundCount: nextBarrelRoundCount,
     );
     notifyListeners();
   }
@@ -2463,11 +2926,28 @@ class AppState extends ChangeNotifier {
     final idx = _rifles.indexWhere((r) => r.id == rifleId);
     if (idx < 0) return;
     final rifle = _rifles[idx];
+    final nextInstalledDate = installedDate ?? DateTime.now();
+    final barrelChangeNotes = <String>[
+      if (rifle.barrelRoundCount > 0)
+        'Previous barrel rounds: ${rifle.barrelRoundCount}',
+      if (notes.trim().isNotEmpty) notes.trim(),
+    ].join(' • ');
+    final nextServices = [
+      RifleServiceEntry(
+        id: _newId(),
+        service: _maintenanceTaskLabel(MaintenanceTaskType.barrelChange),
+        date: nextInstalledDate,
+        roundsAtService: rifle.manualRoundCount,
+        notes: barrelChangeNotes,
+        taskType: MaintenanceTaskType.barrelChange,
+      ),
+      ...rifle.services,
+    ]..sort((a, b) => b.date.compareTo(a.date));
     _rifles[idx] = rifle.copyWith(
-      manualRoundCount: 0,
       barrelRoundCount: 0,
-      barrelInstalledDate: installedDate ?? DateTime.now(),
+      barrelInstalledDate: nextInstalledDate,
       barrelNotes: notes.trim(),
+      services: nextServices,
     );
     notifyListeners();
   }
@@ -2901,6 +3381,7 @@ Map<String, dynamic> _rifleToMap(Rifle rifle) => <String, dynamic>{
   'barrelInstalledDate': rifle.barrelInstalledDate?.toIso8601String(),
   'barrelNotes': rifle.barrelNotes,
   'services': rifle.services.map((s) => s.toMap()).toList(),
+  'maintenanceRules': rifle.maintenanceRules.map((r) => r.toMap()).toList(),
   'scopeMake': rifle.scopeMake,
   'scopeModel': rifle.scopeModel,
   'scopeSerial': rifle.scopeSerial,
@@ -2943,6 +3424,13 @@ Rifle _rifleFromMap(Map<String, dynamic> map) => Rifle(
   services: ((map['services'] as List?) ?? const [])
       .map(
         (e) => RifleServiceEntry.fromMap(Map<String, dynamic>.from(e as Map)),
+      )
+      .toList(),
+  maintenanceRules: ((map['maintenanceRules'] as List?) ?? const [])
+      .map(
+        (e) => MaintenanceReminderRule.fromMap(
+          Map<String, dynamic>.from(e as Map),
+        ),
       )
       .toList(),
   scopeMake: map['scopeMake']?.toString(),
@@ -3194,9 +3682,16 @@ TrainingSession _trainingSessionFromMap(
 ) => TrainingSession(
   id: (map['id'] ?? '').toString(),
   userId: (map['userId'] ?? '').toString(),
-  memberUserIds: ((map['memberUserIds'] as List?) ?? const [])
-      .map((e) => e.toString())
-      .toList(),
+  memberUserIds: (() {
+    final members = ((map['memberUserIds'] as List?) ?? const [])
+        .map((e) => e.toString())
+        .where((id) => id.trim().isNotEmpty)
+        .toList();
+    if (members.isNotEmpty) return members;
+    final ownerId = (map['userId'] ?? '').toString().trim();
+    if (ownerId.isNotEmpty) return [ownerId];
+    return const <String>[];
+  })(),
   dateTime: _parseDateTime(map['dateTime']),
   locationName: (map['locationName'] ?? '').toString(),
   folderName: (map['folderName'] ?? '').toString(),
@@ -3270,6 +3765,232 @@ class UserProfile {
   UserProfile({required this.id, this.name, required this.identifier});
 }
 
+enum MaintenanceTaskType {
+  general,
+  cleaning,
+  deepCleaning,
+  torqueCheck,
+  zeroConfirm,
+  barrelLife,
+  barrelChange,
+}
+
+enum MaintenanceDueStatus { good, dueSoon, overdue }
+
+String _maintenanceTaskLabel(MaintenanceTaskType type) {
+  switch (type) {
+    case MaintenanceTaskType.general:
+      return 'General service';
+    case MaintenanceTaskType.cleaning:
+      return 'Cleaning';
+    case MaintenanceTaskType.deepCleaning:
+      return 'Deep clean';
+    case MaintenanceTaskType.torqueCheck:
+      return 'Torque check';
+    case MaintenanceTaskType.zeroConfirm:
+      return 'Zero confirm';
+    case MaintenanceTaskType.barrelLife:
+      return 'Barrel life';
+    case MaintenanceTaskType.barrelChange:
+      return 'Barrel change';
+  }
+}
+
+IconData _maintenanceTaskIcon(MaintenanceTaskType type) {
+  switch (type) {
+    case MaintenanceTaskType.general:
+      return Icons.build_outlined;
+    case MaintenanceTaskType.cleaning:
+      return Icons.cleaning_services_outlined;
+    case MaintenanceTaskType.deepCleaning:
+      return Icons.auto_fix_high_outlined;
+    case MaintenanceTaskType.torqueCheck:
+      return Icons.hardware_outlined;
+    case MaintenanceTaskType.zeroConfirm:
+      return Icons.gps_fixed;
+    case MaintenanceTaskType.barrelLife:
+      return Icons.timeline_outlined;
+    case MaintenanceTaskType.barrelChange:
+      return Icons.refresh_outlined;
+  }
+}
+
+bool _isConfigurableMaintenanceTask(MaintenanceTaskType type) {
+  return type != MaintenanceTaskType.general &&
+      type != MaintenanceTaskType.barrelChange;
+}
+
+bool _maintenanceTaskSupportsRounds(MaintenanceTaskType type) {
+  switch (type) {
+    case MaintenanceTaskType.cleaning:
+    case MaintenanceTaskType.deepCleaning:
+    case MaintenanceTaskType.torqueCheck:
+    case MaintenanceTaskType.barrelLife:
+      return true;
+    case MaintenanceTaskType.general:
+    case MaintenanceTaskType.zeroConfirm:
+    case MaintenanceTaskType.barrelChange:
+      return false;
+  }
+}
+
+bool _maintenanceTaskSupportsDays(MaintenanceTaskType type) {
+  switch (type) {
+    case MaintenanceTaskType.cleaning:
+    case MaintenanceTaskType.deepCleaning:
+    case MaintenanceTaskType.torqueCheck:
+    case MaintenanceTaskType.zeroConfirm:
+      return true;
+    case MaintenanceTaskType.general:
+    case MaintenanceTaskType.barrelLife:
+    case MaintenanceTaskType.barrelChange:
+      return false;
+  }
+}
+
+class MaintenanceReminderRule {
+  final MaintenanceTaskType type;
+  final bool enabled;
+  final int? intervalRounds;
+  final int? intervalDays;
+  final String notes;
+
+  const MaintenanceReminderRule({
+    required this.type,
+    required this.enabled,
+    this.intervalRounds,
+    this.intervalDays,
+    this.notes = '',
+  });
+
+  factory MaintenanceReminderRule.defaultFor(MaintenanceTaskType type) {
+    switch (type) {
+      case MaintenanceTaskType.cleaning:
+        return const MaintenanceReminderRule(
+          type: MaintenanceTaskType.cleaning,
+          enabled: true,
+          intervalRounds: 150,
+        );
+      case MaintenanceTaskType.deepCleaning:
+        return const MaintenanceReminderRule(
+          type: MaintenanceTaskType.deepCleaning,
+          enabled: false,
+          intervalRounds: 500,
+        );
+      case MaintenanceTaskType.torqueCheck:
+        return const MaintenanceReminderRule(
+          type: MaintenanceTaskType.torqueCheck,
+          enabled: true,
+          intervalRounds: 250,
+          intervalDays: 30,
+        );
+      case MaintenanceTaskType.zeroConfirm:
+        return const MaintenanceReminderRule(
+          type: MaintenanceTaskType.zeroConfirm,
+          enabled: true,
+          intervalDays: 30,
+        );
+      case MaintenanceTaskType.barrelLife:
+        return const MaintenanceReminderRule(
+          type: MaintenanceTaskType.barrelLife,
+          enabled: true,
+          intervalRounds: 2000,
+        );
+      case MaintenanceTaskType.general:
+      case MaintenanceTaskType.barrelChange:
+        return MaintenanceReminderRule(type: type, enabled: false);
+    }
+  }
+
+  MaintenanceReminderRule copyWith({
+    MaintenanceTaskType? type,
+    bool? enabled,
+    int? intervalRounds,
+    bool clearRounds = false,
+    int? intervalDays,
+    bool clearDays = false,
+    String? notes,
+  }) {
+    return MaintenanceReminderRule(
+      type: type ?? this.type,
+      enabled: enabled ?? this.enabled,
+      intervalRounds: clearRounds ? null : (intervalRounds ?? this.intervalRounds),
+      intervalDays: clearDays ? null : (intervalDays ?? this.intervalDays),
+      notes: notes ?? this.notes,
+    );
+  }
+
+  Map<String, dynamic> toMap() => <String, dynamic>{
+    'type': type.name,
+    'enabled': enabled,
+    'intervalRounds': intervalRounds,
+    'intervalDays': intervalDays,
+    'notes': notes,
+  };
+
+  factory MaintenanceReminderRule.fromMap(Map<String, dynamic> map) {
+    final type = MaintenanceTaskType.values.firstWhere(
+      (value) => value.name == (map['type'] ?? '').toString(),
+      orElse: () => MaintenanceTaskType.general,
+    );
+    return MaintenanceReminderRule(
+      type: type,
+      enabled: map['enabled'] == true,
+      intervalRounds: _toNullableInt(map['intervalRounds']),
+      intervalDays: _toNullableInt(map['intervalDays']),
+      notes: (map['notes'] ?? '').toString(),
+    );
+  }
+}
+
+class MaintenanceReminderStatus {
+  final MaintenanceReminderRule rule;
+  final MaintenanceDueStatus status;
+  final int? roundsSince;
+  final int? roundsRemaining;
+  final int? daysSince;
+  final int? daysRemaining;
+  final RifleServiceEntry? lastService;
+
+  const MaintenanceReminderStatus({
+    required this.rule,
+    required this.status,
+    this.roundsSince,
+    this.roundsRemaining,
+    this.daysSince,
+    this.daysRemaining,
+    this.lastService,
+  });
+}
+
+class RifleMaintenanceSnapshot {
+  final Rifle rifle;
+  final int totalRounds;
+  final int barrelRounds;
+  final List<MaintenanceReminderStatus> statuses;
+  final RifleServiceEntry? lastService;
+
+  const RifleMaintenanceSnapshot({
+    required this.rifle,
+    required this.totalRounds,
+    required this.barrelRounds,
+    required this.statuses,
+    required this.lastService,
+  });
+
+  int get overdueCount =>
+      statuses.where((status) => status.status == MaintenanceDueStatus.overdue).length;
+
+  int get dueSoonCount =>
+      statuses.where((status) => status.status == MaintenanceDueStatus.dueSoon).length;
+
+  MaintenanceDueStatus get overallStatus {
+    if (overdueCount > 0) return MaintenanceDueStatus.overdue;
+    if (dueSoonCount > 0) return MaintenanceDueStatus.dueSoon;
+    return MaintenanceDueStatus.good;
+  }
+}
+
 class Rifle {
   final String id;
   final String? name;
@@ -3289,6 +4010,7 @@ class Rifle {
   final String barrelNotes;
 
   final List<RifleServiceEntry> services;
+  final List<MaintenanceReminderRule> maintenanceRules;
 
   final String? scopeMake;
   final String? scopeModel;
@@ -3319,6 +4041,7 @@ class Rifle {
     this.barrelInstalledDate,
     this.barrelNotes = '',
     this.services = const [],
+    this.maintenanceRules = const [],
     this.scopeMake,
     this.scopeModel,
     this.scopeSerial,
@@ -3348,6 +4071,7 @@ class Rifle {
     DateTime? barrelInstalledDate,
     String? barrelNotes,
     List<RifleServiceEntry>? services,
+    List<MaintenanceReminderRule>? maintenanceRules,
     String? scopeMake,
     String? scopeModel,
     String? scopeSerial,
@@ -3376,6 +4100,7 @@ class Rifle {
       barrelInstalledDate: barrelInstalledDate ?? this.barrelInstalledDate,
       barrelNotes: barrelNotes ?? this.barrelNotes,
       services: services ?? this.services,
+      maintenanceRules: maintenanceRules ?? this.maintenanceRules,
       scopeMake: scopeMake ?? this.scopeMake,
       scopeModel: scopeModel ?? this.scopeModel,
       scopeSerial: scopeSerial ?? this.scopeSerial,
@@ -3399,6 +4124,7 @@ class RifleServiceEntry {
   final DateTime date;
   final int roundsAtService;
   final String notes;
+  final MaintenanceTaskType taskType;
 
   const RifleServiceEntry({
     required this.id,
@@ -3406,6 +4132,7 @@ class RifleServiceEntry {
     required this.date,
     required this.roundsAtService,
     required this.notes,
+    this.taskType = MaintenanceTaskType.general,
   });
 
   Map<String, dynamic> toMap() => <String, dynamic>{
@@ -3414,6 +4141,7 @@ class RifleServiceEntry {
     'date': date.toIso8601String(),
     'roundsAtService': roundsAtService,
     'notes': notes,
+    'taskType': taskType.name,
   };
 
   factory RifleServiceEntry.fromMap(Map<String, dynamic> map) {
@@ -3440,6 +4168,11 @@ class RifleServiceEntry {
       date: parsedDate,
       roundsAtService: rounds,
       notes: (map['notes'] ?? '').toString(),
+      taskType: MaintenanceTaskType.values.firstWhere(
+        (value) =>
+            value.name == (map['taskType'] ?? MaintenanceTaskType.general.name).toString(),
+        orElse: () => MaintenanceTaskType.general,
+      ),
     );
   }
 }
@@ -4108,9 +4841,28 @@ class _AudioCounterScreenState extends State<AudioCounterScreen> {
   }
 }
 
+class _GuidedTourStep {
+  final int tabIndex;
+  final IconData icon;
+  final String title;
+  final String description;
+
+  const _GuidedTourStep({
+    required this.tabIndex,
+    required this.icon,
+    required this.title,
+    required this.description,
+  });
+}
+
 class HomeShell extends StatefulWidget {
   final AppState state;
-  const HomeShell({super.key, required this.state});
+  final bool startGuidedTour;
+  const HomeShell({
+    super.key,
+    required this.state,
+    this.startGuidedTour = false,
+  });
 
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -4118,6 +4870,191 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   int _tab = 0;
+  bool _tourActive = false;
+  int _tourStepIndex = 0;
+  bool _didAutoStartTour = false;
+
+  static const List<_GuidedTourStep> _tourSteps = [
+    _GuidedTourStep(
+      tabIndex: 0,
+      icon: Icons.event_note_outlined,
+      title: 'Sessions',
+      description:
+          'Create, organize, and review all shooting sessions. Use folders, archive, and filters to keep history clean.',
+    ),
+    _GuidedTourStep(
+      tabIndex: 1,
+      icon: Icons.ac_unit_outlined,
+      title: 'Cold Bore',
+      description:
+          'Track first-shot performance and adjustments to monitor zero confidence over time.',
+    ),
+    _GuidedTourStep(
+      tabIndex: 2,
+      icon: Icons.timer_outlined,
+      title: 'Shot Timer',
+      description:
+          'Run drills with delayed start and timing controls for pacing and consistency.',
+    ),
+    _GuidedTourStep(
+      tabIndex: 3,
+      icon: Icons.mic_outlined,
+      title: 'Audio Counter',
+      description:
+          'Detect shots by sound and apply counted rounds to your selected rifle.',
+    ),
+    _GuidedTourStep(
+      tabIndex: 4,
+      icon: Icons.build_outlined,
+      title: 'Gear',
+      description:
+          'Manage rifles, ammo lots, and maintenance reminders so analytics stay accurate.',
+    ),
+    _GuidedTourStep(
+      tabIndex: 5,
+      icon: Icons.list_alt_outlined,
+      title: 'Data',
+      description:
+          'Review quick-reference and working DOPE plus maintenance status in one place.',
+    ),
+    _GuidedTourStep(
+      tabIndex: 6,
+      icon: Icons.ios_share_outlined,
+      title: 'Export',
+      description:
+          'Create JSON backups and PDF reports for portability and long-term record keeping.',
+    ),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.startGuidedTour) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _didAutoStartTour) return;
+        _didAutoStartTour = true;
+        _startGuidedTour();
+      });
+    }
+  }
+
+  void _startGuidedTour() {
+    setState(() {
+      _tourActive = true;
+      _tourStepIndex = 0;
+      _tab = _tourSteps.first.tabIndex;
+    });
+  }
+
+  void _stopGuidedTour() {
+    setState(() => _tourActive = false);
+  }
+
+  void _nextTourStep() {
+    if (_tourStepIndex >= _tourSteps.length - 1) {
+      _stopGuidedTour();
+      return;
+    }
+    setState(() {
+      _tourStepIndex += 1;
+      _tab = _tourSteps[_tourStepIndex].tabIndex;
+    });
+  }
+
+  void _prevTourStep() {
+    if (_tourStepIndex == 0) return;
+    setState(() {
+      _tourStepIndex -= 1;
+      _tab = _tourSteps[_tourStepIndex].tabIndex;
+    });
+  }
+
+  Widget _buildTourOverlay(BuildContext context) {
+    if (!_tourActive) return const SizedBox.shrink();
+    final step = _tourSteps[_tourStepIndex];
+    return Positioned.fill(
+      child: ColoredBox(
+        color: Colors.black.withValues(alpha: 0.55),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                const Spacer(),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(step.icon),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Guided Tour: ${step.title}',
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: _stopGuidedTour,
+                              child: const Text('Skip'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(step.description),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Step ${_tourStepIndex + 1} of ${_tourSteps.length}',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                        const SizedBox(height: 8),
+                        LinearProgressIndicator(
+                          value: (_tourStepIndex + 1) / _tourSteps.length,
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: _tourStepIndex == 0
+                                    ? null
+                                    : _prevTourStep,
+                                icon: const Icon(Icons.arrow_back),
+                                label: const Text('Back'),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: FilledButton.icon(
+                                onPressed: _nextTourStep,
+                                icon: Icon(
+                                  _tourStepIndex == _tourSteps.length - 1
+                                      ? Icons.check
+                                      : Icons.arrow_forward,
+                                ),
+                                label: Text(
+                                  _tourStepIndex == _tourSteps.length - 1
+                                      ? 'Finish'
+                                      : 'Next',
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -4127,7 +5064,7 @@ class _HomeShellState extends State<HomeShell> {
       ShotTimerToolScreen(state: widget.state),
       AudioCounterScreen(state: widget.state),
       EquipmentScreen(state: widget.state),
-      DataScreen(state: widget.state),
+      DataScreen(state: widget.state, onStartTutorial: _startGuidedTour),
       ExportPlaceholderScreen(state: widget.state),
     ];
 
@@ -4136,70 +5073,81 @@ class _HomeShellState extends State<HomeShell> {
       builder: (context, _) {
         final user = widget.state.activeUser;
 
-        return Scaffold(
-          appBar: AppBar(
-            title: const Text('Cold Bore'),
-            actions: [
-              if (user != null)
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: Center(
-                    child: Text(
-                      user.identifier,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
+        return Stack(
+          children: [
+            Scaffold(
+              appBar: AppBar(
+                title: const Text('Cold Bore'),
+                actions: [
+                  if (user != null &&
+                      user.identifier.trim().toUpperCase() != 'DEMO')
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Center(
+                        child: Text(
+                          user.identifier,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
                     ),
+                  IconButton(
+                    tooltip: 'Tutorial',
+                    onPressed: _startGuidedTour,
+                    icon: const Icon(Icons.help_outline),
                   ),
-                ),
-              IconButton(
-                tooltip: 'Users',
-                onPressed: () async {
-                  await Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => UsersScreen(state: widget.state),
-                    ),
-                  );
-                  setState(() {});
-                },
-                icon: const Icon(Icons.person_outline),
+                  IconButton(
+                    tooltip: 'Users',
+                    onPressed: () async {
+                      await Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => UsersScreen(state: widget.state),
+                        ),
+                      );
+                      setState(() {});
+                    },
+                    icon: const Icon(Icons.person_outline),
+                  ),
+                ],
               ),
-            ],
-          ),
-          body: pages[_tab],
-          bottomNavigationBar: NavigationBar(
-            selectedIndex: _tab,
-            onDestinationSelected: (i) => setState(() => _tab = i),
-            labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-            destinations: const [
-              NavigationDestination(
-                icon: Icon(Icons.event_note_outlined),
-                label: 'Session',
+              body: pages[_tab],
+              bottomNavigationBar: NavigationBar(
+                selectedIndex: _tab,
+                onDestinationSelected: (i) => setState(() => _tab = i),
+                labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+                destinations: const [
+                  NavigationDestination(
+                    icon: Icon(Icons.event_note_outlined),
+                    label: 'Session',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.ac_unit_outlined),
+                    label: 'Bore',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.timer_outlined),
+                    label: 'Timer',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.mic_outlined),
+                    label: 'Audio',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.build_outlined),
+                    label: 'Gear',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.list_alt_outlined),
+                    label: 'Data',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.ios_share_outlined),
+                    label: 'Export',
+                  ),
+                ],
               ),
-              NavigationDestination(
-                icon: Icon(Icons.ac_unit_outlined),
-                label: 'Bore',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.timer_outlined),
-                label: 'Timer',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.mic_outlined),
-                label: 'Audio',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.build_outlined),
-                label: 'Gear',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.list_alt_outlined),
-                label: 'Data',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.ios_share_outlined),
-                label: 'Export',
-              ),
-            ],
-          ),
+            ),
+            _buildTourOverlay(context),
+          ],
         );
       },
     );
@@ -4208,7 +5156,12 @@ class _HomeShellState extends State<HomeShell> {
 
 class DataScreen extends StatefulWidget {
   final AppState state;
-  const DataScreen({super.key, required this.state});
+  final VoidCallback? onStartTutorial;
+  const DataScreen({
+    super.key,
+    required this.state,
+    this.onStartTutorial,
+  });
 
   @override
   State<DataScreen> createState() => _DataScreenState();
@@ -4533,6 +5486,29 @@ class _DataScreenState extends State<DataScreen> {
               ),
               const SizedBox(height: 12),
               Card(
+                child: ListTile(
+                  leading: const Icon(Icons.school_outlined),
+                  title: const Text('App Tutorial'),
+                  subtitle: const Text(
+                    'Take a guided tour across tabs and major features.',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    final onStartTutorial = widget.onStartTutorial;
+                    if (onStartTutorial != null) {
+                      onStartTutorial();
+                      return;
+                    }
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const FeatureTutorialScreen(),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 12),
+              Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
@@ -4696,39 +5672,255 @@ class _DataScreenState extends State<DataScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.notifications_none),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Maintenance reminders',
-                            style: Theme.of(context).textTheme.titleMedium,
+              Builder(
+                builder: (context) {
+                  final snapshots = widget.state.maintenanceSnapshots();
+                  final overdue = snapshots
+                      .where(
+                        (snapshot) =>
+                            snapshot.overallStatus == MaintenanceDueStatus.overdue,
+                      )
+                      .length;
+                  final dueSoon = snapshots
+                      .where(
+                        (snapshot) =>
+                            snapshot.overallStatus == MaintenanceDueStatus.dueSoon,
+                      )
+                      .length;
+                  return Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.notifications_none),
+                      title: const Text('Maintenance reminders'),
+                      subtitle: Text(
+                        snapshots.isEmpty
+                            ? 'Add rifles to start tracking cleaning, torque, zero, and barrel reminders.'
+                            : '$overdue overdue • $dueSoon due soon across ${snapshots.length} rifle${snapshots.length == 1 ? '' : 's'}',
+                      ),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                MaintenanceHubScreen(state: widget.state),
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Coming next: round-count reminders, cleaning schedule, and per-rifle checklists.',
-                        style: TextStyle(
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.onSurface.withValues(alpha: 0.7),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                        );
+                      },
+                    ),
+                  );
+                },
               ),
             ],
           ),
         );
       },
+    );
+  }
+}
+
+class _TutorialStep {
+  final IconData icon;
+  final String title;
+  final String why;
+  final List<String> actions;
+
+  const _TutorialStep({
+    required this.icon,
+    required this.title,
+    required this.why,
+    required this.actions,
+  });
+}
+
+class FeatureTutorialScreen extends StatefulWidget {
+  const FeatureTutorialScreen({super.key});
+
+  @override
+  State<FeatureTutorialScreen> createState() => _FeatureTutorialScreenState();
+}
+
+class _FeatureTutorialScreenState extends State<FeatureTutorialScreen> {
+  final List<_TutorialStep> _steps = const [
+    _TutorialStep(
+      icon: Icons.flag_outlined,
+      title: 'Quick Start Workflow',
+      why: 'This gives new users the fastest path to useful data in one range trip.',
+      actions: [
+        'Create or select your user profile.',
+        'Add your rifle and ammo lot in Gear.',
+        'Start a Session and set weather/location details.',
+        'Log cold bore and follow-up shots, then save session notes.',
+      ],
+    ),
+    _TutorialStep(
+      icon: Icons.event_note_outlined,
+      title: 'Sessions',
+      why: 'Sessions are your timeline for all strings, notes, and performance changes.',
+      actions: [
+        'Create a new session before shooting.',
+        'Use folders/year/month filters to organize history.',
+        'Attach photos and notes to document conditions.',
+        'Archive old sessions to keep current work clean.',
+      ],
+    ),
+    _TutorialStep(
+      icon: Icons.ac_unit_outlined,
+      title: 'Cold Bore Tracking',
+      why: 'Cold bore entries let you validate first-shot behavior and build trust in your zero.',
+      actions: [
+        'Use the Bore tab to capture your cold bore shot and result.',
+        'Record distance and any correction you needed.',
+        'Review trend charts over time for drift and consistency.',
+      ],
+    ),
+    _TutorialStep(
+      icon: Icons.timer_outlined,
+      title: 'Shot Timers',
+      why: 'The timer tools support drills and help standardize pacing across sessions.',
+      actions: [
+        'Set delayed start when you need setup time before the first beep.',
+        'Run strings and log elapsed time and shot cadence.',
+        'Optionally apply round counts to your selected rifle.',
+      ],
+    ),
+    _TutorialStep(
+      icon: Icons.mic_outlined,
+      title: 'Audio Shot Counter',
+      why: 'Audio detection can quickly count rounds during drills with less manual tapping.',
+      actions: [
+        'Pick your rifle before starting detection.',
+        'Tune threshold for your range noise level.',
+        'Apply counted shots when finished.',
+      ],
+    ),
+    _TutorialStep(
+      icon: Icons.build_outlined,
+      title: 'Gear and Maintenance',
+      why: 'Good equipment records make data analysis and maintenance reminders accurate.',
+      actions: [
+        'Keep rifle, scope, and ammo lot details up to date.',
+        'Configure maintenance reminder rules per rifle.',
+        'Log cleanings, torque checks, and barrel changes.',
+      ],
+    ),
+    _TutorialStep(
+      icon: Icons.list_alt_outlined,
+      title: 'Data and DOPE',
+      why: 'The Data tab gives fast reference for proven holds and recent adjustments.',
+      actions: [
+        'Review quick-reference DOPE by rifle.',
+        'Use Working DOPE filters by rifle and ammo.',
+        'Use this view during setup to confirm expected holds.',
+      ],
+    ),
+    _TutorialStep(
+      icon: Icons.cloud_done_outlined,
+      title: 'Backup and Restore',
+      why: 'Your records matter, so backup strategy should be understood before you need it.',
+      actions: [
+        'On iPhone, iCloud backup runs automatically after data changes.',
+        'On fresh iPhone installs, restore can apply automatically when backup exists.',
+        'Use JSON export as an extra manual safety copy.',
+      ],
+    ),
+    _TutorialStep(
+      icon: Icons.ios_share_outlined,
+      title: 'Exports and Reports',
+      why: 'Exports make it easy to share progress, archive evidence, and review performance.',
+      actions: [
+        'Generate PDF reports for training summaries.',
+        'Create a JSON backup file for full data portability.',
+        'Share reports with coaches or teammates after each block.',
+      ],
+    ),
+  ];
+
+  int _stepIndex = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final step = _steps[_stepIndex];
+    final progress = (_stepIndex + 1) / _steps.length;
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Feature Tutorial')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Text(
+            'Step ${_stepIndex + 1} of ${_steps.length}',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 8),
+          LinearProgressIndicator(value: progress),
+          const SizedBox(height: 12),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(step.icon),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          step.title,
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Text(step.why),
+                  const SizedBox(height: 12),
+                  ...step.actions.asMap().entries.map(
+                    (entry) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('${entry.key + 1}. '),
+                          Expanded(child: Text(entry.value)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _stepIndex == 0
+                      ? null
+                      : () => setState(() => _stepIndex -= 1),
+                  icon: const Icon(Icons.arrow_back),
+                  label: const Text('Previous'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: _stepIndex == _steps.length - 1
+                      ? null
+                      : () => setState(() => _stepIndex += 1),
+                  icon: const Icon(Icons.arrow_forward),
+                  label: const Text('Next'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Done'),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -4774,7 +5966,9 @@ class _UsersScreenState extends State<UsersScreen> {
               child: ListTile(
                 leading: const Icon(Icons.build_outlined),
                 title: const Text('Maintenance'),
-                subtitle: const Text('View round counts and service history'),
+                subtitle: const Text(
+                  'View reminders, barrel life, round counts, and service history',
+                ),
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
@@ -4794,7 +5988,7 @@ class _UsersScreenState extends State<UsersScreen> {
                 final isActive = active?.id == u.id;
                 return ListTile(
                   title: Text(u.name ?? ''),
-                  subtitle: Text(u.identifier),
+                  subtitle: Text(_displayUserIdentifier(u.identifier)),
                   trailing: isActive
                       ? const Icon(Icons.check_circle_outline)
                       : null,
@@ -4821,13 +6015,51 @@ class SessionsScreen extends StatefulWidget {
 }
 
 class _SessionsScreenState extends State<SessionsScreen> {
+  static const String _filtersPanelCollapsedPrefsKey =
+      'cold_bore.sessions.filters_panel_collapsed.v1';
+
   bool _showArchived = false;
   String _groupBy = 'none';
   int? _yearFilter;
   String? _monthFilter;
   String? _folderFilter;
+  bool _filtersPanelCollapsed = true;
   final Set<String> _collapsedGroups = <String>{};
   final Set<String> _initializedCollapsedGroups = <String>{};
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadUiPrefs());
+  }
+
+  Future<void> _loadUiPrefs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getBool(_filtersPanelCollapsedPrefsKey);
+      if (saved == null || !mounted) return;
+      setState(() => _filtersPanelCollapsed = saved);
+    } catch (e, st) {
+      debugPrint('Sessions ui prefs load failed: $e\n$st');
+    }
+  }
+
+  Future<void> _saveFiltersPanelCollapsed() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(
+        _filtersPanelCollapsedPrefsKey,
+        _filtersPanelCollapsed,
+      );
+    } catch (e, st) {
+      debugPrint('Sessions ui prefs save failed: $e\n$st');
+    }
+  }
+
+  void _setFiltersPanelCollapsed(bool value) {
+    setState(() => _filtersPanelCollapsed = value);
+    unawaited(_saveFiltersPanelCollapsed());
+  }
 
   String _groupStorageKey(String groupBy, String label) => '$groupBy::$label';
 
@@ -4887,7 +6119,36 @@ class _SessionsScreenState extends State<SessionsScreen> {
     return out.join(' • ');
   }
 
+  String _groupByLabel(String value) {
+    switch (value) {
+      case 'year':
+        return 'Year';
+      case 'month':
+        return 'Month';
+      case 'folder':
+        return 'Folder';
+      case 'none':
+      default:
+        return 'Newest first';
+    }
+  }
+
+  String _filtersSummary(int visibleCount) {
+    final parts = <String>['Showing $visibleCount'];
+    if (_showArchived) parts.add('Archived shown');
+    if (_groupBy != 'none') parts.add('Grouped by ${_groupByLabel(_groupBy)}');
+    if (_yearFilter != null) parts.add('Year $_yearFilter');
+    if (_monthFilter != null) parts.add(_monthLabel(_monthFilter!));
+    if (_folderFilter != null) {
+      parts.add(
+        _folderFilter == '__unfiled__' ? 'Unfiled only' : 'Folder ${_folderFilter!}',
+      );
+    }
+    return parts.join(' • ');
+  }
+
   Future<void> _newSession(BuildContext context) async {
+    if (!await _guardWrite(context)) return;
     final res = await showDialog<_NewSessionResult>(
       context: context,
       builder: (_) => const _NewSessionDialog(),
@@ -5097,6 +6358,37 @@ class _SessionsScreenState extends State<SessionsScreen> {
     }
   }
 
+  Future<void> _deleteSession(
+    BuildContext context,
+    TrainingSession session,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Delete session?'),
+        content: const Text(
+          'This permanently deletes this session and cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    widget.state.deleteSession(sessionId: session.id);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Session deleted.')));
+  }
+
   Widget _sessionTile(BuildContext context, TrainingSession s) {
     final rifle = widget.state.rifleById(s.rifleId);
     final ammo = widget.state.ammoById(s.ammoLotId);
@@ -5134,6 +6426,10 @@ class _SessionsScreenState extends State<SessionsScreen> {
           }
           if (value == 'unarchive') {
             widget.state.setSessionArchived(sessionId: s.id, archived: false);
+            return;
+          }
+          if (value == 'delete') {
+            await _deleteSession(context, s);
           }
         },
         itemBuilder: (_) => [
@@ -5142,6 +6438,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
             value: s.archived ? 'unarchive' : 'archive',
             child: Text(s.archived ? 'Unarchive' : 'Archive'),
           ),
+          const PopupMenuItem(value: 'delete', child: Text('Delete session')),
         ],
       ),
       onTap: () {
@@ -5255,118 +6552,136 @@ class _SessionsScreenState extends State<SessionsScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Organize Sessions',
-                        style: TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                      const SizedBox(height: 8),
-                      FilterChip(
-                        label: const Text('Show archived'),
-                        selected: _showArchived,
-                        onSelected: (value) =>
-                            setState(() => _showArchived = value),
-                      ),
-                      const SizedBox(height: 8),
-                      DropdownButtonFormField<String>(
-                        initialValue: _groupBy,
-                        decoration: const InputDecoration(
-                          labelText: 'Group by',
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.tune),
+                        title: const Text(
+                          'Organize Sessions',
+                          style: TextStyle(fontWeight: FontWeight.w700),
                         ),
-                        items: const [
-                          DropdownMenuItem(value: 'none', child: Text('Newest first')),
-                          DropdownMenuItem(value: 'year', child: Text('Year')),
-                          DropdownMenuItem(value: 'month', child: Text('Month')),
-                          DropdownMenuItem(value: 'folder', child: Text('Folder')),
-                        ],
-                        onChanged: (value) =>
-                            setState(() => _groupBy = value ?? 'none'),
+                        subtitle: Text(
+                          _filtersSummary(filtered.length),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        trailing: Icon(
+                          _filtersPanelCollapsed
+                              ? Icons.expand_more
+                              : Icons.expand_less,
+                        ),
+                        onTap: () =>
+                          _setFiltersPanelCollapsed(!_filtersPanelCollapsed),
                       ),
-                      const SizedBox(height: 8),
-                      DropdownButtonFormField<int?>(
-                        initialValue: _yearFilter,
-                        decoration: const InputDecoration(labelText: 'Year filter'),
-                        items: [
-                          const DropdownMenuItem<int?>(
-                            value: null,
-                            child: Text('All years'),
+                      if (!_filtersPanelCollapsed) ...[
+                        const SizedBox(height: 8),
+                        FilterChip(
+                          label: const Text('Show archived'),
+                          selected: _showArchived,
+                          onSelected: (value) =>
+                              setState(() => _showArchived = value),
+                        ),
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<String>(
+                          initialValue: _groupBy,
+                          decoration: const InputDecoration(
+                            labelText: 'Group by',
                           ),
-                          ...availableYears.map(
-                            (year) => DropdownMenuItem<int?>(
-                              value: year,
-                              child: Text('$year'),
+                          items: const [
+                            DropdownMenuItem(value: 'none', child: Text('Newest first')),
+                            DropdownMenuItem(value: 'year', child: Text('Year')),
+                            DropdownMenuItem(value: 'month', child: Text('Month')),
+                            DropdownMenuItem(value: 'folder', child: Text('Folder')),
+                          ],
+                          onChanged: (value) =>
+                              setState(() => _groupBy = value ?? 'none'),
+                        ),
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<int?>(
+                          initialValue: _yearFilter,
+                          decoration: const InputDecoration(labelText: 'Year filter'),
+                          items: [
+                            const DropdownMenuItem<int?>(
+                              value: null,
+                              child: Text('All years'),
                             ),
-                          ),
-                        ],
-                        onChanged: (value) => setState(() => _yearFilter = value),
-                      ),
-                      const SizedBox(height: 8),
-                      DropdownButtonFormField<String?>(
-                        initialValue: _monthFilter,
-                        decoration: const InputDecoration(labelText: 'Month filter'),
-                        items: [
-                          const DropdownMenuItem<String?>(
-                            value: null,
-                            child: Text('All months'),
-                          ),
-                          ...availableMonths.map(
-                            (month) => DropdownMenuItem<String?>(
-                              value: month,
-                              child: Text(_monthLabel(month)),
+                            ...availableYears.map(
+                              (year) => DropdownMenuItem<int?>(
+                                value: year,
+                                child: Text('$year'),
+                              ),
                             ),
-                          ),
-                        ],
-                        onChanged: (value) => setState(() => _monthFilter = value),
-                      ),
-                      const SizedBox(height: 8),
-                      DropdownButtonFormField<String?>(
-                        initialValue: _folderFilter,
-                        decoration: const InputDecoration(labelText: 'Folder filter'),
-                        items: [
-                          const DropdownMenuItem<String?>(
-                            value: null,
-                            child: Text('All folders'),
-                          ),
-                          const DropdownMenuItem<String?>(
-                            value: '__unfiled__',
-                            child: Text('Unfiled only'),
-                          ),
-                          ...availableFolders.map(
-                            (folder) => DropdownMenuItem<String?>(
-                              value: folder,
-                              child: Text(folder),
+                          ],
+                          onChanged: (value) => setState(() => _yearFilter = value),
+                        ),
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<String?>(
+                          initialValue: _monthFilter,
+                          decoration: const InputDecoration(labelText: 'Month filter'),
+                          items: [
+                            const DropdownMenuItem<String?>(
+                              value: null,
+                              child: Text('All months'),
                             ),
-                          ),
-                        ],
-                        onChanged: (value) => setState(() => _folderFilter = value),
-                      ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          FilledButton.tonalIcon(
-                            onPressed: filtered.isEmpty
-                                ? null
-                                : () => _bulkMoveToFolder(context, filtered),
-                            icon: const Icon(Icons.drive_file_move_outline),
-                            label: Text('Move ${filtered.length} to folder'),
-                          ),
-                          FilledButton.tonalIcon(
-                            onPressed: filtered.isEmpty
-                                ? null
-                                : () => _bulkArchive(context, filtered, true),
-                            icon: const Icon(Icons.archive_outlined),
-                            label: Text('Archive ${filtered.length}'),
-                          ),
-                          FilledButton.tonalIcon(
-                            onPressed: filtered.isEmpty
-                                ? null
-                                : () => _bulkArchive(context, filtered, false),
-                            icon: const Icon(Icons.unarchive_outlined),
-                            label: Text('Unarchive ${filtered.length}'),
-                          ),
-                        ],
-                      ),
+                            ...availableMonths.map(
+                              (month) => DropdownMenuItem<String?>(
+                                value: month,
+                                child: Text(_monthLabel(month)),
+                              ),
+                            ),
+                          ],
+                          onChanged: (value) => setState(() => _monthFilter = value),
+                        ),
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<String?>(
+                          initialValue: _folderFilter,
+                          decoration: const InputDecoration(labelText: 'Folder filter'),
+                          items: [
+                            const DropdownMenuItem<String?>(
+                              value: null,
+                              child: Text('All folders'),
+                            ),
+                            const DropdownMenuItem<String?>(
+                              value: '__unfiled__',
+                              child: Text('Unfiled only'),
+                            ),
+                            ...availableFolders.map(
+                              (folder) => DropdownMenuItem<String?>(
+                                value: folder,
+                                child: Text(folder),
+                              ),
+                            ),
+                          ],
+                          onChanged: (value) => setState(() => _folderFilter = value),
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            FilledButton.tonalIcon(
+                              onPressed: filtered.isEmpty
+                                  ? null
+                                  : () => _bulkMoveToFolder(context, filtered),
+                              icon: const Icon(Icons.drive_file_move_outline),
+                              label: Text('Move ${filtered.length} to folder'),
+                            ),
+                            FilledButton.tonalIcon(
+                              onPressed: filtered.isEmpty
+                                  ? null
+                                  : () => _bulkArchive(context, filtered, true),
+                              icon: const Icon(Icons.archive_outlined),
+                              label: Text('Archive ${filtered.length}'),
+                            ),
+                            FilledButton.tonalIcon(
+                              onPressed: filtered.isEmpty
+                                  ? null
+                                  : () => _bulkArchive(context, filtered, false),
+                              icon: const Icon(Icons.unarchive_outlined),
+                              label: Text('Unarchive ${filtered.length}'),
+                            ),
+                          ],
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -5749,7 +7064,7 @@ class _SessionShotTimerCard extends StatefulWidget {
 
 class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
   final Stopwatch _stopwatch = Stopwatch();
-  final TextEditingController _delayCtrl = TextEditingController(text: '0');
+  final TextEditingController _delayCtrl = TextEditingController();
   final TextEditingController _goalCtrl = TextEditingController();
   Timer? _ticker;
   StreamSubscription<NoiseReading>? _noiseSubscription;
@@ -6610,7 +7925,7 @@ class _StandaloneShotTimerCard extends StatefulWidget {
 
 class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
   final Stopwatch _stopwatch = Stopwatch();
-  final TextEditingController _delayCtrl = TextEditingController(text: '0');
+  final TextEditingController _delayCtrl = TextEditingController();
   final TextEditingController _goalCtrl = TextEditingController();
   Timer? _ticker;
   StreamSubscription<NoiseReading>? _noiseSubscription;
@@ -7473,6 +8788,7 @@ class SessionDetailScreen extends StatelessWidget {
   }
 
   Future<void> _addColdBore(BuildContext context, TrainingSession s) async {
+    if (!await _guardWrite(context)) return;
     final res = await showDialog<_ColdBoreResult>(
       context: context,
       builder: (_) => _ColdBoreDialog(defaultTime: s.dateTime),
@@ -7493,6 +8809,7 @@ class SessionDetailScreen extends StatelessWidget {
   }
 
   Future<void> _addPhotoNote(BuildContext context, TrainingSession s) async {
+    if (!await _guardWrite(context)) return;
     final res = await showDialog<String>(
       context: context,
       builder: (_) => _PhotoNoteDialog(),
@@ -7628,6 +8945,7 @@ class SessionDetailScreen extends StatelessWidget {
   }
 
   Future<void> _addDope(BuildContext context, TrainingSession s) async {
+    if (!await _guardWrite(context)) return;
     if (s.rifleId == null) {
       ScaffoldMessenger.of(
         context,
@@ -10020,6 +11338,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
   int _seg = 0;
 
   Future<void> _addRifle() async {
+    if (!await _guardWrite(context)) return;
     final res = await showDialog<_NewRifleResult>(
       context: context,
       builder: (_) => _NewRifleDialog(),
@@ -10052,6 +11371,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
   }
 
   Future<void> _addAmmo() async {
+    if (!await _guardWrite(context)) return;
     final res = await showDialog<_NewAmmoResult>(
       context: context,
       builder: (_) => _NewAmmoDialog(),
@@ -12695,9 +14015,9 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                 Card(
                   child: ListTile(
                     leading: const Icon(Icons.swap_vert),
-                    title: const Text('Backup / restore (JSON)'),
+                    title: const Text('Backup & Restore'),
                     subtitle: const Text(
-                      'Full backup with session folders, strings, timer runs, shared users, and photo data.',
+                      'Create a backup file or restore this device from one backup file.',
                     ),
                     onTap: () {
                       Navigator.of(context).push(
@@ -13288,7 +14608,7 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
               controller: _folder,
               decoration: const InputDecoration(
                 labelText: 'Folder (optional)',
-                helperText: 'Examples: 2026 Season, PRS Matches, Load Dev',
+                helperText: 'Examples: 2026 Season, PRS Matches, Team Practice',
               ),
               maxLines: 1,
               textInputAction: TextInputAction.next,
@@ -13968,7 +15288,7 @@ class _ShareSessionDialogState extends State<_ShareSessionDialog> {
             return CheckboxListTile(
               contentPadding: EdgeInsets.zero,
               value: checked,
-              title: Text(u.identifier),
+              title: Text(_displayUserIdentifier(u.identifier)),
               onChanged: (v) {
                 setState(() {
                   if (v == true) {
@@ -14898,6 +16218,55 @@ class _RifleDopeEntryDialogState extends State<_RifleDopeEntryDialog> {
   }
 }
 
+String _maintenanceDueLabel(MaintenanceDueStatus status) {
+  switch (status) {
+    case MaintenanceDueStatus.good:
+      return 'Good';
+    case MaintenanceDueStatus.dueSoon:
+      return 'Due soon';
+    case MaintenanceDueStatus.overdue:
+      return 'Overdue';
+  }
+}
+
+Color _maintenanceDueColor(BuildContext context, MaintenanceDueStatus status) {
+  final cs = Theme.of(context).colorScheme;
+  switch (status) {
+    case MaintenanceDueStatus.good:
+      return Colors.green.shade700;
+    case MaintenanceDueStatus.dueSoon:
+      return Colors.orange.shade800;
+    case MaintenanceDueStatus.overdue:
+      return cs.error;
+  }
+}
+
+String _maintenanceStatusSummary(MaintenanceReminderStatus status) {
+  final parts = <String>[];
+  if (status.roundsSince != null && status.rule.intervalRounds != null) {
+    final roundsPart =
+        status.roundsRemaining == null
+            ? '${status.roundsSince} rounds since last ${_maintenanceTaskLabel(status.rule.type).toLowerCase()}'
+            : (status.roundsRemaining! <= 0
+                  ? '${status.roundsSince} rounds since last ${_maintenanceTaskLabel(status.rule.type).toLowerCase()} (${status.roundsRemaining!.abs()} overdue)'
+                  : '${status.roundsRemaining} rounds remaining');
+    parts.add(roundsPart);
+  }
+  if (status.daysSince != null && status.rule.intervalDays != null) {
+    final daysPart =
+        status.daysRemaining == null
+            ? '${status.daysSince} days since last ${_maintenanceTaskLabel(status.rule.type).toLowerCase()}'
+            : (status.daysRemaining! <= 0
+                  ? '${status.daysSince} days since last ${_maintenanceTaskLabel(status.rule.type).toLowerCase()} (${status.daysRemaining!.abs()} overdue)'
+                  : '${status.daysRemaining} days remaining');
+    parts.add(daysPart);
+  }
+  if (parts.isEmpty && status.lastService != null) {
+    parts.add('Last completed ${_fmtDate(status.lastService!.date)}');
+  }
+  return parts.isEmpty ? 'No maintenance history yet.' : parts.join(' • ');
+}
+
 class MaintenanceHubScreen extends StatelessWidget {
   final AppState state;
   const MaintenanceHubScreen({super.key, required this.state});
@@ -14920,38 +16289,197 @@ class MaintenanceHubScreen extends StatelessWidget {
     return AnimatedBuilder(
       animation: state,
       builder: (context, _) {
-        final rifles = state.rifles;
+        final snapshots = state.maintenanceSnapshots()
+          ..sort((a, b) {
+            final statusOrder = b.overallStatus.index.compareTo(
+              a.overallStatus.index,
+            );
+            if (statusOrder != 0) return statusOrder;
+            return _rifleLabel(a.rifle).compareTo(_rifleLabel(b.rifle));
+          });
+        final overdueCount = snapshots
+            .where(
+              (snapshot) => snapshot.overallStatus == MaintenanceDueStatus.overdue,
+            )
+            .length;
+        final dueSoonCount = snapshots
+            .where(
+              (snapshot) => snapshot.overallStatus == MaintenanceDueStatus.dueSoon,
+            )
+            .length;
+        final attention = snapshots
+            .where(
+              (snapshot) => snapshot.overallStatus != MaintenanceDueStatus.good,
+            )
+            .toList();
+
         return Scaffold(
           appBar: AppBar(title: const Text('Maintenance')),
-          body: ListView.separated(
-            itemCount: rifles.length,
-            separatorBuilder: (_, __) => const Divider(height: 1),
-            itemBuilder: (context, i) {
-              final r = rifles[i];
-              final total = state.totalRoundsForRifle(r.id);
-              final barrelDate = r.barrelInstalledDate == null
-                  ? null
-                  : _fmtDate(r.barrelInstalledDate!);
-              return ListTile(
-                leading: const Icon(Icons.build_outlined),
-                title: Text(_rifleLabel(r)),
-                subtitle: Text(
-                  'Rounds on rifle: $total${barrelDate == null ? '' : ' | Barrel since $barrelDate'}',
-                ),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          RifleServiceLogScreen(state: state, rifleId: r.id),
+          body: snapshots.isEmpty
+              ? const _EmptyState(
+                  icon: Icons.build_outlined,
+                  title: 'No rifles yet',
+                  message: 'Add a rifle first to track maintenance and reminders.',
+                )
+              : ListView(
+                  padding: const EdgeInsets.all(12),
+                  children: [
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _MaintenanceSummaryCard(
+                          label: 'Rifles',
+                          value: '${snapshots.length}',
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                        _MaintenanceSummaryCard(
+                          label: 'Overdue',
+                          value: '$overdueCount',
+                          color: _maintenanceDueColor(
+                            context,
+                            MaintenanceDueStatus.overdue,
+                          ),
+                        ),
+                        _MaintenanceSummaryCard(
+                          label: 'Due soon',
+                          value: '$dueSoonCount',
+                          color: _maintenanceDueColor(
+                            context,
+                            MaintenanceDueStatus.dueSoon,
+                          ),
+                        ),
+                      ],
                     ),
-                  );
-                },
-              );
-            },
-          ),
+                    if (attention.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Needs attention',
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                              const SizedBox(height: 8),
+                              ...attention.take(5).map((snapshot) {
+                                final color = _maintenanceDueColor(
+                                  context,
+                                  snapshot.overallStatus,
+                                );
+                                return ListTile(
+                                  dense: true,
+                                  contentPadding: EdgeInsets.zero,
+                                  leading: Icon(
+                                    Icons.warning_amber_outlined,
+                                    color: color,
+                                  ),
+                                  title: Text(_rifleLabel(snapshot.rifle)),
+                                  subtitle: Text(
+                                    '${snapshot.overdueCount} overdue • ${snapshot.dueSoonCount} due soon',
+                                  ),
+                                  trailing: const Icon(Icons.chevron_right),
+                                  onTap: () {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => RifleServiceLogScreen(
+                                          state: state,
+                                          rifleId: snapshot.rifle.id,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                );
+                              }),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    ...snapshots.map((snapshot) {
+                      final color = _maintenanceDueColor(
+                        context,
+                        snapshot.overallStatus,
+                      );
+                      final barrelDate = snapshot.rifle.barrelInstalledDate == null
+                          ? null
+                          : _fmtDate(snapshot.rifle.barrelInstalledDate!);
+                      final subtitleParts = <String>[
+                        'Total rounds: ${snapshot.totalRounds}',
+                        'Current barrel: ${snapshot.barrelRounds}',
+                        if (barrelDate != null) 'Barrel since $barrelDate',
+                      ];
+                      final detail = snapshot.overallStatus == MaintenanceDueStatus.good
+                          ? (snapshot.lastService == null
+                                ? 'No services logged yet'
+                                : 'Last service ${_fmtDate(snapshot.lastService!.date)}')
+                          : '${snapshot.overdueCount} overdue • ${snapshot.dueSoonCount} due soon';
+                      return Card(
+                        child: ListTile(
+                          leading: Icon(Icons.build_outlined, color: color),
+                          title: Text(_rifleLabel(snapshot.rifle)),
+                          subtitle: Text('${subtitleParts.join(' • ')}\n$detail'),
+                          isThreeLine: true,
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => RifleServiceLogScreen(
+                                  state: state,
+                                  rifleId: snapshot.rifle.id,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      );
+                    }),
+                  ],
+                ),
         );
       },
+    );
+  }
+}
+
+class _MaintenanceSummaryCard extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+
+  const _MaintenanceSummaryCard({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 140,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 12)),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -14970,14 +16498,39 @@ class RifleServiceLogScreen extends StatefulWidget {
 }
 
 class _RifleServiceLogScreenState extends State<RifleServiceLogScreen> {
-  Future<void> _addService() async {
+  MaintenanceTaskType? _serviceFilter;
+
+  Future<void> _addService({
+    MaintenanceTaskType initialTaskType = MaintenanceTaskType.general,
+    String? initialServiceLabel,
+  }) async {
+    if (!await _guardWrite(context)) return;
     final res = await showDialog<RifleServiceEntry>(
       context: context,
-      builder: (_) =>
-          _AddRifleServiceDialog(state: widget.state, rifleId: widget.rifleId),
+      builder: (_) => _AddRifleServiceDialog(
+        state: widget.state,
+        rifleId: widget.rifleId,
+        initialTaskType: initialTaskType,
+        initialServiceLabel: initialServiceLabel,
+      ),
     );
     if (res == null) return;
     widget.state.addRifleService(rifleId: widget.rifleId, entry: res);
+  }
+
+  Future<void> _editReminders() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => RifleMaintenanceRulesScreen(
+          state: widget.state,
+          rifleId: widget.rifleId,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Maintenance reminder rules updated.')),
+    );
   }
 
   Future<void> _resetBarrelCount() async {
@@ -14996,9 +16549,52 @@ class _RifleServiceLogScreenState extends State<RifleServiceLogScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Rifle round count reset for the new barrel.'),
+        content: Text('Current barrel count reset and barrel change logged.'),
       ),
     );
+  }
+
+  Future<void> _markReminderDone(MaintenanceReminderStatus status) async {
+    if (status.rule.type == MaintenanceTaskType.barrelLife) {
+      await _resetBarrelCount();
+      return;
+    }
+    widget.state.logRifleMaintenanceTask(
+      rifleId: widget.rifleId,
+      taskType: status.rule.type,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('${_maintenanceTaskLabel(status.rule.type)} logged.'),
+      ),
+    );
+  }
+
+  Future<void> _deleteService(RifleServiceEntry entry) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Delete service entry?'),
+        content: const Text('This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      widget.state.deleteRifleService(
+        rifleId: widget.rifleId,
+        serviceId: entry.id,
+      );
+    }
   }
 
   @override
@@ -15007,6 +16603,11 @@ class _RifleServiceLogScreenState extends State<RifleServiceLogScreen> {
       appBar: AppBar(
         title: const Text('Service log'),
         actions: [
+          IconButton(
+            tooltip: 'Reminder rules',
+            onPressed: _editReminders,
+            icon: const Icon(Icons.notifications_active_outlined),
+          ),
           IconButton(
             tooltip: 'Reset barrel count',
             onPressed: _resetBarrelCount,
@@ -15022,87 +16623,230 @@ class _RifleServiceLogScreenState extends State<RifleServiceLogScreen> {
         animation: widget.state,
         builder: (context, _) {
           final rifle = widget.state.rifleById(widget.rifleId);
-          final services = rifle?.services ?? const <RifleServiceEntry>[];
-          final roundCount = widget.state.totalRoundsForRifle(widget.rifleId);
 
           if (rifle == null) {
             return const Center(child: Text('Rifle not found.'));
           }
 
-          return ListView.separated(
+          final snapshot = widget.state.maintenanceSnapshotForRifle(widget.rifleId);
+          final services = [...rifle.services]
+            ..sort((a, b) => b.date.compareTo(a.date));
+          final filteredServices =
+              _serviceFilter == null
+                  ? services
+                  : services
+                      .where((entry) => entry.taskType == _serviceFilter)
+                      .toList();
+          final presentServiceTypes = <MaintenanceTaskType>{
+            for (final service in services) service.taskType,
+          }.toList()
+            ..sort((a, b) => _maintenanceTaskLabel(a).compareTo(_maintenanceTaskLabel(b)));
+          final overallColor = _maintenanceDueColor(
+            context,
+            snapshot.overallStatus,
+          );
+          final rifleModelLabel =
+              '${(rifle.manufacturer ?? '').trim()} ${(rifle.model ?? '').trim()}'
+                  .trim();
+
+          return ListView(
             padding: const EdgeInsets.all(12),
-            itemCount: services.length + 1,
-            separatorBuilder: (_, __) => const Divider(height: 1),
-            itemBuilder: (context, i) {
-              if (i == 0) {
-                return Card(
+            children: [
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '${rifle.caliber} • $rifleModelLabel',
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: overallColor.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              _maintenanceDueLabel(snapshot.overallStatus),
+                              style: TextStyle(
+                                color: overallColor,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text('Total rounds: ${snapshot.totalRounds}'),
+                      Text('Current barrel rounds: ${snapshot.barrelRounds}'),
+                      if (rifle.barrelInstalledDate != null)
+                        Text(
+                          'Current barrel installed: ${_fmtDate(rifle.barrelInstalledDate!)}',
+                        ),
+                      if (rifle.barrelNotes.trim().isNotEmpty)
+                        Text('Barrel notes: ${rifle.barrelNotes.trim()}'),
+                      if (snapshot.lastService != null) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          'Last service: ${snapshot.lastService!.service} on ${_fmtDate(snapshot.lastService!.date)}',
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (snapshot.statuses.isEmpty)
+                Card(
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Rounds on rifle: $roundCount',
+                          'Maintenance reminders',
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
-                        if (rifle.barrelInstalledDate != null) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            'Current barrel installed: ${_fmtDate(rifle.barrelInstalledDate!)}',
-                          ),
-                        ],
-                        if (rifle.barrelNotes.trim().isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Text('Barrel notes: ${rifle.barrelNotes.trim()}'),
-                        ],
-                        if (services.isEmpty) ...[
-                          const SizedBox(height: 12),
-                          const Text(
-                            'No services logged yet. Tap + to add a service entry.',
-                          ),
-                        ],
+                        const SizedBox(height: 8),
+                        const Text('No reminder rules are enabled for this rifle.'),
+                        const SizedBox(height: 8),
+                        FilledButton.tonal(
+                          onPressed: _editReminders,
+                          child: const Text('Edit reminder rules'),
+                        ),
                       ],
                     ),
                   ),
-                );
-              }
-
-              final s = services[i - 1];
-              return ListTile(
-                title: Text(s.service),
-                subtitle: Text(
-                  '${_fmtDate(s.date)} • ${s.roundsAtService} rds${s.notes.trim().isEmpty ? '' : ' • ${s.notes.trim()}'}',
+                )
+              else ...[
+                Text(
+                  'Active reminders',
+                  style: Theme.of(context).textTheme.titleMedium,
                 ),
-                trailing: IconButton(
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: () async {
-                    final ok = await showDialog<bool>(
-                      context: context,
-                      builder: (_) => AlertDialog(
-                        title: const Text('Delete service entry?'),
-                        content: const Text('This cannot be undone.'),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context, false),
-                            child: const Text('Cancel'),
+                const SizedBox(height: 8),
+                ...snapshot.statuses.map((status) {
+                  final statusColor = _maintenanceDueColor(context, status.status);
+                  return Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                _maintenanceTaskIcon(status.rule.type),
+                                color: statusColor,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _maintenanceTaskLabel(status.rule.type),
+                                  style: const TextStyle(fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                              Text(
+                                _maintenanceDueLabel(status.status),
+                                style: TextStyle(
+                                  color: statusColor,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
                           ),
-                          TextButton(
-                            onPressed: () => Navigator.pop(context, true),
-                            child: const Text('Delete'),
+                          const SizedBox(height: 6),
+                          Text(_maintenanceStatusSummary(status)),
+                          if (status.rule.notes.trim().isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text(status.rule.notes.trim()),
+                          ],
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              FilledButton.tonal(
+                                onPressed: () => _markReminderDone(status),
+                                child: Text(
+                                  status.rule.type == MaintenanceTaskType.barrelLife
+                                      ? 'Replace barrel'
+                                      : 'Mark done',
+                                ),
+                              ),
+                              if (status.rule.type != MaintenanceTaskType.barrelLife)
+                                TextButton(
+                                  onPressed: () => _addService(
+                                    initialTaskType: status.rule.type,
+                                    initialServiceLabel: _maintenanceTaskLabel(
+                                      status.rule.type,
+                                    ),
+                                  ),
+                                  child: const Text('Log with notes'),
+                                ),
+                              TextButton(
+                                onPressed: _editReminders,
+                                child: const Text('Edit rules'),
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                    );
-                    if (ok == true) {
-                      widget.state.deleteRifleService(
-                        rifleId: widget.rifleId,
-                        serviceId: s.id,
-                      );
-                    }
-                  },
+                    ),
+                  );
+                }),
+              ],
+              const SizedBox(height: 12),
+              DropdownButtonFormField<MaintenanceTaskType?>(
+                initialValue: _serviceFilter,
+                decoration: const InputDecoration(labelText: 'History filter'),
+                items: [
+                  const DropdownMenuItem<MaintenanceTaskType?>(
+                    value: null,
+                    child: Text('All service types'),
+                  ),
+                  ...presentServiceTypes.map(
+                    (type) => DropdownMenuItem<MaintenanceTaskType?>(
+                      value: type,
+                      child: Text(_maintenanceTaskLabel(type)),
+                    ),
+                  ),
+                ],
+                onChanged: (value) => setState(() => _serviceFilter = value),
+              ),
+              const SizedBox(height: 12),
+              if (filteredServices.isEmpty)
+                const Card(
+                  child: Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text('No service entries match the current filter.'),
+                  ),
+                )
+              else
+                ...filteredServices.map(
+                  (service) => Card(
+                    child: ListTile(
+                      leading: Icon(_maintenanceTaskIcon(service.taskType)),
+                      title: Text(service.service),
+                      subtitle: Text(
+                        '${_fmtDate(service.date)} • ${service.roundsAtService} total rds${service.notes.trim().isEmpty ? '' : ' • ${service.notes.trim()}'}',
+                      ),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete_outline),
+                        onPressed: () => _deleteService(service),
+                      ),
+                    ),
+                  ),
                 ),
-              );
-            },
+            ],
           );
         },
       ),
@@ -15113,7 +16857,15 @@ class _RifleServiceLogScreenState extends State<RifleServiceLogScreen> {
 class _AddRifleServiceDialog extends StatefulWidget {
   final AppState state;
   final String rifleId;
-  const _AddRifleServiceDialog({required this.state, required this.rifleId});
+  final MaintenanceTaskType initialTaskType;
+  final String? initialServiceLabel;
+
+  const _AddRifleServiceDialog({
+    required this.state,
+    required this.rifleId,
+    this.initialTaskType = MaintenanceTaskType.general,
+    this.initialServiceLabel,
+  });
 
   @override
   State<_AddRifleServiceDialog> createState() => _AddRifleServiceDialogState();
@@ -15125,6 +16877,17 @@ class _AddRifleServiceDialogState extends State<_AddRifleServiceDialog> {
   DateTime _date = DateTime.now();
   bool _useCurrentRounds = true;
   final _roundsCtrl = TextEditingController();
+  late MaintenanceTaskType _taskType;
+
+  @override
+  void initState() {
+    super.initState();
+    _taskType = widget.initialTaskType;
+    if (_taskType != MaintenanceTaskType.general) {
+      _serviceCtrl.text =
+          widget.initialServiceLabel ?? _maintenanceTaskLabel(_taskType);
+    }
+  }
 
   @override
   void dispose() {
@@ -15139,11 +16902,47 @@ class _AddRifleServiceDialogState extends State<_AddRifleServiceDialog> {
     final currentRounds = widget.state.totalRoundsForRifle(widget.rifleId);
 
     return AlertDialog(
-      title: const Text('Log service'),
+      title: const Text('Log maintenance'),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            DropdownButtonFormField<MaintenanceTaskType>(
+              initialValue: _taskType,
+              decoration: const InputDecoration(labelText: 'Category'),
+              items: const [
+                DropdownMenuItem(
+                  value: MaintenanceTaskType.general,
+                  child: Text('General service'),
+                ),
+                DropdownMenuItem(
+                  value: MaintenanceTaskType.cleaning,
+                  child: Text('Cleaning'),
+                ),
+                DropdownMenuItem(
+                  value: MaintenanceTaskType.deepCleaning,
+                  child: Text('Deep clean'),
+                ),
+                DropdownMenuItem(
+                  value: MaintenanceTaskType.torqueCheck,
+                  child: Text('Torque check'),
+                ),
+                DropdownMenuItem(
+                  value: MaintenanceTaskType.zeroConfirm,
+                  child: Text('Zero confirm'),
+                ),
+              ],
+              onChanged: (value) {
+                if (value == null) return;
+                setState(() {
+                  _taskType = value;
+                  if (_taskType != MaintenanceTaskType.general) {
+                    _serviceCtrl.text = _maintenanceTaskLabel(_taskType);
+                  }
+                });
+              },
+            ),
+            const SizedBox(height: 8),
             TextField(textCapitalization: TextCapitalization.none, 
               controller: _serviceCtrl,
               decoration: const InputDecoration(labelText: 'Service'),
@@ -15174,7 +16973,7 @@ class _AddRifleServiceDialogState extends State<_AddRifleServiceDialog> {
             const Divider(),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Use current rifle rounds'),
+              title: const Text('Use current rifle total rounds'),
               subtitle: Text(
                 _useCurrentRounds ? '$currentRounds rds' : 'Enter manually',
               ),
@@ -15200,7 +16999,9 @@ class _AddRifleServiceDialogState extends State<_AddRifleServiceDialog> {
         ),
         TextButton(
           onPressed: () {
-            final service = _serviceCtrl.text.trim();
+            final service = _serviceCtrl.text.trim().isEmpty
+                ? _maintenanceTaskLabel(_taskType)
+                : _serviceCtrl.text.trim();
             if (service.isEmpty) return;
 
             final rounds = _useCurrentRounds
@@ -15213,6 +17014,7 @@ class _AddRifleServiceDialogState extends State<_AddRifleServiceDialog> {
               date: _date,
               roundsAtService: rounds,
               notes: _notesCtrl.text.trim(),
+              taskType: _taskType,
             );
 
             Navigator.pop(context, entry);
@@ -15220,6 +17022,192 @@ class _AddRifleServiceDialogState extends State<_AddRifleServiceDialog> {
           child: const Text('Save'),
         ),
       ],
+    );
+  }
+}
+
+class RifleMaintenanceRulesScreen extends StatefulWidget {
+  final AppState state;
+  final String rifleId;
+
+  const RifleMaintenanceRulesScreen({
+    super.key,
+    required this.state,
+    required this.rifleId,
+  });
+
+  @override
+  State<RifleMaintenanceRulesScreen> createState() =>
+      _RifleMaintenanceRulesScreenState();
+}
+
+class _RifleMaintenanceRulesScreenState extends State<RifleMaintenanceRulesScreen> {
+  final Map<MaintenanceTaskType, bool> _enabled = <MaintenanceTaskType, bool>{};
+  final Map<MaintenanceTaskType, TextEditingController> _roundCtrls =
+      <MaintenanceTaskType, TextEditingController>{};
+  final Map<MaintenanceTaskType, TextEditingController> _dayCtrls =
+      <MaintenanceTaskType, TextEditingController>{};
+  final Map<MaintenanceTaskType, TextEditingController> _notesCtrls =
+      <MaintenanceTaskType, TextEditingController>{};
+
+  @override
+  void initState() {
+    super.initState();
+    final rules = widget.state.maintenanceRulesForRifle(widget.rifleId);
+    for (final rule in rules) {
+      _enabled[rule.type] = rule.enabled;
+      _roundCtrls[rule.type] = TextEditingController(
+        text: rule.intervalRounds?.toString() ?? '',
+      );
+      _dayCtrls[rule.type] = TextEditingController(
+        text: rule.intervalDays?.toString() ?? '',
+      );
+      _notesCtrls[rule.type] = TextEditingController(text: rule.notes);
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final controller in _roundCtrls.values) {
+      controller.dispose();
+    }
+    for (final controller in _dayCtrls.values) {
+      controller.dispose();
+    }
+    for (final controller in _notesCtrls.values) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  int? _parseOptionalInt(String raw) {
+    final value = int.tryParse(raw.trim());
+    if (value == null || value <= 0) return null;
+    return value;
+  }
+
+  Future<void> _save() async {
+    final rules = MaintenanceTaskType.values
+        .where(_isConfigurableMaintenanceTask)
+        .map((type) {
+          return MaintenanceReminderRule(
+            type: type,
+            enabled: _enabled[type] == true,
+            intervalRounds: _maintenanceTaskSupportsRounds(type)
+                ? _parseOptionalInt(_roundCtrls[type]?.text ?? '')
+                : null,
+            intervalDays: _maintenanceTaskSupportsDays(type)
+                ? _parseOptionalInt(_dayCtrls[type]?.text ?? '')
+                : null,
+            notes: (_notesCtrls[type]?.text ?? '').trim(),
+          );
+        })
+        .toList();
+
+    widget.state.updateRifleMaintenanceRules(
+      rifleId: widget.rifleId,
+      rules: rules,
+    );
+    if (!mounted) return;
+    Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final rifle = widget.state.rifleById(widget.rifleId);
+    if (rifle == null) {
+      return const Scaffold(body: Center(child: Text('Rifle not found.')));
+    }
+    final rifleModelLabel =
+        '${(rifle.manufacturer ?? '').trim()} ${(rifle.model ?? '').trim()}'
+            .trim();
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Reminder rules'),
+        actions: [
+          TextButton(onPressed: _save, child: const Text('Save')),
+        ],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(12),
+        children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'Set round-based or date-based reminders for $rifleModelLabel.',
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...MaintenanceTaskType.values
+              .where(_isConfigurableMaintenanceTask)
+              .map((type) => Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
+                            secondary: Icon(_maintenanceTaskIcon(type)),
+                            title: Text(_maintenanceTaskLabel(type)),
+                            value: _enabled[type] == true,
+                            onChanged: (value) =>
+                                setState(() => _enabled[type] = value),
+                          ),
+                          if (_enabled[type] == true) ...[
+                            if (_maintenanceTaskSupportsRounds(type) ||
+                                _maintenanceTaskSupportsDays(type))
+                              Row(
+                                children: [
+                                  if (_maintenanceTaskSupportsRounds(type))
+                                    Expanded(
+                                      child: TextField(textCapitalization: TextCapitalization.none, 
+                                        controller: _roundCtrls[type],
+                                        decoration: const InputDecoration(
+                                          labelText: 'Rounds interval',
+                                        ),
+                                        keyboardType: TextInputType.number,
+                                        inputFormatters: [
+                                          FilteringTextInputFormatter.digitsOnly,
+                                        ],
+                                      ),
+                                    ),
+                                  if (_maintenanceTaskSupportsRounds(type) &&
+                                      _maintenanceTaskSupportsDays(type))
+                                    const SizedBox(width: 12),
+                                  if (_maintenanceTaskSupportsDays(type))
+                                    Expanded(
+                                      child: TextField(textCapitalization: TextCapitalization.none, 
+                                        controller: _dayCtrls[type],
+                                        decoration: const InputDecoration(
+                                          labelText: 'Days interval',
+                                        ),
+                                        keyboardType: TextInputType.number,
+                                        inputFormatters: [
+                                          FilteringTextInputFormatter.digitsOnly,
+                                        ],
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            const SizedBox(height: 8),
+                            TextField(textCapitalization: TextCapitalization.none, 
+                              controller: _notesCtrls[type],
+                              maxLines: 2,
+                              decoration: const InputDecoration(
+                                labelText: 'Notes (optional)',
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  )),
+        ],
+      ),
     );
   }
 }
@@ -15331,49 +17319,6 @@ class _BackupScreen extends StatelessWidget {
     return origin & box.size;
   }
 
-  Future<void> _ensureFirebaseInitializedForCloud() async {
-    if (defaultTargetPlatform == TargetPlatform.iOS) return;
-    if (Firebase.apps.isNotEmpty) return;
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-  }
-
-  Future<User> _ensureCloudUser() async {
-    // Firebase only used for Android backup
-    if (defaultTargetPlatform == TargetPlatform.iOS) {
-      throw StateError('iOS uses iCloud backup, not Firebase.');
-    }
-    await _ensureFirebaseInitializedForCloud();
-    final auth = FirebaseAuth.instance;
-    final existing = auth.currentUser;
-    if (existing != null) return existing;
-    final cred = await auth.signInAnonymously();
-    final user = cred.user;
-    if (user == null) {
-      throw StateError('Cloud sign-in failed.');
-    }
-    return user;
-  }
-
-  Future<Map<String, dynamic>?> _latestCloudBackupMeta() async {
-    // Firebase only used for Android backup
-    if (defaultTargetPlatform == TargetPlatform.iOS) {
-      return null; // iOS uses iCloud backup, not Firebase
-    }
-    try {
-      final user = await _ensureCloudUser();
-      final doc = await FirebaseFirestore.instance
-          .collection('cloud_backups')
-          .doc(user.uid)
-          .get();
-      return doc.data();
-    } catch (e, st) {
-      debugPrint('Cloud backup metadata lookup failed: $e\n$st');
-      return null;
-    }
-  }
-
   Future<String?> _pickJsonFile() async {
     final res = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -15384,35 +17329,6 @@ class _BackupScreen extends StatelessWidget {
     final bytes = res.files.single.bytes;
     if (bytes == null) return null;
     return utf8.decode(bytes);
-  }
-
-  Future<_ImportMode?> _pickImportMode(BuildContext context) async {
-    return showModalBottomSheet<_ImportMode>(
-      context: context,
-      builder: (_) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.merge_type),
-              title: const Text('Merge equipment into this device'),
-              subtitle: const Text(
-                'Adds or updates rifles and ammo only. Does not restore sessions or users.',
-              ),
-              onTap: () => Navigator.of(context).pop(_ImportMode.merge),
-            ),
-            ListTile(
-              leading: const Icon(Icons.warning_amber_outlined),
-              title: const Text('Full restore from backup'),
-              subtitle: const Text(
-                'Replace this device app data with the backup, including sessions and users.',
-              ),
-              onTap: () => Navigator.of(context).pop(_ImportMode.replace),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   Future<void> _exportBackupFile(BuildContext context) async {
@@ -15442,177 +17358,67 @@ class _BackupScreen extends StatelessWidget {
 
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Backup export ready to save/share.')),
+        const SnackBar(content: Text('Backup file ready to save/share.')),
       );
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Export failed: $e')));
+      ).showSnackBar(SnackBar(content: Text('Backup failed: $e')));
     }
   }
 
-  Future<void> _backupToCloud(BuildContext context) async {
-    try {
-      // iOS: Uses iCloud (CloudKit), Android/Web: Uses Firebase
-      if (defaultTargetPlatform == TargetPlatform.iOS) {
-        await _backupToiCloud(context);
-      } else {
-        await _backupToFirebase(context);
-      }
-    } catch (e) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Cloud backup failed: $e')));
-    }
-  }
-
-  Future<void> _backupToiCloud(BuildContext context) async {
-    const platform = MethodChannel('com.remington.coldbore/icloud');
-    try {
-      final json = state.exportBackupJson();
-      final result = await platform.invokeMethod('backupToiCloud', {
-        'backupData': json,
-        'timestamp': DateTime.now().toUtc().toIso8601String(),
-      });
-
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(result ?? 'Cloud backup uploaded to iCloud.')),
-      );
-    } on PlatformException catch (e) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('iCloud backup failed: ${e.message}')),
-      );
-    }
-  }
-
-  Future<void> _backupToFirebase(BuildContext context) async {
-    await _ensureFirebaseInitializedForCloud();
-    final firebaseUser = await _ensureCloudUser();
-    final appUser = state.activeUser;
-    final json = state.exportBackupJson();
-    final bytes = Uint8List.fromList(utf8.encode(json));
-    final backupId = DateTime.now().toUtc().toIso8601String().replaceAll(
-      ':',
-      '-',
+  Future<void> _restoreBackupFile(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Restore backup?'),
+        content: const Text(
+          'This will replace the current app data on this device with the backup file.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Restore'),
+          ),
+        ],
+      ),
     );
-    final path = 'backups/${firebaseUser.uid}/$backupId.json';
-    final ref = FirebaseStorage.instance.ref(path);
-    await ref.putData(bytes, SettableMetadata(contentType: 'application/json'));
+    if (ok != true) return;
 
-    final meta = <String, dynamic>{
-      'path': path,
-      'backupId': backupId,
-      'schema': kBackupSchemaVersion,
-      'byteCount': bytes.length,
-      'createdAt': FieldValue.serverTimestamp(),
-      'activeUserId': appUser?.id,
-      'activeUserName': appUser?.name,
-      'sessionCount': state.allSessions.length,
-      'rifleCount': state.rifles.length,
-      'ammoCount': state.ammoLots.length,
-    };
-
-    final root = FirebaseFirestore.instance
-        .collection('cloud_backups')
-        .doc(firebaseUser.uid);
-    await root.set({
-      ...meta,
-      'latestBackupId': backupId,
-      'latestPath': path,
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
-    await root.collection('history').doc(backupId).set(meta);
-
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Cloud backup uploaded.')));
-  }
-
-  Future<void> _restoreFromCloud(BuildContext context) async {
-    try {
-      // iOS: Uses iCloud (CloudKit), Android/Web: Uses Firebase
-      if (defaultTargetPlatform == TargetPlatform.iOS) {
-        await _restoreFromiCloud(context);
-      } else {
-        await _restoreFromFirebase(context);
-      }
-    } catch (e) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Cloud restore failed: $e')));
-    }
-  }
-
-  Future<void> _restoreFromiCloud(BuildContext context) async {
-    const platform = MethodChannel('com.remington.coldbore/icloud');
-    try {
-      final mode = await _pickImportMode(context);
-      if (mode == null) return;
-
-      final result = await platform.invokeMethod<String>('restoreFromiCloud');
-      if (result == null || result.isEmpty) {
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No iCloud backup found.')),
-        );
-        return;
-      }
-
-      if (mode == _ImportMode.merge) {
-        state.mergeBackupJson(result, overwriteScope: true);
-      } else {
-        state.importBackupJson(result, replaceExisting: true);
-      }
-
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cloud restore complete from iCloud.')),
-      );
-    } on PlatformException catch (e) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('iCloud restore failed: ${e.message}')),
-      );
-    }
-  }
-
-  Future<void> _restoreFromFirebase(BuildContext context) async {
-    await _ensureFirebaseInitializedForCloud();
-    final mode = await _pickImportMode(context);
-    if (mode == null) return;
-
-    final meta = await _latestCloudBackupMeta();
-    final path = (meta?['latestPath'] ?? '').toString();
-    if (path.isEmpty) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No cloud backup found yet.')),
-      );
-      return;
-    }
-
-    final bytes = await FirebaseStorage.instance
-        .ref(path)
-        .getData(20 * 1024 * 1024);
-    if (bytes == null) {
-      throw StateError('Downloaded backup was empty.');
-    }
-    final jsonText = utf8.decode(bytes);
-    if (mode == _ImportMode.merge) {
-      state.mergeBackupJson(jsonText, overwriteScope: true);
+    String? jsonText;
+    if (kIsWeb) {
+      jsonText = await _pickWebJsonFile();
     } else {
-      state.importBackupJson(jsonText, replaceExisting: true);
+      jsonText = await _pickJsonFile();
     }
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Cloud restore complete.')));
+
+    if (jsonText == null || jsonText.trim().isEmpty) {
+      final manual = await showDialog<_ImportBackupResult>(
+        context: context,
+        builder: (_) => const _ImportBackupDialog(),
+      );
+      jsonText = manual?.jsonText;
+    }
+
+    if (jsonText == null || jsonText.trim().isEmpty) return;
+
+    try {
+      state.importBackupJson(jsonText, replaceExisting: true);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Restore complete.')),
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Restore failed. Invalid backup JSON.')),
+      );
+    }
   }
 
   @override
@@ -15625,9 +17431,9 @@ class _BackupScreen extends StatelessWidget {
           Card(
             child: ListTile(
               leading: const Icon(Icons.save_alt_outlined),
-              title: const Text('Backup (JSON)'),
+              title: const Text('Create Backup File (JSON)'),
               subtitle: const Text(
-                'Export the full app backup, including sessions, users, timers, and photo data.',
+                'Saves all app data to one shareable backup file.',
               ),
               onTap: () => _exportBackupFile(context),
             ),
@@ -15635,122 +17441,21 @@ class _BackupScreen extends StatelessWidget {
           Card(
             child: ListTile(
               leading: const Icon(Icons.download_outlined),
-              title: const Text('Restore (JSON)'),
-              subtitle: const Text('Import a backup file or paste JSON'),
-              onTap: () async {
-                final mode = await _pickImportMode(context);
-                if (mode == null) return;
-
-                if (kIsWeb) {
-                  final jsonText = await _pickWebJsonFile();
-                  if (jsonText == null) return;
-
-                  try {
-                    if (mode == _ImportMode.merge) {
-                      state.mergeBackupJson(jsonText, overwriteScope: true);
-                    } else {
-                      state.importBackupJson(jsonText, replaceExisting: true);
-                    }
-                    if (!context.mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Import complete.')),
-                    );
-                  } catch (_) {
-                    if (!context.mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Import failed. Invalid JSON.'),
-                      ),
-                    );
-                  }
-                  return;
-                }
-
-                final pickedJson = await _pickJsonFile();
-                if (pickedJson != null) {
-                  try {
-                    if (mode == _ImportMode.merge) {
-                      state.mergeBackupJson(pickedJson, overwriteScope: true);
-                    } else {
-                      state.importBackupJson(pickedJson, replaceExisting: true);
-                    }
-                    if (!context.mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Import complete.')),
-                    );
-                  } catch (_) {
-                    if (!context.mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Import failed. Invalid JSON.'),
-                      ),
-                    );
-                  }
-                  return;
-                }
-
-                // Fallback: paste JSON manually.
-                final res = await showDialog<_ImportBackupResult>(
-                  context: context,
-                  builder: (_) => _ImportBackupDialog(initialMode: mode),
-                );
-                if (res == null) return;
-                try {
-                  if (res.mode == _ImportMode.merge) {
-                    state.mergeBackupJson(res.jsonText, overwriteScope: true);
-                  } else {
-                    state.importBackupJson(res.jsonText, replaceExisting: true);
-                  }
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Import complete.')),
-                  );
-                } catch (_) {
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Import failed. Invalid JSON.'),
-                    ),
-                  );
-                }
-              },
+              title: const Text('Restore From Backup File (JSON)'),
+              subtitle: const Text(
+                'Replaces this device data with one backup file.',
+              ),
+              onTap: () => _restoreBackupFile(context),
             ),
           ),
-          FutureBuilder<Map<String, dynamic>?>(
-            future: _latestCloudBackupMeta(),
-            builder: (context, snapshot) {
-              final meta = snapshot.data;
-              final activeUserName = (meta?['activeUserName'] ?? '').toString();
-              final latestBackupId = (meta?['latestBackupId'] ?? '').toString();
-              final cloudProvider = defaultTargetPlatform == TargetPlatform.iOS
-                  ? 'iCloud'
-                  : 'Firebase cloud storage';
-              final cloudSubtitle = latestBackupId.isEmpty
-                  ? 'Upload the full app backup to $cloudProvider'
-                  : 'Latest: ${latestBackupId.split(".").first}${activeUserName.isEmpty ? "" : " | $activeUserName"}';
-              return Column(
-                children: [
-                  Card(
-                    child: ListTile(
-                      leading: const Icon(Icons.cloud_upload_outlined),
-                      title: const Text('Backup to Cloud'),
-                      subtitle: Text(cloudSubtitle),
-                      onTap: () => _backupToCloud(context),
-                    ),
-                  ),
-                  Card(
-                    child: ListTile(
-                      leading: const Icon(Icons.cloud_download_outlined),
-                      title: const Text('Restore from Cloud'),
-                      subtitle: const Text(
-                        'Load the latest cloud backup into this device',
-                      ),
-                      onTap: () => _restoreFromCloud(context),
-                    ),
-                  ),
-                ],
-              );
-            },
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.cloud_done_outlined),
+              title: const Text('iCloud Sync'),
+              subtitle: const Text(
+                'Automatic iCloud backup and fresh-install restore are enabled.',
+              ),
+            ),
           ),
         ],
       ),
@@ -15758,17 +17463,13 @@ class _BackupScreen extends StatelessWidget {
   }
 }
 
-enum _ImportMode { merge, replace }
-
 class _ImportBackupResult {
   final String jsonText;
-  final _ImportMode mode;
-  const _ImportBackupResult({required this.jsonText, required this.mode});
+  const _ImportBackupResult({required this.jsonText});
 }
 
 class _ImportBackupDialog extends StatefulWidget {
-  final _ImportMode initialMode;
-  const _ImportBackupDialog({this.initialMode = _ImportMode.merge});
+  const _ImportBackupDialog();
 
   @override
   State<_ImportBackupDialog> createState() => _ImportBackupDialogState();
@@ -15776,13 +17477,6 @@ class _ImportBackupDialog extends StatefulWidget {
 
 class _ImportBackupDialogState extends State<_ImportBackupDialog> {
   final _ctrl = TextEditingController();
-  late _ImportMode _mode;
-
-  @override
-  void initState() {
-    super.initState();
-    _mode = widget.initialMode;
-  }
 
   Future<void> _browseJson() async {
     final res = await FilePicker.platform.pickFiles(
@@ -15815,34 +17509,6 @@ class _ImportBackupDialogState extends State<_ImportBackupDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Import mode'),
-                const SizedBox(height: 8),
-                RadioListTile<_ImportMode>(
-                  value: _ImportMode.merge,
-                  groupValue: _mode,
-                  onChanged: (v) =>
-                      setState(() => _mode = v ?? _ImportMode.merge),
-                  title: const Text('Merge equipment into this device'),
-                  subtitle: const Text(
-                    'Adds or updates rifles and ammo only. Sessions and users stay as-is.',
-                  ),
-                ),
-                RadioListTile<_ImportMode>(
-                  value: _ImportMode.replace,
-                  groupValue: _mode,
-                  onChanged: (v) =>
-                      setState(() => _mode = v ?? _ImportMode.merge),
-                  title: const Text('Full restore from backup'),
-                  subtitle: const Text(
-                    'Replace the current app data with the backup, including sessions and users.',
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
             Align(
               alignment: Alignment.centerRight,
               child: OutlinedButton.icon(
@@ -15873,9 +17539,7 @@ class _ImportBackupDialogState extends State<_ImportBackupDialog> {
           onPressed: () {
             final t = _ctrl.text.trim();
             if (t.isEmpty) return;
-            Navigator.of(
-              context,
-            ).pop(_ImportBackupResult(jsonText: t, mode: _mode));
+            Navigator.of(context).pop(_ImportBackupResult(jsonText: t));
           },
           child: const Text('Import'),
         ),
