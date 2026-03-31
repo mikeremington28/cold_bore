@@ -17,6 +17,7 @@ import 'package:universal_html/html.dart' as html;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import 'package:file_picker/file_picker.dart';
 import 'subscription_service.dart';
@@ -24,6 +25,7 @@ import 'subscription_service.dart';
 const String kBackupSchemaVersion = '2026-02-05';
 const String kLocalStatePrefsKey = 'cold_bore.local_state.v1';
 const String kPdfExportPresetsPrefsKey = 'cold_bore.pdf_export_presets.v1';
+const String kThemeModePrefsKey = 'cold_bore.theme_mode.v1';
 final AudioPlayer _shotTimerBeepPlayer = AudioPlayer();
 
 Uint8List _buildShotTimerBeepWav({
@@ -189,6 +191,164 @@ ThemeData _buildTacticalTheme() {
   );
 }
 
+ThemeData _buildTacticalDarkTheme() {
+  const baseBg = Color(0xFF121519);
+  const surface = Color(0xFF1C2127);
+  const surfaceAlt = Color(0xFF262C33);
+  const primary = Color(0xFF8EB9C7);
+  const secondary = Color(0xFFC6B37A);
+  const outline = Color(0xFF5F6770);
+  const onSurface = Color(0xFFE8ECF1);
+
+  const scheme = ColorScheme.dark(
+    primary: primary,
+    onPrimary: Color(0xFF0E1A21),
+    secondary: secondary,
+    onSecondary: Color(0xFF2A2413),
+    surface: surface,
+    onSurface: onSurface,
+    error: Color(0xFFFF7B7B),
+    onError: Color(0xFF2A1010),
+    outline: outline,
+  );
+
+  return ThemeData(
+    useMaterial3: true,
+    brightness: Brightness.dark,
+    colorScheme: scheme,
+    scaffoldBackgroundColor: baseBg,
+    canvasColor: baseBg,
+    cardColor: surface,
+    dividerColor: outline.withValues(alpha: 0.45),
+    appBarTheme: const AppBarTheme(
+      backgroundColor: surfaceAlt,
+      foregroundColor: onSurface,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      centerTitle: false,
+    ),
+    cardTheme: CardThemeData(
+      color: surface,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: outline.withValues(alpha: 0.45)),
+      ),
+      margin: EdgeInsets.zero,
+    ),
+    navigationBarTheme: NavigationBarThemeData(
+      height: 72,
+      backgroundColor: surfaceAlt,
+      surfaceTintColor: Colors.transparent,
+      indicatorColor: primary.withValues(alpha: 0.22),
+      labelTextStyle: WidgetStateProperty.resolveWith(
+        (states) => TextStyle(
+          color: states.contains(WidgetState.selected)
+              ? primary
+              : onSurface.withValues(alpha: 0.8),
+          fontWeight: states.contains(WidgetState.selected)
+              ? FontWeight.w700
+              : FontWeight.w500,
+          fontSize: 10,
+        ),
+      ),
+      iconTheme: WidgetStateProperty.resolveWith(
+        (states) => IconThemeData(
+          color: states.contains(WidgetState.selected)
+              ? primary
+              : onSurface.withValues(alpha: 0.72),
+        ),
+      ),
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: Colors.white.withValues(alpha: 0.06),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: outline.withValues(alpha: 0.55)),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: outline.withValues(alpha: 0.55)),
+      ),
+      focusedBorder: const OutlineInputBorder(
+        borderRadius: BorderRadius.all(Radius.circular(14)),
+        borderSide: BorderSide(color: primary, width: 1.6),
+      ),
+      labelStyle: TextStyle(color: onSurface.withValues(alpha: 0.85)),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        backgroundColor: primary,
+        foregroundColor: const Color(0xFF0E1A21),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+    ),
+    floatingActionButtonTheme: const FloatingActionButtonThemeData(
+      backgroundColor: primary,
+      foregroundColor: Color(0xFF0E1A21),
+    ),
+    chipTheme: ChipThemeData(
+      backgroundColor: surfaceAlt,
+      selectedColor: primary.withValues(alpha: 0.25),
+      secondarySelectedColor: primary.withValues(alpha: 0.25),
+      side: BorderSide(color: outline.withValues(alpha: 0.45)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      labelStyle: const TextStyle(color: onSurface),
+      secondaryLabelStyle: const TextStyle(color: onSurface),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+    ),
+  );
+}
+
+class AppThemeController extends ChangeNotifier {
+  static final AppThemeController _instance = AppThemeController._();
+  factory AppThemeController() => _instance;
+  AppThemeController._();
+
+  ThemeMode _mode = ThemeMode.system;
+  ThemeMode get mode => _mode;
+
+  Future<void> initialize() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(kThemeModePrefsKey) ?? 'system';
+    _mode = _themeModeFromRaw(raw);
+    notifyListeners();
+  }
+
+  Future<void> setMode(ThemeMode mode) async {
+    if (_mode == mode) return;
+    _mode = mode;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(kThemeModePrefsKey, _themeModeToRaw(mode));
+    notifyListeners();
+  }
+
+  static ThemeMode _themeModeFromRaw(String raw) {
+    switch (raw) {
+      case 'light':
+        return ThemeMode.light;
+      case 'dark':
+        return ThemeMode.dark;
+      case 'system':
+      default:
+        return ThemeMode.system;
+    }
+  }
+
+  static String _themeModeToRaw(ThemeMode mode) {
+    switch (mode) {
+      case ThemeMode.light:
+        return 'light';
+      case ThemeMode.dark:
+        return 'dark';
+      case ThemeMode.system:
+        return 'system';
+    }
+  }
+}
+
 // --- Web-only: download a text file (no-op on mobile/desktop) ---
 void _downloadTextFileWeb(
   String filename,
@@ -282,8 +442,13 @@ String _fmtDateTimeIso(DateTime d) {
   return '$mdy $hh:$mm:$ss';
 }
 
+bool _isSeedUserIdentifier(String identifier) {
+  final normalized = identifier.trim().toUpperCase();
+  return normalized == 'DEMO' || normalized == 'OWNER';
+}
+
 String _displayUserIdentifier(String identifier) {
-  if (identifier.trim().toUpperCase() == 'DEMO') return 'Owner';
+  if (_isSeedUserIdentifier(identifier)) return 'Owner';
   return identifier;
 }
 
@@ -781,6 +946,7 @@ class RifleDopeEntry {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await AppThemeController().initialize();
   runApp(const ColdBoreApp());
 }
 
@@ -791,11 +957,17 @@ class ColdBoreApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Cold Bore',
-      debugShowCheckedModeBanner: false,
-      theme: _buildTacticalTheme(),
-      home: _LaunchSplashGate(child: const _AppRoot()),
+    final themeController = AppThemeController();
+    return AnimatedBuilder(
+      animation: themeController,
+      builder: (context, _) => MaterialApp(
+        title: 'Cold Bore',
+        debugShowCheckedModeBanner: false,
+        theme: _buildTacticalTheme(),
+        darkTheme: _buildTacticalDarkTheme(),
+        themeMode: themeController.mode,
+        home: _LaunchSplashGate(child: const _AppRoot()),
+      ),
     );
   }
 }
@@ -924,7 +1096,7 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
     final user = _state.activeUser;
     if (user == null) return false;
     if (_state.users.length != 1) return false;
-    if (user.identifier.trim().toUpperCase() != 'DEMO') return false;
+    if (!_isSeedUserIdentifier(user.identifier)) return false;
 
     // Fresh first-launch state may have no sessions yet.
     if (_state.allSessions.length > 1) return false;
@@ -1380,7 +1552,7 @@ class AppState extends ChangeNotifier {
   }
 
   void _seedData() {
-    final u = UserProfile(id: _newId(), name: 'Demo User', identifier: 'DEMO');
+    final u = UserProfile(id: _newId(), name: 'Owner', identifier: 'OWNER');
     _users.add(u);
     _activeUser = u;
   }
@@ -4874,6 +5046,19 @@ class _HomeShellState extends State<HomeShell> {
   int _tourStepIndex = 0;
   bool _didAutoStartTour = false;
 
+  Future<void> _openSettings() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SettingsScreen(
+          state: widget.state,
+          onStartTutorial: _startGuidedTour,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    setState(() {});
+  }
+
   static const List<_GuidedTourStep> _tourSteps = [
     _GuidedTourStep(
       tabIndex: 0,
@@ -5079,8 +5264,7 @@ class _HomeShellState extends State<HomeShell> {
               appBar: AppBar(
                 title: const Text('Cold Bore'),
                 actions: [
-                  if (user != null &&
-                      user.identifier.trim().toUpperCase() != 'DEMO')
+                  if (user != null && !_isSeedUserIdentifier(user.identifier))
                     Padding(
                       padding: const EdgeInsets.only(right: 8),
                       child: Center(
@@ -5094,6 +5278,11 @@ class _HomeShellState extends State<HomeShell> {
                     tooltip: 'Tutorial',
                     onPressed: _startGuidedTour,
                     icon: const Icon(Icons.help_outline),
+                  ),
+                  IconButton(
+                    tooltip: 'Settings',
+                    onPressed: _openSettings,
+                    icon: const Icon(Icons.settings_outlined),
                   ),
                   IconButton(
                     tooltip: 'Users',
@@ -5150,6 +5339,198 @@ class _HomeShellState extends State<HomeShell> {
           ],
         );
       },
+    );
+  }
+}
+
+class SettingsScreen extends StatefulWidget {
+  final AppState state;
+  final VoidCallback? onStartTutorial;
+
+  const SettingsScreen({
+    super.key,
+    required this.state,
+    this.onStartTutorial,
+  });
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  final SubscriptionService _sub = SubscriptionService();
+  final AppThemeController _theme = AppThemeController();
+  String _versionText = '';
+  late final VoidCallback _subListener;
+  late final VoidCallback _themeListener;
+
+  @override
+  void initState() {
+    super.initState();
+    _subListener = () {
+      if (!mounted) return;
+      setState(() {});
+    };
+    _themeListener = () {
+      if (!mounted) return;
+      setState(() {});
+    };
+    _sub.addListener(_subListener);
+    _theme.addListener(_themeListener);
+    unawaited(_loadVersion());
+  }
+
+  @override
+  void dispose() {
+    _sub.removeListener(_subListener);
+    _theme.removeListener(_themeListener);
+    super.dispose();
+  }
+
+  String _themeModeLabel(ThemeMode mode) {
+    switch (mode) {
+      case ThemeMode.light:
+        return 'Day';
+      case ThemeMode.dark:
+        return 'Night';
+      case ThemeMode.system:
+        return 'Auto';
+    }
+  }
+
+  Future<void> _pickThemeMode() async {
+    final selected = await showModalBottomSheet<ThemeMode>(
+      context: context,
+      builder: (ctx) {
+        final current = _theme.mode;
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const ListTile(title: Text('Theme mode')),
+              RadioListTile<ThemeMode>(
+                value: ThemeMode.light,
+                groupValue: current,
+                title: const Text('Day'),
+                onChanged: (value) => Navigator.of(ctx).pop(value),
+              ),
+              RadioListTile<ThemeMode>(
+                value: ThemeMode.dark,
+                groupValue: current,
+                title: const Text('Night'),
+                onChanged: (value) => Navigator.of(ctx).pop(value),
+              ),
+              RadioListTile<ThemeMode>(
+                value: ThemeMode.system,
+                groupValue: current,
+                title: const Text('Auto (system)'),
+                onChanged: (value) => Navigator.of(ctx).pop(value),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (selected == null) return;
+    await _theme.setMode(selected);
+  }
+
+  Future<void> _loadVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (!mounted) return;
+      setState(() {
+        _versionText = '${info.version}+${info.buildNumber}';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _versionText = 'Unavailable');
+    }
+  }
+
+  Future<void> _restorePurchases() async {
+    await _sub.restorePurchases();
+    if (!mounted) return;
+    final message = _sub.isEntitled
+        ? 'Purchase restored. Full access enabled.'
+        : 'No active subscription found for this Apple ID.';
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final entitlementText = _sub.isEntitled
+        ? 'Active - full access enabled.'
+        : 'Read-only mode - upgrade to add new data.';
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Settings')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.brightness_6_outlined),
+              title: const Text('Appearance'),
+              subtitle: Text('Theme: ${_themeModeLabel(_theme.mode)}'),
+              onTap: _pickThemeMode,
+            ),
+          ),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.workspace_premium_outlined),
+              title: const Text('Cold Bore Pro'),
+              subtitle: Text(entitlementText),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const _PaywallScreen()),
+                );
+              },
+            ),
+          ),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.refresh_outlined),
+              title: const Text('Restore purchases'),
+              subtitle: const Text('Use this after reinstall or new device setup.'),
+              onTap: _sub.loading ? null : _restorePurchases,
+            ),
+          ),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.help_outline),
+              title: const Text('Replay guided tutorial'),
+              subtitle: const Text('Walk through each tab and feature again.'),
+              onTap: () {
+                Navigator.of(context).pop();
+                widget.onStartTutorial?.call();
+              },
+            ),
+          ),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.person_outline),
+              title: const Text('Manage users'),
+              subtitle: const Text('Switch active user or add another user profile.'),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => UsersScreen(state: widget.state),
+                  ),
+                );
+              },
+            ),
+          ),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.info_outline),
+              title: const Text('App version'),
+              subtitle: Text(_versionText.isEmpty ? 'Loading...' : _versionText),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

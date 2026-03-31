@@ -10,6 +10,8 @@ workflows:
 
     environment:
       flutter: stable
+      vars:
+        BUNDLE_ID: com.remington.coldbore
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.remington.coldbore
@@ -20,6 +22,15 @@ workflows:
 
       - name: Analyze (non-blocking)
         script: flutter analyze || true
+
+      - name: Initialize keychain
+        script: keychain initialize
+
+      - name: Fetch App Store signing files
+        script: app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
+
+      - name: Add certificates to keychain
+        script: keychain add-certificates
 
       - name: Apply iOS signing settings
         script: xcode-project use-profiles

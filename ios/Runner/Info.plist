@@ -71,6 +71,9 @@
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>We use your location to save session GPS data and fetch weather when you choose to use GPS.</string>
 
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>We use location to attach GPS and weather context to your shooting sessions when location access is enabled.</string>
+
 	<!-- Encryption (THIS STOPS THE TESTFLIGHT PROMPT) -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
