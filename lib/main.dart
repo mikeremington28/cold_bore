@@ -452,6 +452,16 @@ String _displayUserIdentifier(String identifier) {
   return identifier;
 }
 
+String _displayUserName(UserProfile user) {
+  final rawName = (user.name ?? '').trim();
+  if (_isSeedUserIdentifier(user.identifier) ||
+      rawName.toUpperCase() == 'DEMO USER') {
+    return 'Owner';
+  }
+  if (rawName.isEmpty) return _displayUserIdentifier(user.identifier);
+  return rawName;
+}
+
 const String kExportSchemaVersion = '2026-01-22';
 
 String _sessionEvidenceId(TrainingSession s) {
@@ -1733,6 +1743,49 @@ class AppState extends ChangeNotifier {
   void switchUser(UserProfile user) {
     _activeUser = user;
     notifyListeners();
+  }
+
+  bool deleteUser({required String userId}) {
+    if (_users.length <= 1) return false;
+    final idx = _users.indexWhere((u) => u.id == userId);
+    if (idx < 0) return false;
+
+    final replacement = _users.firstWhere(
+      (u) => u.id != userId,
+      orElse: () => _users[idx],
+    );
+    if (replacement.id == userId) return false;
+
+    for (var i = 0; i < _sessions.length; i++) {
+      final s = _sessions[i];
+      final nextOwnerId = s.userId == userId ? replacement.id : s.userId;
+      final nextMembers = s.memberUserIds.where((id) => id != userId).toList();
+      if (nextMembers.isEmpty) {
+        nextMembers.add(nextOwnerId);
+      } else if (!nextMembers.contains(nextOwnerId)) {
+        nextMembers.add(nextOwnerId);
+      }
+
+      final membersUnchanged =
+          nextMembers.length == s.memberUserIds.length &&
+          nextMembers.asMap().entries.every(
+            (entry) => s.memberUserIds[entry.key] == entry.value,
+          );
+
+      if (nextOwnerId != s.userId || !membersUnchanged) {
+        _sessions[i] = s.copyWith(
+          userId: nextOwnerId,
+          memberUserIds: nextMembers,
+        );
+      }
+    }
+
+    _users.removeAt(idx);
+    if (_activeUser?.id == userId) {
+      _activeUser = replacement;
+    }
+    notifyListeners();
+    return true;
   }
 
   void addRifle({
@@ -4487,6 +4540,7 @@ class TrainingSession {
   });
 
   TrainingSession copyWith({
+    String? userId,
     List<String>? memberUserIds,
     DateTime? dateTime,
     String? locationName,
@@ -4518,7 +4572,7 @@ class TrainingSession {
   }) {
     return TrainingSession(
       id: id,
-      userId: userId,
+      userId: userId ?? this.userId,
       memberUserIds: memberUserIds ?? this.memberUserIds,
       dateTime: dateTime ?? this.dateTime,
       locationName: locationName ?? this.locationName,
@@ -6327,6 +6381,41 @@ class _UsersScreenState extends State<UsersScreen> {
     );
   }
 
+  Future<void> _deleteUser(UserProfile user) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Delete user?'),
+        content: const Text(
+          'This removes the user profile. Session ownership and shared access will be reassigned so historical data remains available.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final ok = widget.state.deleteUser(userId: user.id);
+    if (!mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('At least one user must remain.')),
+      );
+      return;
+    }
+    setState(() {});
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('User deleted.')));
+  }
+
   @override
   Widget build(BuildContext context) {
     final users = widget.state.users;
@@ -6367,12 +6456,22 @@ class _UsersScreenState extends State<UsersScreen> {
               itemBuilder: (context, index) {
                 final u = users[index];
                 final isActive = active?.id == u.id;
+                final canDelete = users.length > 1;
                 return ListTile(
-                  title: Text(u.name ?? ''),
+                  title: Text(_displayUserName(u)),
                   subtitle: Text(_displayUserIdentifier(u.identifier)),
-                  trailing: isActive
-                      ? const Icon(Icons.check_circle_outline)
-                      : null,
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (isActive) const Icon(Icons.check_circle_outline),
+                      if (canDelete)
+                        IconButton(
+                          tooltip: 'Delete user',
+                          onPressed: () => _deleteUser(u),
+                          icon: const Icon(Icons.delete_outline),
+                        ),
+                    ],
+                  ),
                   onTap: () {
                     widget.state.switchUser(u);
                     Navigator.of(context).pop();
