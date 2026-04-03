@@ -2301,6 +2301,27 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void updateSessionDateTimes({
+    required String sessionId,
+    required DateTime startedAt,
+    DateTime? endedAt,
+    bool clearEndedAt = false,
+  }) {
+    final idx = _sessions.indexWhere((s) => s.id == sessionId);
+    if (idx < 0) return;
+
+    if (!clearEndedAt && endedAt != null && endedAt.isBefore(startedAt)) {
+      return;
+    }
+
+    final s = _sessions[idx];
+    _sessions[idx] = s.copyWith(
+      dateTime: startedAt,
+      endedAt: clearEndedAt ? null : endedAt,
+    );
+    notifyListeners();
+  }
+
   void updateSessionFolder({
     required String sessionId,
     required String folderName,
@@ -4514,6 +4535,8 @@ class TrainingSession {
   final List<int> shotTimerSplitMs;
   final List<SessionTimerRun> timerRuns;
 
+  static const Object _unsetDateTime = Object();
+
   TrainingSession({
     required this.id,
     required this.userId,
@@ -4572,7 +4595,7 @@ class TrainingSession {
     String? activeStringId,
     int? confirmedShotCount,
     bool? shotCountAppliedToRifle,
-    DateTime? endedAt,
+    Object? endedAt = _unsetDateTime,
     int? shotTimerElapsedMs,
     int? shotTimerFirstShotMs,
     List<int>? shotTimerSplitMs,
@@ -4605,7 +4628,7 @@ class TrainingSession {
       confirmedShotCount: confirmedShotCount ?? this.confirmedShotCount,
       shotCountAppliedToRifle:
           shotCountAppliedToRifle ?? this.shotCountAppliedToRifle,
-      endedAt: endedAt ?? this.endedAt,
+        endedAt: endedAt == _unsetDateTime ? this.endedAt : endedAt as DateTime?,
       shotTimerElapsedMs: shotTimerElapsedMs ?? this.shotTimerElapsedMs,
       shotTimerFirstShotMs: shotTimerFirstShotMs ?? this.shotTimerFirstShotMs,
       shotTimerSplitMs: shotTimerSplitMs ?? this.shotTimerSplitMs,
@@ -9321,6 +9344,168 @@ class SessionDetailScreen extends StatelessWidget {
     state.updateSessionNotes(sessionId: s.id, notes: res);
   }
 
+  Future<DateTime?> _pickSessionDateTime(
+    BuildContext context, {
+    required DateTime initial,
+  }) async {
+    final date = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (date == null) return null;
+    if (!context.mounted) return null;
+
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(initial),
+      initialEntryMode: TimePickerEntryMode.inputOnly,
+    );
+    if (time == null) return null;
+
+    return DateTime(date.year, date.month, date.day, time.hour, time.minute);
+  }
+
+  Future<void> _editSessionDateTimes(BuildContext context, TrainingSession s) async {
+    var startAt = s.dateTime;
+    var hasEnd = s.endedAt != null;
+    var endAt = s.endedAt ?? DateTime.now();
+    String? errorText;
+    var didSave = false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('Edit session date & time'),
+              content: ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 320, maxWidth: 520),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(child: Text('Start: ${_fmtDateTime(startAt)}')),
+                        TextButton.icon(
+                          onPressed: () async {
+                            final picked = await _pickSessionDateTime(
+                              context,
+                              initial: startAt,
+                            );
+                            if (picked == null || !context.mounted) return;
+                            setState(() {
+                              startAt = picked;
+                              if (hasEnd && endAt.isBefore(startAt)) {
+                                errorText =
+                                    'End time cannot be earlier than start time.';
+                              } else {
+                                errorText = null;
+                              }
+                            });
+                          },
+                          icon: const Icon(Icons.event_outlined),
+                          label: const Text('Change'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      value: hasEnd,
+                      onChanged: (value) {
+                        setState(() {
+                          hasEnd = value;
+                          if (!hasEnd) {
+                            errorText = null;
+                          } else if (endAt.isBefore(startAt)) {
+                            endAt = startAt;
+                            errorText = null;
+                          }
+                        });
+                      },
+                      title: const Text('Session ended'),
+                      subtitle: const Text('Turn off to keep the session active.'),
+                    ),
+                    if (hasEnd)
+                      Row(
+                        children: [
+                          Expanded(child: Text('End: ${_fmtDateTime(endAt)}')),
+                          TextButton.icon(
+                            onPressed: () async {
+                              final picked = await _pickSessionDateTime(
+                                context,
+                                initial: endAt,
+                              );
+                              if (picked == null || !context.mounted) return;
+                              setState(() {
+                                endAt = picked;
+                                if (endAt.isBefore(startAt)) {
+                                  errorText =
+                                      'End time cannot be earlier than start time.';
+                                } else {
+                                  errorText = null;
+                                }
+                              });
+                            },
+                            icon: const Icon(Icons.schedule_outlined),
+                            label: const Text('Change'),
+                          ),
+                        ],
+                      ),
+                    if (errorText != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        errorText!,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    if (hasEnd && endAt.isBefore(startAt)) {
+                      setState(() {
+                        errorText =
+                            'End time cannot be earlier than start time.';
+                      });
+                      return;
+                    }
+                    state.updateSessionDateTimes(
+                      sessionId: s.id,
+                      startedAt: startAt,
+                      endedAt: hasEnd ? endAt : null,
+                      clearEndedAt: !hasEnd,
+                    );
+                    didSave = true;
+                    Navigator.of(dialogContext).pop();
+                  },
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (!context.mounted || !didSave) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Session date/time updated.')),
+    );
+  }
+
   Future<void> _endSession(BuildContext context, TrainingSession s) async {
     final shotCountsByRifle = _shotCountsByRifle(s);
     final res = await showDialog<_EndSessionResult>(
@@ -9683,6 +9868,11 @@ class SessionDetailScreen extends StatelessWidget {
                 tooltip: 'Edit session notes',
                 onPressed: () => _editTrainingNotes(context, s),
                 icon: const Icon(Icons.edit_note_outlined),
+              ),
+              IconButton(
+                tooltip: 'Edit session date/time',
+                onPressed: () => _editSessionDateTimes(context, s),
+                icon: const Icon(Icons.event_outlined),
               ),
               PopupMenuButton<String>(
                 tooltip: 'More',
