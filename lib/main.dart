@@ -1066,6 +1066,10 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
   static const MethodChannel _iCloudChannel = MethodChannel(
     'com.remington.coldbore/icloud',
   );
+  static const String _lastICloudBackupAtPrefsKey =
+      'cold_bore.last_icloud_backup_at_utc.v1';
+    static const String _lastICloudRestoreAtPrefsKey =
+      'cold_bore.last_icloud_restore_at_utc.v1';
   static const String _autoICloudRestoreAttemptedPrefsKey =
       'cold_bore.auto_icloud_restore_attempted.v1';
   static const String _autoICloudRestoreSuccessPrefsKey =
@@ -1154,6 +1158,10 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
 
       _state.importBackupJson(jsonText, replaceExisting: true);
       await prefs.setBool(_autoICloudRestoreSuccessPrefsKey, true);
+      await prefs.setString(
+        _lastICloudRestoreAtPrefsKey,
+        DateTime.now().toUtc().toIso8601String(),
+      );
       debugPrint('Auto iCloud restore applied on first launch.');
     } catch (e, st) {
       debugPrint('Auto iCloud restore skipped/failed: $e\n$st');
@@ -1198,6 +1206,11 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
         'timestamp': DateTime.now().toUtc().toIso8601String(),
       });
       _lastICloudBackupAt = DateTime.now();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _lastICloudBackupAtPrefsKey,
+        _lastICloudBackupAt!.toUtc().toIso8601String(),
+      );
     } catch (e, st) {
       debugPrint('Auto iCloud backup failed: $e\n$st');
     } finally {
@@ -1207,6 +1220,61 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
         _scheduleAutoICloudBackup();
       }
     }
+  }
+
+  Future<DateTime?> _readLastICloudBackupAt() async {
+    if (!_canAutoBackupToICloud) return null;
+    if (_lastICloudBackupAt != null) return _lastICloudBackupAt;
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_lastICloudBackupAtPrefsKey);
+    if (raw == null || raw.trim().isEmpty) return null;
+    return DateTime.tryParse(raw.trim());
+  }
+
+  Future<void> _backupToICloudNowFromSettings() async {
+    if (!_canAutoBackupToICloud) {
+      throw StateError('Cloud backup is currently available on iOS only.');
+    }
+    final payload = _state.exportBackupJson();
+    await _iCloudChannel.invokeMethod('backupToiCloud', {
+      'backupData': payload,
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+    });
+    _lastICloudBackupAt = DateTime.now();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _lastICloudBackupAtPrefsKey,
+      _lastICloudBackupAt!.toUtc().toIso8601String(),
+    );
+  }
+
+  Future<DateTime?> _readLastICloudRestoreAt() async {
+    if (!_canAutoBackupToICloud) return null;
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_lastICloudRestoreAtPrefsKey);
+    if (raw == null || raw.trim().isEmpty) return null;
+    return DateTime.tryParse(raw.trim());
+  }
+
+  Future<bool> _restoreFromICloudFromSettings() async {
+    if (!_canAutoBackupToICloud) {
+      throw StateError('Cloud restore is currently available on iOS only.');
+    }
+    final jsonText = await _iCloudChannel.invokeMethod<String>(
+      'restoreFromiCloud',
+    );
+    if (jsonText == null || jsonText.trim().isEmpty) {
+      return false;
+    }
+    _state.importBackupJson(jsonText, replaceExisting: true);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_autoICloudRestoreAttemptedPrefsKey, true);
+    await prefs.setBool(_autoICloudRestoreSuccessPrefsKey, true);
+    await prefs.setString(
+      _lastICloudRestoreAtPrefsKey,
+      DateTime.now().toUtc().toIso8601String(),
+    );
+    return true;
   }
 
   @override
@@ -1240,6 +1308,11 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
     return HomeShell(
       state: _state,
       startGuidedTour: _startGuidedTourOnHome,
+      cloudRecoverySupported: _canAutoBackupToICloud,
+      readLastCloudBackupAt: _readLastICloudBackupAt,
+      readLastCloudRestoreAt: _readLastICloudRestoreAt,
+      backupNow: _backupToICloudNowFromSettings,
+      restoreFromCloud: _restoreFromICloudFromSettings,
     );
   }
 }
@@ -5115,10 +5188,20 @@ class _GuidedTourStep {
 class HomeShell extends StatefulWidget {
   final AppState state;
   final bool startGuidedTour;
+  final bool cloudRecoverySupported;
+  final Future<DateTime?> Function()? readLastCloudBackupAt;
+  final Future<DateTime?> Function()? readLastCloudRestoreAt;
+  final Future<void> Function()? backupNow;
+  final Future<bool> Function()? restoreFromCloud;
   const HomeShell({
     super.key,
     required this.state,
     this.startGuidedTour = false,
+    this.cloudRecoverySupported = false,
+    this.readLastCloudBackupAt,
+    this.readLastCloudRestoreAt,
+    this.backupNow,
+    this.restoreFromCloud,
   });
 
   @override
@@ -5137,6 +5220,11 @@ class _HomeShellState extends State<HomeShell> {
         builder: (_) => SettingsScreen(
           state: widget.state,
           onStartTutorial: _startGuidedTour,
+          cloudRecoverySupported: widget.cloudRecoverySupported,
+          readLastCloudBackupAt: widget.readLastCloudBackupAt,
+          readLastCloudRestoreAt: widget.readLastCloudRestoreAt,
+          backupNow: widget.backupNow,
+          restoreFromCloud: widget.restoreFromCloud,
         ),
       ),
     );
@@ -5431,11 +5519,21 @@ class _HomeShellState extends State<HomeShell> {
 class SettingsScreen extends StatefulWidget {
   final AppState state;
   final VoidCallback? onStartTutorial;
+  final bool cloudRecoverySupported;
+  final Future<DateTime?> Function()? readLastCloudBackupAt;
+  final Future<DateTime?> Function()? readLastCloudRestoreAt;
+  final Future<void> Function()? backupNow;
+  final Future<bool> Function()? restoreFromCloud;
 
   const SettingsScreen({
     super.key,
     required this.state,
     this.onStartTutorial,
+    this.cloudRecoverySupported = false,
+    this.readLastCloudBackupAt,
+    this.readLastCloudRestoreAt,
+    this.backupNow,
+    this.restoreFromCloud,
   });
 
   @override
@@ -5446,8 +5544,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final SubscriptionService _sub = SubscriptionService();
   final AppThemeController _theme = AppThemeController();
   String _versionText = '';
+  DateTime? _lastCloudBackupAt;
+  DateTime? _lastCloudRestoreAt;
+  bool _cloudBusy = false;
   late final VoidCallback _subListener;
   late final VoidCallback _themeListener;
+
+  bool get _hasMeaningfulLocalData {
+    return widget.state.rifles.isNotEmpty ||
+        widget.state.ammoLots.isNotEmpty ||
+        widget.state.allSessions.isNotEmpty;
+  }
+
+  bool get _isBackupOverdue {
+    if (_lastCloudBackupAt == null) return _hasMeaningfulLocalData;
+    return DateTime.now().difference(_lastCloudBackupAt!) >
+        const Duration(days: 7);
+  }
+
+  String get _backupHealthText {
+    if (_lastCloudBackupAt == null) {
+      return _hasMeaningfulLocalData
+          ? 'Backup recommended now. No successful cloud backup found yet.'
+          : 'No backup needed yet. Create data first, then back up.';
+    }
+    final age = DateTime.now().difference(_lastCloudBackupAt!);
+    if (age > const Duration(days: 7)) {
+      return 'Backup overdue. Last backup was ${age.inDays} days ago.';
+    }
+    return 'Backup healthy. Last backup ${age.inHours}h ago.';
+  }
 
   @override
   void initState() {
@@ -5463,6 +5589,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _sub.addListener(_subListener);
     _theme.addListener(_themeListener);
     unawaited(_loadVersion());
+    unawaited(_loadCloudBackupStatus());
   }
 
   @override
@@ -5543,6 +5670,90 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  Future<void> _loadCloudBackupStatus() async {
+    final reader = widget.readLastCloudBackupAt;
+    final restoreReader = widget.readLastCloudRestoreAt;
+    if (reader == null && restoreReader == null) return;
+    try {
+      final value = reader == null ? null : await reader();
+      final restoreValue = restoreReader == null ? null : await restoreReader();
+      if (!mounted) return;
+      setState(() {
+        _lastCloudBackupAt = value;
+        _lastCloudRestoreAt = restoreValue;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _backupNow() async {
+    final backup = widget.backupNow;
+    if (backup == null) return;
+    setState(() => _cloudBusy = true);
+    try {
+      await backup();
+      await _loadCloudBackupStatus();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cloud backup completed.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Cloud backup failed: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _cloudBusy = false);
+    }
+  }
+
+  Future<void> _restoreFromCloud() async {
+    final restore = widget.restoreFromCloud;
+    if (restore == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Restore from cloud backup?'),
+        content: const Text(
+          'This replaces current local data on this device with your latest cloud backup.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Restore'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _cloudBusy = true);
+    try {
+      final didRestore = await restore();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            didRestore
+                ? 'Cloud restore completed.'
+                : 'No cloud backup found yet for this Apple ID.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Cloud restore failed: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _cloudBusy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final entitlementText = _sub.isEntitled
@@ -5554,6 +5765,65 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.cloud_done_outlined),
+              title: const Text('Cloud Backup & Restore'),
+              subtitle: Text(
+                widget.cloudRecoverySupported
+                    ? (_lastCloudBackupAt == null
+                          ? 'Automatic iCloud backup is enabled. No completed backup yet.'
+                          : 'Last backup: ${_fmtDateTime(_lastCloudBackupAt!)}'
+                                '${_lastCloudRestoreAt == null ? '' : '\nLast restore: ${_fmtDateTime(_lastCloudRestoreAt!)}'}')
+                    : 'Automatic cloud recovery is currently available on iPhone.',
+              ),
+            ),
+          ),
+          if (widget.cloudRecoverySupported && _isBackupOverdue)
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.warning_amber_rounded),
+                title: const Text('Backup health warning'),
+                subtitle: Text(_backupHealthText),
+                trailing: TextButton(
+                  onPressed: _cloudBusy ? null : _backupNow,
+                  child: const Text('Back up now'),
+                ),
+              ),
+            ),
+          if (widget.cloudRecoverySupported && !_isBackupOverdue)
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.verified_outlined),
+                title: const Text('Backup health'),
+                subtitle: Text(_backupHealthText),
+              ),
+            ),
+          if (widget.cloudRecoverySupported)
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _cloudBusy ? null : _backupNow,
+                        icon: const Icon(Icons.cloud_upload_outlined),
+                        label: const Text('Back up now'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: FilledButton.tonalIcon(
+                        onPressed: _cloudBusy ? null : _restoreFromCloud,
+                        icon: const Icon(Icons.cloud_download_outlined),
+                        label: const Text('Restore'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           Card(
             child: ListTile(
               leading: const Icon(Icons.brightness_6_outlined),
