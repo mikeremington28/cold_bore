@@ -5253,14 +5253,14 @@ class _HomeShellState extends State<HomeShell> {
       icon: Icons.event_note_outlined,
       title: 'Sessions',
       description:
-          'Create, organize, and review all shooting sessions. Use folders, archive, and filters to keep history clean.',
+          'Create, organize, and review sessions. You can now edit session start/end date and time from the session screen if you forgot to close one.',
     ),
     _GuidedTourStep(
       tabIndex: 1,
       icon: Icons.ac_unit_outlined,
       title: 'Cold Bore',
       description:
-          'Track first-shot performance and adjustments to monitor zero confidence over time.',
+          'Track first-shot performance, baseline cold-bore shots, and attached photos to monitor zero confidence over time.',
     ),
     _GuidedTourStep(
       tabIndex: 2,
@@ -5274,7 +5274,7 @@ class _HomeShellState extends State<HomeShell> {
       icon: Icons.mic_outlined,
       title: 'Audio Counter',
       description:
-          'Detect shots by sound and apply counted rounds to your selected rifle.',
+          'Detect shots by sound and apply counted rounds to your selected rifle automatically or on demand.',
     ),
     _GuidedTourStep(
       tabIndex: 4,
@@ -5288,14 +5288,21 @@ class _HomeShellState extends State<HomeShell> {
       icon: Icons.list_alt_outlined,
       title: 'Data',
       description:
-          'Review quick-reference and working DOPE plus maintenance status in one place.',
+          'Review quick-reference DOPE, working DOPE, and maintenance status in one place.',
     ),
     _GuidedTourStep(
       tabIndex: 6,
       icon: Icons.ios_share_outlined,
       title: 'Export',
       description:
-          'Create JSON backups and PDF reports for portability and long-term record keeping.',
+          'Create PDF reports and share export summaries. Backup and restore now live under Settings.',
+    ),
+    _GuidedTourStep(
+      tabIndex: 0,
+      icon: Icons.settings_outlined,
+      title: 'Settings',
+      description:
+          'Use Settings for Cloud Backup & Restore, manual JSON backup files, appearance mode, purchases, and user management.',
     ),
   ];
 
@@ -5755,7 +5762,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           content: Text(
             didRestore
                 ? 'Cloud restore completed.'
-                : 'No cloud backup found yet for this Apple ID. If this is a new install, wait a minute for iCloud sync and try Restore again.',
+                : 'No cloud backup found yet for this Apple ID. Open the old phone, tap Back up now, then retry Restore on this device after 1-2 minutes.',
           ),
         ),
       );
@@ -5841,6 +5848,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           Card(
             child: ListTile(
+              leading: const Icon(Icons.folder_zip_outlined),
+              title: const Text('Backup files (JSON)'),
+              subtitle: const Text(
+                'Create or restore manual backup files from one place.',
+              ),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => _BackupScreen(state: widget.state),
+                  ),
+                );
+              },
+            ),
+          ),
+          Card(
+            child: ListTile(
               leading: const Icon(Icons.brightness_6_outlined),
               title: const Text('Appearance'),
               subtitle: Text('Theme: ${_themeModeLabel(_theme.mode)}'),
@@ -5865,17 +5888,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               title: const Text('Restore purchases'),
               subtitle: const Text('Use this after reinstall or new device setup.'),
               onTap: _sub.loading ? null : _restorePurchases,
-            ),
-          ),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.help_outline),
-              title: const Text('Replay guided tutorial'),
-              subtitle: const Text('Walk through each tab and feature again.'),
-              onTap: () {
-                Navigator.of(context).pop();
-                widget.onStartTutorial?.call();
-              },
             ),
           ),
           Card(
@@ -14980,18 +14992,11 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                 ],
                 Card(
                   child: ListTile(
-                    leading: const Icon(Icons.swap_vert),
-                    title: const Text('Backup & Restore'),
+                    leading: const Icon(Icons.info_outline),
+                    title: const Text('Backup & Restore moved'),
                     subtitle: const Text(
-                      'Create a backup file or restore this device from one backup file.',
+                      'Use Settings for iCloud backup/restore and JSON backup files.',
                     ),
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => _BackupScreen(state: widget.state),
-                        ),
-                      );
-                    },
                   ),
                 ),
               ],

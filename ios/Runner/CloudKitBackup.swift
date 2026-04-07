@@ -3,7 +3,8 @@ import Foundation
 
 class CloudKitBackupHandler {
     static let shared = CloudKitBackupHandler()
-    private let privateDatabase = CKContainer.default().privateCloudDatabase
+    private let container = CKContainer(identifier: "iCloud.com.remington.coldbore")
+    private lazy var privateDatabase = container.privateCloudDatabase
     private let latestBackupRecordId = CKRecord.ID(recordName: "cold_bore_latest_backup")
     private let timestampField = "timestamp"
     private let backupAssetField = "backupAsset"
@@ -65,8 +66,7 @@ class CloudKitBackupHandler {
 
     private func restoreLatestLegacyBackup(completion: @escaping (String?) -> Void) {
         let query = CKQuery(recordType: "ColdBoreBackup", predicate: NSPredicate(value: true))
-        query.sortDescriptors = [NSSortDescriptor(key: timestampField, ascending: false)]
-        
+
         privateDatabase.perform(query, inZoneWith: nil) { records, error in
             if let error = error {
                 debugPrint("iCloud legacy restore query failed: \(error.localizedDescription)")
@@ -79,7 +79,9 @@ class CloudKitBackupHandler {
                 return
             }
             
-            let latestRecord = records.first
+            let latestRecord = records.max { lhs, rhs in
+                self.recordDate(lhs) < self.recordDate(rhs)
+            }
 
             if let backupData = self.decodeBackupPayload(from: latestRecord) {
                 completion(backupData)
@@ -87,6 +89,14 @@ class CloudKitBackupHandler {
                 completion(nil)
             }
         }
+    }
+
+    private func recordDate(_ record: CKRecord) -> Date {
+        if let raw = record[timestampField] as? String,
+           let parsed = ISO8601DateFormatter().date(from: raw) {
+            return parsed
+        }
+        return record.modificationDate ?? record.creationDate ?? Date.distantPast
     }
 
     private func decodeBackupPayload(from record: CKRecord?) -> String? {
