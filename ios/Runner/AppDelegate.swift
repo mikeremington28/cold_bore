@@ -27,7 +27,11 @@ import UIKit
            let timestamp = args["timestamp"] as? String {
           CloudKitBackupHandler.shared.backupToiCloud(backupData: backupData, timestamp: timestamp) { message in
             DispatchQueue.main.async {
-              result(message)
+              if let message = message, message.hasPrefix("Backup failed:") {
+                result(FlutterError(code: "ICLOUD_BACKUP_FAILED", message: message, details: nil))
+              } else {
+                result(message)
+              }
             }
           }
         } else {

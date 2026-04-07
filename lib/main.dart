@@ -1068,10 +1068,8 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
   );
   static const String _lastICloudBackupAtPrefsKey =
       'cold_bore.last_icloud_backup_at_utc.v1';
-    static const String _lastICloudRestoreAtPrefsKey =
+  static const String _lastICloudRestoreAtPrefsKey =
       'cold_bore.last_icloud_restore_at_utc.v1';
-  static const String _autoICloudRestoreAttemptedPrefsKey =
-      'cold_bore.auto_icloud_restore_attempted.v1';
   static const String _autoICloudRestoreSuccessPrefsKey =
       'cold_bore.auto_icloud_restore_success.v1';
   static const String _tutorialShownPrefsKey =
@@ -1145,11 +1143,7 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
       final prefs = await SharedPreferences.getInstance();
       final alreadyRestored =
           prefs.getBool(_autoICloudRestoreSuccessPrefsKey) == true;
-      final alreadyAttempted =
-          prefs.getBool(_autoICloudRestoreAttemptedPrefsKey) == true;
-      if (alreadyRestored || alreadyAttempted) return;
-
-      await prefs.setBool(_autoICloudRestoreAttemptedPrefsKey, true);
+      if (alreadyRestored) return;
 
       final jsonText = await _iCloudChannel.invokeMethod<String>(
         'restoreFromiCloud',
@@ -1201,10 +1195,16 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
     _iCloudBackupInFlight = true;
     try {
       final payload = _state.exportBackupJson();
-      await _iCloudChannel.invokeMethod('backupToiCloud', {
+      final message = await _iCloudChannel.invokeMethod<String>(
+        'backupToiCloud',
+        {
         'backupData': payload,
         'timestamp': DateTime.now().toUtc().toIso8601String(),
-      });
+        },
+      );
+      if (message != null && message.toLowerCase().contains('failed')) {
+        throw StateError(message);
+      }
       _lastICloudBackupAt = DateTime.now();
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(
@@ -1236,10 +1236,16 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
       throw StateError('Cloud backup is currently available on iOS only.');
     }
     final payload = _state.exportBackupJson();
-    await _iCloudChannel.invokeMethod('backupToiCloud', {
+    final message = await _iCloudChannel.invokeMethod<String>(
+      'backupToiCloud',
+      {
       'backupData': payload,
       'timestamp': DateTime.now().toUtc().toIso8601String(),
-    });
+      },
+    );
+    if (message != null && message.toLowerCase().contains('failed')) {
+      throw StateError(message);
+    }
     _lastICloudBackupAt = DateTime.now();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
@@ -1260,15 +1266,23 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
     if (!_canAutoBackupToICloud) {
       throw StateError('Cloud restore is currently available on iOS only.');
     }
-    final jsonText = await _iCloudChannel.invokeMethod<String>(
-      'restoreFromiCloud',
-    );
+    String? jsonText;
+    for (var attempt = 0; attempt < 3; attempt++) {
+      jsonText = await _iCloudChannel.invokeMethod<String>('restoreFromiCloud');
+      if (jsonText != null && jsonText.trim().isNotEmpty) {
+        break;
+      }
+      if (attempt < 2) {
+        await Future<void>.delayed(
+          Duration(seconds: attempt == 0 ? 1 : 2),
+        );
+      }
+    }
     if (jsonText == null || jsonText.trim().isEmpty) {
       return false;
     }
     _state.importBackupJson(jsonText, replaceExisting: true);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_autoICloudRestoreAttemptedPrefsKey, true);
     await prefs.setBool(_autoICloudRestoreSuccessPrefsKey, true);
     await prefs.setString(
       _lastICloudRestoreAtPrefsKey,
@@ -1281,6 +1295,7 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(SubscriptionService().refreshOnResume());
+      unawaited(_attemptAutoICloudRestoreIfEligible());
     }
     if (!_canAutoBackupToICloud) return;
     if (state == AppLifecycleState.inactive ||
@@ -5740,7 +5755,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           content: Text(
             didRestore
                 ? 'Cloud restore completed.'
-                : 'No cloud backup found yet for this Apple ID.',
+                : 'No cloud backup found yet for this Apple ID. If this is a new install, wait a minute for iCloud sync and try Restore again.',
           ),
         ),
       );
