@@ -5234,7 +5234,6 @@ class _HomeShellState extends State<HomeShell> {
       MaterialPageRoute(
         builder: (_) => SettingsScreen(
           state: widget.state,
-          onStartTutorial: _startGuidedTour,
           cloudRecoverySupported: widget.cloudRecoverySupported,
           readLastCloudBackupAt: widget.readLastCloudBackupAt,
           readLastCloudRestoreAt: widget.readLastCloudRestoreAt,
@@ -5444,7 +5443,7 @@ class _HomeShellState extends State<HomeShell> {
       ShotTimerToolScreen(state: widget.state),
       AudioCounterScreen(state: widget.state),
       EquipmentScreen(state: widget.state),
-      DataScreen(state: widget.state, onStartTutorial: _startGuidedTour),
+      DataScreen(state: widget.state),
       ExportPlaceholderScreen(state: widget.state),
     ];
 
@@ -5478,18 +5477,6 @@ class _HomeShellState extends State<HomeShell> {
                     tooltip: 'Settings',
                     onPressed: _openSettings,
                     icon: const Icon(Icons.settings_outlined),
-                  ),
-                  IconButton(
-                    tooltip: 'Users',
-                    onPressed: () async {
-                      await Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => UsersScreen(state: widget.state),
-                        ),
-                      );
-                      setState(() {});
-                    },
-                    icon: const Icon(Icons.person_outline),
                   ),
                 ],
               ),
@@ -5540,7 +5527,6 @@ class _HomeShellState extends State<HomeShell> {
 
 class SettingsScreen extends StatefulWidget {
   final AppState state;
-  final VoidCallback? onStartTutorial;
   final bool cloudRecoverySupported;
   final Future<DateTime?> Function()? readLastCloudBackupAt;
   final Future<DateTime?> Function()? readLastCloudRestoreAt;
@@ -5550,7 +5536,6 @@ class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
     super.key,
     required this.state,
-    this.onStartTutorial,
     this.cloudRecoverySupported = false,
     this.readLastCloudBackupAt,
     this.readLastCloudRestoreAt,
@@ -5919,11 +5904,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
 class DataScreen extends StatefulWidget {
   final AppState state;
-  final VoidCallback? onStartTutorial;
   const DataScreen({
     super.key,
     required this.state,
-    this.onStartTutorial,
   });
 
   @override
@@ -6249,29 +6232,6 @@ class _DataScreenState extends State<DataScreen> {
               ),
               const SizedBox(height: 12),
               Card(
-                child: ListTile(
-                  leading: const Icon(Icons.school_outlined),
-                  title: const Text('App Tutorial'),
-                  subtitle: const Text(
-                    'Take a guided tour across tabs and major features.',
-                  ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    final onStartTutorial = widget.onStartTutorial;
-                    if (onStartTutorial != null) {
-                      onStartTutorial();
-                      return;
-                    }
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const FeatureTutorialScreen(),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 12),
-              Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
@@ -6480,214 +6440,6 @@ class _DataScreenState extends State<DataScreen> {
   }
 }
 
-class _TutorialStep {
-  final IconData icon;
-  final String title;
-  final String why;
-  final List<String> actions;
-
-  const _TutorialStep({
-    required this.icon,
-    required this.title,
-    required this.why,
-    required this.actions,
-  });
-}
-
-class FeatureTutorialScreen extends StatefulWidget {
-  const FeatureTutorialScreen({super.key});
-
-  @override
-  State<FeatureTutorialScreen> createState() => _FeatureTutorialScreenState();
-}
-
-class _FeatureTutorialScreenState extends State<FeatureTutorialScreen> {
-  final List<_TutorialStep> _steps = const [
-    _TutorialStep(
-      icon: Icons.flag_outlined,
-      title: 'Quick Start Workflow',
-      why: 'This gives new users the fastest path to useful data in one range trip.',
-      actions: [
-        'Create or select your user profile.',
-        'Add your rifle and ammo lot in Gear.',
-        'Start a Session and set weather/location details.',
-        'Log cold bore and follow-up shots, then save session notes.',
-      ],
-    ),
-    _TutorialStep(
-      icon: Icons.event_note_outlined,
-      title: 'Sessions',
-      why: 'Sessions are your timeline for all strings, notes, and performance changes.',
-      actions: [
-        'Create a new session before shooting.',
-        'Use folders/year/month filters to organize history.',
-        'Attach photos and notes to document conditions.',
-        'Archive old sessions to keep current work clean.',
-      ],
-    ),
-    _TutorialStep(
-      icon: Icons.ac_unit_outlined,
-      title: 'Cold Bore Tracking',
-      why: 'Cold bore entries let you validate first-shot behavior and build trust in your zero.',
-      actions: [
-        'Use the Bore tab to capture your cold bore shot and result.',
-        'Record distance and any correction you needed.',
-        'Review trend charts over time for drift and consistency.',
-      ],
-    ),
-    _TutorialStep(
-      icon: Icons.timer_outlined,
-      title: 'Shot Timers',
-      why: 'The timer tools support drills and help standardize pacing across sessions.',
-      actions: [
-        'Set delayed start when you need setup time before the first beep.',
-        'Run strings and log elapsed time and shot cadence.',
-        'Optionally apply round counts to your selected rifle.',
-      ],
-    ),
-    _TutorialStep(
-      icon: Icons.mic_outlined,
-      title: 'Audio Shot Counter',
-      why: 'Audio detection can quickly count rounds during drills with less manual tapping.',
-      actions: [
-        'Pick your rifle before starting detection.',
-        'Tune threshold for your range noise level.',
-        'Apply counted shots when finished.',
-      ],
-    ),
-    _TutorialStep(
-      icon: Icons.build_outlined,
-      title: 'Gear and Maintenance',
-      why: 'Good equipment records make data analysis and maintenance reminders accurate.',
-      actions: [
-        'Keep rifle, scope, and ammo lot details up to date.',
-        'Configure maintenance reminder rules per rifle.',
-        'Log cleanings, torque checks, and barrel changes.',
-      ],
-    ),
-    _TutorialStep(
-      icon: Icons.list_alt_outlined,
-      title: 'Data and DOPE',
-      why: 'The Data tab gives fast reference for proven holds and recent adjustments.',
-      actions: [
-        'Review quick-reference DOPE by rifle.',
-        'Use Working DOPE filters by rifle and ammo.',
-        'Use this view during setup to confirm expected holds.',
-      ],
-    ),
-    _TutorialStep(
-      icon: Icons.cloud_done_outlined,
-      title: 'Backup and Restore',
-      why: 'Your records matter, so backup strategy should be understood before you need it.',
-      actions: [
-        'On iPhone, iCloud backup runs automatically after data changes.',
-        'On fresh iPhone installs, restore can apply automatically when backup exists.',
-        'Use JSON export as an extra manual safety copy.',
-      ],
-    ),
-    _TutorialStep(
-      icon: Icons.ios_share_outlined,
-      title: 'Exports and Reports',
-      why: 'Exports make it easy to share progress, archive evidence, and review performance.',
-      actions: [
-        'Generate PDF reports for training summaries.',
-        'Create a JSON backup file for full data portability.',
-        'Share reports with coaches or teammates after each block.',
-      ],
-    ),
-  ];
-
-  int _stepIndex = 0;
-
-  @override
-  Widget build(BuildContext context) {
-    final step = _steps[_stepIndex];
-    final progress = (_stepIndex + 1) / _steps.length;
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('Feature Tutorial')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Text(
-            'Step ${_stepIndex + 1} of ${_steps.length}',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 8),
-          LinearProgressIndicator(value: progress),
-          const SizedBox(height: 12),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(step.icon),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          step.title,
-                          style: Theme.of(context).textTheme.titleLarge,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Text(step.why),
-                  const SizedBox(height: 12),
-                  ...step.actions.asMap().entries.map(
-                    (entry) => Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('${entry.key + 1}. '),
-                          Expanded(child: Text(entry.value)),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _stepIndex == 0
-                      ? null
-                      : () => setState(() => _stepIndex -= 1),
-                  icon: const Icon(Icons.arrow_back),
-                  label: const Text('Previous'),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: _stepIndex == _steps.length - 1
-                      ? null
-                      : () => setState(() => _stepIndex += 1),
-                  icon: const Icon(Icons.arrow_forward),
-                  label: const Text('Next'),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Done'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class UsersScreen extends StatefulWidget {
   final AppState state;
   const UsersScreen({super.key, required this.state});
@@ -6758,36 +6510,14 @@ class _UsersScreenState extends State<UsersScreen> {
         icon: const Icon(Icons.add),
         label: const Text('Add user'),
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: Card(
-              child: ListTile(
-                leading: const Icon(Icons.build_outlined),
-                title: const Text('Maintenance'),
-                subtitle: const Text(
-                  'View reminders, barrel life, round counts, and service history',
-                ),
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => MaintenanceHubScreen(state: widget.state),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-          Expanded(
-            child: ListView.separated(
-              itemCount: users.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
-              itemBuilder: (context, index) {
-                final u = users[index];
-                final isActive = active?.id == u.id;
-                final canDelete = users.length > 1;
-                return ListTile(
+      body: ListView.separated(
+        itemCount: users.length,
+        separatorBuilder: (_, __) => const Divider(height: 1),
+        itemBuilder: (context, index) {
+          final u = users[index];
+          final isActive = active?.id == u.id;
+          final canDelete = users.length > 1;
+          return ListTile(
                   title: Text(_displayUserName(u)),
                   subtitle: Text(_displayUserIdentifier(u.identifier)),
                   trailing: Row(
@@ -6807,10 +6537,7 @@ class _UsersScreenState extends State<UsersScreen> {
                     Navigator.of(context).pop();
                   },
                 );
-              },
-            ),
-          ),
-        ],
+        },
       ),
     );
   }
@@ -18425,15 +18152,6 @@ class _BackupScreen extends StatelessWidget {
                 'Replaces this device data with one backup file.',
               ),
               onTap: () => _restoreBackupFile(context),
-            ),
-          ),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.cloud_done_outlined),
-              title: const Text('iCloud Sync'),
-              subtitle: const Text(
-                'Automatic iCloud backup and fresh-install restore are enabled.',
-              ),
             ),
           ),
         ],
