@@ -10113,10 +10113,10 @@ class SessionDetailScreen extends StatelessWidget {
                 : 'Deleted rifle ($deletedId)';
           }
           final parts = <String>[
-            if (r.caliber.trim().isNotEmpty) r.caliber.trim(),
             if ((r.manufacturer ?? '').trim().isNotEmpty)
               (r.manufacturer ?? '').trim(),
             if ((r.model ?? '').trim().isNotEmpty) (r.model ?? '').trim(),
+            if (r.caliber.trim().isNotEmpty) r.caliber.trim(),
             if ((r.name ?? '').trim().isNotEmpty) (r.name ?? '').trim(),
           ];
           return parts.isEmpty ? 'Rifle' : parts.join(' • ');
@@ -10127,11 +10127,11 @@ class SessionDetailScreen extends StatelessWidget {
             return deletedId == null ? '- None -' : 'Deleted ammo ($deletedId)';
           }
           final parts = <String>[
-            if (a.caliber.trim().isNotEmpty) a.caliber.trim(),
             if ((a.manufacturer ?? '').trim().isNotEmpty)
               (a.manufacturer ?? '').trim(),
             if (a.bullet.trim().isNotEmpty) a.bullet.trim(),
             if (a.grain > 0) '${a.grain}gr',
+            if (a.caliber.trim().isNotEmpty) a.caliber.trim(),
             if ((a.name ?? '').trim().isNotEmpty) (a.name ?? '').trim(),
           ];
           return parts.isEmpty ? 'Ammo' : parts.join(' • ');
@@ -10342,289 +10342,292 @@ class SessionDetailScreen extends StatelessWidget {
               const SizedBox(height: 16),
               _SectionTitle('Loadout'),
               const SizedBox(height: 8),
-              Row(
+              Column(
                 children: [
-                  Expanded(
-                    child: DropdownButtonFormField<String?>(
-                      initialValue: s.rifleId,
-                      isExpanded: true,
-                      decoration: const InputDecoration(labelText: 'Rifle'),
-                      items: [
-                        const DropdownMenuItem<String?>(
-                          value: null,
-                          child: Text('- None -'),
+                  DropdownButtonFormField<String?>(
+                    initialValue: s.rifleId,
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: 'Rifle'),
+                    items: [
+                      const DropdownMenuItem<String?>(
+                        value: null,
+                        child: Text('- None -'),
+                      ),
+                      if (s.rifleId != null && rifle == null)
+                        DropdownMenuItem<String?>(
+                          value: s.rifleId,
+                          child: Text('Deleted rifle (${s.rifleId})'),
                         ),
-                        if (s.rifleId != null && rifle == null)
-                          DropdownMenuItem<String?>(
-                            value: s.rifleId,
-                            child: Text('Deleted rifle (${s.rifleId})'),
-                          ),
-                        ...state.rifles.map(
-                          (r) => DropdownMenuItem<String?>(
-                            value: r.id,
-                            child: Text(
-                              rifleLoadoutLabel(r),
-                              overflow: TextOverflow.ellipsis,
-                              maxLines: 1,
-                            ),
+                      ...state.rifles.map(
+                        (r) => DropdownMenuItem<String?>(
+                          value: r.id,
+                          child: Text(
+                            rifleLoadoutLabel(r),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 2,
                           ),
                         ),
-                      ],
-                      selectedItemBuilder: (context) => [
-                        const Align(
+                      ),
+                    ],
+                    selectedItemBuilder: (context) => [
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          '- None -',
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                        ),
+                      ),
+                      if (s.rifleId != null && rifle == null)
+                        Align(
                           alignment: Alignment.centerLeft,
                           child: Text(
-                            '- None -',
+                            rifleLoadoutLabel(null, deletedId: s.rifleId),
                             overflow: TextOverflow.ellipsis,
                             maxLines: 1,
                           ),
                         ),
-                        if (s.rifleId != null && rifle == null)
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              rifleLoadoutLabel(null, deletedId: s.rifleId),
-                              overflow: TextOverflow.ellipsis,
-                              maxLines: 1,
-                            ),
-                          ),
-                        ...state.rifles.map(
-                          (r) => Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              rifleLoadoutLabel(r),
-                              overflow: TextOverflow.ellipsis,
-                              maxLines: 1,
-                            ),
+                      ...state.rifles.map(
+                        (r) => Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            rifleLoadoutLabel(r),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
                           ),
                         ),
-                      ],
-                      onChanged: (v) async {
-                        if (v == s.rifleId) return;
+                      ),
+                    ],
+                    onChanged: (v) async {
+                      if (v == s.rifleId) return;
 
-                        final current = s.strings.firstWhere(
-                          (x) => x.id == s.activeStringId,
-                          orElse: () => s.strings.isNotEmpty
-                              ? s.strings.last
-                              : SessionStringMeta(
-                                  id: s.activeStringId,
-                                  startedAt: DateTime.now(),
-                                  endedAt: null,
-                                ),
-                        );
+                      final current = s.strings.firstWhere(
+                        (x) => x.id == s.activeStringId,
+                        orElse: () => s.strings.isNotEmpty
+                            ? s.strings.last
+                            : SessionStringMeta(
+                                id: s.activeStringId,
+                                startedAt: DateTime.now(),
+                                endedAt: null,
+                              ),
+                      );
 
-                        // If we haven't completed a loadout yet, just set it (no prompt).
-                        if (current.rifleId == null ||
-                            current.ammoLotId == null) {
-                          state.updateSessionLoadout(
-                            sessionId: s.id,
-                            rifleId: v,
-                            ammoLotId: s.ammoLotId,
-                            startNewString: false,
-                          );
-                          return;
-                        }
-
-                        if (v == null) {
-                          state.updateSessionLoadout(
-                            sessionId: s.id,
-                            rifleId: null,
-                            ammoLotId: null,
-                            startNewString: false,
-                          );
-                          return;
-                        }
-
-                        final nextAmmo =
-                            ((s.ammoLotId != null) &&
-                                (state.ammoById(s.ammoLotId)?.caliber ==
-                                    state.rifleById(v)?.caliber))
-                            ? s.ammoLotId
-                            : null;
-                        final existing = _findMatchingString(
-                          s,
-                          rifleId: v,
-                          ammoLotId: nextAmmo,
-                          excludeStringId: current.id,
-                        );
-                        if (existing != null) {
-                          final shouldSwitch =
-                              await _promptSwitchToExistingStringDialog(
-                                context,
-                                existing,
-                              );
-                          if (shouldSwitch) {
-                            state.setActiveString(
-                              sessionId: s.id,
-                              stringId: existing.id,
-                            );
-                            return;
-                          }
-                        }
-
-                        final startNew = await _promptStartNewStringDialog(
-                          context,
-                        );
-                        if (!startNew) {
-                          state.updateSessionLoadout(
-                            sessionId: s.id,
-                            rifleId: current.rifleId,
-                            ammoLotId: current.ammoLotId,
-                            startNewString: false,
-                          );
-                          return;
-                        }
-
+                      // If we haven't completed a loadout yet, just set it (no prompt).
+                      if (current.rifleId == null || current.ammoLotId == null) {
                         state.updateSessionLoadout(
                           sessionId: s.id,
                           rifleId: v,
                           ammoLotId: s.ammoLotId,
-                          startNewString: true,
+                          startNewString: false,
                         );
-                      },
-                    ),
+                        return;
+                      }
+
+                      if (v == null) {
+                        state.updateSessionLoadout(
+                          sessionId: s.id,
+                          rifleId: null,
+                          ammoLotId: null,
+                          startNewString: false,
+                        );
+                        return;
+                      }
+
+                      final nextAmmo =
+                          ((s.ammoLotId != null) &&
+                              (state.ammoById(s.ammoLotId)?.caliber ==
+                                  state.rifleById(v)?.caliber))
+                          ? s.ammoLotId
+                          : null;
+                      final existing = _findMatchingString(
+                        s,
+                        rifleId: v,
+                        ammoLotId: nextAmmo,
+                        excludeStringId: current.id,
+                      );
+                      if (existing != null) {
+                        final shouldSwitch = await _promptSwitchToExistingStringDialog(
+                          context,
+                          existing,
+                        );
+                        if (shouldSwitch) {
+                          state.setActiveString(
+                            sessionId: s.id,
+                            stringId: existing.id,
+                          );
+                          return;
+                        }
+                      }
+
+                      final startNew = await _promptStartNewStringDialog(
+                        context,
+                      );
+                      if (!startNew) {
+                        state.updateSessionLoadout(
+                          sessionId: s.id,
+                          rifleId: current.rifleId,
+                          ammoLotId: current.ammoLotId,
+                          startNewString: false,
+                        );
+                        return;
+                      }
+
+                      state.updateSessionLoadout(
+                        sessionId: s.id,
+                        rifleId: v,
+                        ammoLotId: s.ammoLotId,
+                        startNewString: true,
+                      );
+                    },
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: DropdownButtonFormField<String?>(
-                      initialValue: safeAmmoLotId,
-                      isExpanded: true,
-                      decoration: const InputDecoration(labelText: 'Ammo'),
-                      items: [
-                        const DropdownMenuItem<String?>(
-                          value: null,
-                          child: Text('- None -'),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String?>(
+                    initialValue: safeAmmoLotId,
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: 'Ammo'),
+                    items: [
+                      const DropdownMenuItem<String?>(
+                        value: null,
+                        child: Text('- None -'),
+                      ),
+                      if (s.ammoLotId != null && ammo == null)
+                        DropdownMenuItem<String?>(
+                          value: s.ammoLotId,
+                          child: Text('Deleted ammo (${s.ammoLotId})'),
                         ),
-                        if (s.ammoLotId != null && ammo == null)
-                          DropdownMenuItem<String?>(
-                            value: s.ammoLotId,
-                            child: Text('Deleted ammo (${s.ammoLotId})'),
-                          ),
-                        ...compatibleAmmo.map(
-                          (a) => DropdownMenuItem<String?>(
-                            value: a.id,
-                            child: Text(
-                              ammoLoadoutLabel(a),
-                              overflow: TextOverflow.ellipsis,
-                              maxLines: 1,
-                            ),
+                      ...compatibleAmmo.map(
+                        (a) => DropdownMenuItem<String?>(
+                          value: a.id,
+                          child: Text(
+                            ammoLoadoutLabel(a),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 2,
                           ),
                         ),
-                      ],
-                      selectedItemBuilder: (context) => [
-                        const Align(
+                      ),
+                    ],
+                    selectedItemBuilder: (context) => [
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          '- None -',
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                        ),
+                      ),
+                      if (s.ammoLotId != null && ammo == null)
+                        Align(
                           alignment: Alignment.centerLeft,
                           child: Text(
-                            '- None -',
+                            ammoLoadoutLabel(null, deletedId: s.ammoLotId),
                             overflow: TextOverflow.ellipsis,
                             maxLines: 1,
                           ),
                         ),
-                        if (s.ammoLotId != null && ammo == null)
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              ammoLoadoutLabel(null, deletedId: s.ammoLotId),
-                              overflow: TextOverflow.ellipsis,
-                              maxLines: 1,
-                            ),
-                          ),
-                        ...compatibleAmmo.map(
-                          (a) => Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              ammoLoadoutLabel(a),
-                              overflow: TextOverflow.ellipsis,
-                              maxLines: 1,
-                            ),
+                      ...compatibleAmmo.map(
+                        (a) => Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            ammoLoadoutLabel(a),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
                           ),
                         ),
-                      ],
-                      onChanged: (rifle == null)
-                          ? null
-                          : (v) async {
-                              if (v == s.ammoLotId) return;
+                      ),
+                    ],
+                    onChanged: (rifle == null)
+                        ? null
+                        : (v) async {
+                            if (v == s.ammoLotId) return;
 
-                              final current = s.strings.firstWhere(
-                                (x) => x.id == s.activeStringId,
-                                orElse: () => s.strings.isNotEmpty
-                                    ? s.strings.last
-                                    : SessionStringMeta(
-                                        id: s.activeStringId,
-                                        startedAt: DateTime.now(),
-                                        endedAt: null,
-                                      ),
+                            final current = s.strings.firstWhere(
+                              (x) => x.id == s.activeStringId,
+                              orElse: () => s.strings.isNotEmpty
+                                  ? s.strings.last
+                                  : SessionStringMeta(
+                                      id: s.activeStringId,
+                                      startedAt: DateTime.now(),
+                                      endedAt: null,
+                                    ),
+                            );
+
+                            // If we haven't completed a loadout yet, just set it (no prompt).
+                            if (current.rifleId == null ||
+                                current.ammoLotId == null) {
+                              state.updateSessionLoadout(
+                                sessionId: s.id,
+                                rifleId: s.rifleId,
+                                ammoLotId: v,
+                                startNewString: false,
                               );
+                              return;
+                            }
 
-                              // If we haven't completed a loadout yet, just set it (no prompt).
-                              if (current.rifleId == null ||
-                                  current.ammoLotId == null) {
+                            if (v == null) {
+                              state.updateSessionLoadout(
+                                sessionId: s.id,
+                                rifleId: s.rifleId,
+                                ammoLotId: null,
+                                startNewString: false,
+                              );
+                              return;
+                            }
+
+                            // Only prompt when BOTH rifle + ammo are selected (i.e., loadout is complete).
+                            if (s.rifleId != null) {
+                              final nextRifle = s.rifleId;
+                              final nextAmmo = v;
+
+                              final changed =
+                                  (nextRifle != current.rifleId) ||
+                                  (nextAmmo != current.ammoLotId);
+                              if (!changed) return;
+
+                              final existing = _findMatchingString(
+                                s,
+                                rifleId: nextRifle,
+                                ammoLotId: nextAmmo,
+                                excludeStringId: current.id,
+                              );
+                              if (existing != null) {
+                                final shouldSwitch =
+                                    await _promptSwitchToExistingStringDialog(
+                                      context,
+                                      existing,
+                                    );
+                                if (shouldSwitch) {
+                                  state.setActiveString(
+                                    sessionId: s.id,
+                                    stringId: existing.id,
+                                  );
+                                  return;
+                                }
+                              }
+
+                              final startNew =
+                                  await _promptStartNewStringDialog(context);
+                              if (!startNew) {
+                                // Revert to current active string loadout.
                                 state.updateSessionLoadout(
                                   sessionId: s.id,
-                                  rifleId: s.rifleId,
-                                  ammoLotId: v,
+                                  rifleId: current.rifleId,
+                                  ammoLotId: current.ammoLotId,
                                   startNewString: false,
                                 );
                                 return;
                               }
 
-                              // Only prompt when BOTH rifle + ammo are selected (i.e., loadout is complete).
-                              if (s.rifleId != null && v != null) {
-                                final nextRifle = s.rifleId;
-                                final nextAmmo = v;
-
-                                final changed =
-                                    (nextRifle != current.rifleId) ||
-                                    (nextAmmo != current.ammoLotId);
-                                if (!changed) return;
-
-                                final existing = _findMatchingString(
-                                  s,
-                                  rifleId: nextRifle,
-                                  ammoLotId: nextAmmo,
-                                  excludeStringId: current.id,
-                                );
-                                if (existing != null) {
-                                  final shouldSwitch =
-                                      await _promptSwitchToExistingStringDialog(
-                                        context,
-                                        existing,
-                                      );
-                                  if (shouldSwitch) {
-                                    state.setActiveString(
-                                      sessionId: s.id,
-                                      stringId: existing.id,
-                                    );
-                                    return;
-                                  }
-                                }
-
-                                final startNew =
-                                    await _promptStartNewStringDialog(context);
-                                if (!startNew) {
-                                  // Revert to current active string loadout.
-                                  state.updateSessionLoadout(
-                                    sessionId: s.id,
-                                    rifleId: current.rifleId,
-                                    ammoLotId: current.ammoLotId,
-                                    startNewString: false,
-                                  );
-                                  return;
-                                }
-
-                                state.updateSessionLoadout(
-                                  sessionId: s.id,
-                                  rifleId: nextRifle,
-                                  ammoLotId: nextAmmo,
-                                  startNewString: true,
-                                );
-                              }
-                            },
-                    ),
+                              state.updateSessionLoadout(
+                                sessionId: s.id,
+                                rifleId: nextRifle,
+                                ammoLotId: nextAmmo,
+                                startNewString: true,
+                              );
+                            }
+                          },
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
               const SizedBox(height: 16),
               Row(
                 children: [
@@ -11288,7 +11291,11 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
                               filteredRows.isEmpty
                                   ? 'No cold bore entries match the current filter.'
                                   : 'Showing ${filteredRows.length} cold bore entr${filteredRows.length == 1 ? 'y' : 'ies'} on the target below.',
-                              style: const TextStyle(color: Colors.black54),
+                              style: TextStyle(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurface.withValues(alpha: 0.7),
+                              ),
                             ),
                           ],
                         ),
@@ -11314,21 +11321,31 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
                             ),
                             const SizedBox(height: 8),
                             if (top.isEmpty) ...[
-                              const Text(
+                              Text(
                                 'No baseline drift data yet.',
-                                style: TextStyle(color: Colors.black54),
+                                style: TextStyle(
+                                  color: Theme.of(context).colorScheme.onSurface
+                                      .withValues(alpha: 0.7),
+                                ),
                               ),
                               const SizedBox(height: 6),
-                              const Text(
+                              Text(
                                 'Tip: Mark a cold bore entry as Baseline for a specific Rifle + Ammo, and enter an Impact Offset (or use Impact OK).',
-                                style: TextStyle(color: Colors.black54),
+                                style: TextStyle(
+                                  color: Theme.of(context).colorScheme.onSurface
+                                      .withValues(alpha: 0.7),
+                                ),
                               ),
                             ] else ...[
                               for (final s in top) ...[
                                 Text('${s['rifle']} • ${s['ammo']}'),
                                 Text(
                                   'Avg drift: ${(s['avg'] as double).toStringAsFixed(2)} MOA • Latest: ${dir(s['dx'] as double, 'Right', 'Left')} • ${dir(s['dy'] as double, 'Up', 'Down')}',
-                                  style: const TextStyle(color: Colors.black54),
+                                  style: TextStyle(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurface.withValues(alpha: 0.7),
+                                  ),
                                 ),
                                 const SizedBox(height: 8),
                               ],
@@ -14990,15 +15007,6 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                     ],
                   ),
                 ],
-                Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.info_outline),
-                    title: const Text('Backup & Restore moved'),
-                    subtitle: const Text(
-                      'Use Settings for iCloud backup/restore and JSON backup files.',
-                    ),
-                  ),
-                ),
               ],
             ),
           ),

@@ -9,6 +9,7 @@ class CloudKitBackupHandler {
     private let timestampField = "timestamp"
     private let backupAssetField = "backupAsset"
     private let backupStringField = "backupData" // Legacy fallback
+    private let legacyStringMaxBytes = 500_000
     
     func backupToiCloud(backupData: String, timestamp: String, completion: @escaping (String?) -> Void) {
         // Use CKAsset for larger payloads and better stability than a String field.
@@ -32,8 +33,13 @@ class CloudKitBackupHandler {
             let record = existingRecord ?? CKRecord(recordType: "ColdBoreBackup", recordID: self.latestBackupRecordId)
             record[self.timestampField] = timestamp
             record[self.backupAssetField] = CKAsset(fileURL: tempURL)
-            // Keep legacy field for compatibility with older restores.
-            record[self.backupStringField] = backupData
+            // Keep legacy field for compatibility with older restores, but
+            // avoid oversized string writes that can fail CloudKit saves.
+            if backupData.utf8.count <= self.legacyStringMaxBytes {
+                record[self.backupStringField] = backupData
+            } else {
+                record[self.backupStringField] = nil
+            }
 
             self.privateDatabase.save(record) { _, error in
                 try? FileManager.default.removeItem(at: tempURL)
