@@ -961,9 +961,7 @@ Future<void> main() async {
 }
 
 class ColdBoreApp extends StatelessWidget {
-  const ColdBoreApp({
-    super.key,
-  });
+  const ColdBoreApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -1072,8 +1070,7 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
       'cold_bore.last_icloud_restore_at_utc.v1';
   static const String _autoICloudRestoreSuccessPrefsKey =
       'cold_bore.auto_icloud_restore_success.v1';
-  static const String _tutorialShownPrefsKey =
-      'cold_bore.tutorial_shown.v1';
+  static const String _tutorialShownPrefsKey = 'cold_bore.tutorial_shown.v1';
 
   Timer? _iCloudBackupDebounceTimer;
   DateTime? _lastICloudBackupAt;
@@ -1195,13 +1192,11 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
     _iCloudBackupInFlight = true;
     try {
       final payload = _state.exportBackupJson();
-      final message = await _iCloudChannel.invokeMethod<String>(
-        'backupToiCloud',
-        {
-        'backupData': payload,
-        'timestamp': DateTime.now().toUtc().toIso8601String(),
-        },
-      );
+      final message = await _iCloudChannel
+          .invokeMethod<String>('backupToiCloud', {
+            'backupData': payload,
+            'timestamp': DateTime.now().toUtc().toIso8601String(),
+          });
       if (message != null && message.toLowerCase().contains('failed')) {
         throw StateError(message);
       }
@@ -1239,8 +1234,8 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
     final message = await _iCloudChannel.invokeMethod<String>(
       'backupToiCloud',
       {
-      'backupData': payload,
-      'timestamp': DateTime.now().toUtc().toIso8601String(),
+        'backupData': payload,
+        'timestamp': DateTime.now().toUtc().toIso8601String(),
       },
     );
     if (message != null && message.toLowerCase().contains('failed')) {
@@ -1273,9 +1268,7 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
         break;
       }
       if (attempt < 2) {
-        await Future<void>.delayed(
-          Duration(seconds: attempt == 0 ? 1 : 2),
-        );
+        await Future<void>.delayed(Duration(seconds: attempt == 0 ? 1 : 2));
       }
     }
     if (jsonText == null || jsonText.trim().isEmpty) {
@@ -1337,9 +1330,9 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
 /// If not entitled, shows the paywall and returns false.
 Future<bool> _guardWrite(BuildContext context) async {
   if (SubscriptionService().isEntitled) return true;
-  await Navigator.of(context).push(
-    MaterialPageRoute(builder: (_) => const _PaywallScreen()),
-  );
+  await Navigator.of(
+    context,
+  ).push(MaterialPageRoute(builder: (_) => const _PaywallScreen()));
   return false;
 }
 
@@ -1403,11 +1396,26 @@ class _PaywallScreenState extends State<_PaywallScreen> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 24),
-              _FeatureRow(icon: Icons.event_note_outlined, label: 'Add new shooting sessions'),
-              _FeatureRow(icon: Icons.ac_unit_outlined, label: 'Log cold bore shots and strings'),
-              _FeatureRow(icon: Icons.build_outlined, label: 'Track gear and maintenance'),
-              _FeatureRow(icon: Icons.timer_outlined, label: 'Record timer runs'),
-              _FeatureRow(icon: Icons.picture_as_pdf_outlined, label: 'Export PDF reports (always free)'),
+              _FeatureRow(
+                icon: Icons.event_note_outlined,
+                label: 'Add new shooting sessions',
+              ),
+              _FeatureRow(
+                icon: Icons.ac_unit_outlined,
+                label: 'Log cold bore shots and strings',
+              ),
+              _FeatureRow(
+                icon: Icons.build_outlined,
+                label: 'Track gear and maintenance',
+              ),
+              _FeatureRow(
+                icon: Icons.timer_outlined,
+                label: 'Record timer runs',
+              ),
+              _FeatureRow(
+                icon: Icons.picture_as_pdf_outlined,
+                label: 'Export PDF reports (always free)',
+              ),
               const Spacer(),
               if (_sub.lastError != null)
                 Padding(
@@ -1432,9 +1440,7 @@ class _PaywallScreenState extends State<_PaywallScreen> {
               ),
               const SizedBox(height: 12),
               OutlinedButton(
-                onPressed: _sub.loading
-                    ? null
-                    : () => _sub.restorePurchases(),
+                onPressed: _sub.loading ? null : () => _sub.restorePurchases(),
                 child: const Text('Restore purchases'),
               ),
               const SizedBox(height: 8),
@@ -2421,10 +2427,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setSessionArchived({
-    required String sessionId,
-    required bool archived,
-  }) {
+  void setSessionArchived({required String sessionId, required bool archived}) {
     final idx = _sessions.indexWhere((s) => s.id == sessionId);
     if (idx < 0) return;
     final s = _sessions[idx];
@@ -2610,6 +2613,64 @@ class AppState extends ChangeNotifier {
     final dk = DistanceKey(entry.distance, entry.distanceUnit);
     workingMap[key]![dk] = entry;
     notifyListeners();
+  }
+
+  bool deleteTrainingDopeEntry({
+    required String sessionId,
+    required String dopeEntryId,
+  }) {
+    final idx = _sessions.indexWhere((s) => s.id == sessionId);
+    if (idx < 0) return false;
+    final s = _sessions[idx];
+
+    final updatedTrainingDope = s.trainingDope
+        .where((e) => e.id != dopeEntryId)
+        .toList();
+    if (updatedTrainingDope.length == s.trainingDope.length) {
+      return false;
+    }
+
+    final updatedByString = <String, List<DopeEntry>>{
+      for (final entry in s.trainingDopeByString.entries)
+        entry.key: entry.value.where((e) => e.id != dopeEntryId).toList(),
+    };
+
+    _sessions[idx] = s.copyWith(
+      trainingDope: updatedTrainingDope,
+      trainingDopeByString: updatedByString,
+    );
+    notifyListeners();
+    return true;
+  }
+
+  bool deleteWorkingDopeEntry({
+    required bool rifleOnly,
+    required String bucketKey,
+    required DistanceKey distanceKey,
+  }) {
+    final map = rifleOnly ? _workingDopeRifleOnly : _workingDopeRifleAmmo;
+    final bucket = map[bucketKey];
+    if (bucket == null) return false;
+
+    final removed = bucket.remove(distanceKey) != null;
+    if (!removed) return false;
+    if (bucket.isEmpty) {
+      map.remove(bucketKey);
+    }
+
+    notifyListeners();
+    return true;
+  }
+
+  bool clearWorkingDopeBucket({
+    required bool rifleOnly,
+    required String bucketKey,
+  }) {
+    final map = rifleOnly ? _workingDopeRifleOnly : _workingDopeRifleAmmo;
+    if (!map.containsKey(bucketKey)) return false;
+    map.remove(bucketKey);
+    notifyListeners();
+    return true;
   }
 
   ShotEntry? shotById({required String sessionId, required String shotId}) {
@@ -2884,14 +2945,12 @@ class AppState extends ChangeNotifier {
     Rifle rifle,
     MaintenanceTaskType type,
   ) {
-    final serviceType =
-        type == MaintenanceTaskType.barrelLife
-            ? MaintenanceTaskType.barrelChange
-            : type;
-    final services = rifle.services
-        .where((entry) => entry.taskType == serviceType)
-        .toList()
-      ..sort((a, b) => b.date.compareTo(a.date));
+    final serviceType = type == MaintenanceTaskType.barrelLife
+        ? MaintenanceTaskType.barrelChange
+        : type;
+    final services =
+        rifle.services.where((entry) => entry.taskType == serviceType).toList()
+          ..sort((a, b) => b.date.compareTo(a.date));
     return services;
   }
 
@@ -2929,7 +2988,11 @@ class AppState extends ChangeNotifier {
   ) {
     final services = _servicesForMaintenanceType(rifle, rule.type);
     final lastService = services.isEmpty ? null : services.first;
-    final baselineDate = _baselineDateForMaintenanceType(rifle, rule.type, lastService);
+    final baselineDate = _baselineDateForMaintenanceType(
+      rifle,
+      rule.type,
+      lastService,
+    );
 
     int? roundsSince;
     int? roundsRemaining;
@@ -2960,9 +3023,13 @@ class AppState extends ChangeNotifier {
     }
 
     final overdueRounds =
-        rule.intervalRounds != null && roundsRemaining != null && roundsRemaining <= 0;
+        rule.intervalRounds != null &&
+        roundsRemaining != null &&
+        roundsRemaining <= 0;
     final overdueDays =
-        rule.intervalDays != null && daysRemaining != null && daysRemaining <= 0;
+        rule.intervalDays != null &&
+        daysRemaining != null &&
+        daysRemaining <= 0;
 
     final dueSoonRounds =
         !overdueRounds &&
@@ -2975,12 +3042,11 @@ class AppState extends ChangeNotifier {
         daysRemaining != null &&
         daysRemaining <= _dayDueSoonBuffer(rule.intervalDays!);
 
-    final status =
-        (overdueRounds || overdueDays)
-            ? MaintenanceDueStatus.overdue
-            : ((dueSoonRounds || dueSoonDays)
-                  ? MaintenanceDueStatus.dueSoon
-                  : MaintenanceDueStatus.good);
+    final status = (overdueRounds || overdueDays)
+        ? MaintenanceDueStatus.overdue
+        : ((dueSoonRounds || dueSoonDays)
+              ? MaintenanceDueStatus.dueSoon
+              : MaintenanceDueStatus.good);
 
     return MaintenanceReminderStatus(
       rule: rule,
@@ -2998,10 +3064,12 @@ class AppState extends ChangeNotifier {
     if (rifle == null) {
       throw StateError('Rifle not found: $rifleId');
     }
-    final rules = maintenanceRulesForRifle(rifleId)
-        .where((rule) => rule.enabled)
+    final rules = maintenanceRulesForRifle(
+      rifleId,
+    ).where((rule) => rule.enabled).toList();
+    final statuses = rules
+        .map((rule) => _buildMaintenanceStatus(rifle, rule))
         .toList();
-    final statuses = rules.map((rule) => _buildMaintenanceStatus(rifle, rule)).toList();
     final lastService = [...rifle.services]
       ..sort((a, b) => b.date.compareTo(a.date));
     return RifleMaintenanceSnapshot(
@@ -3014,7 +3082,9 @@ class AppState extends ChangeNotifier {
   }
 
   List<RifleMaintenanceSnapshot> maintenanceSnapshots() {
-    return _rifles.map((rifle) => maintenanceSnapshotForRifle(rifle.id)).toList();
+    return _rifles
+        .map((rifle) => maintenanceSnapshotForRifle(rifle.id))
+        .toList();
   }
 
   int totalRoundsForRifle(String rifleId) {
@@ -4256,7 +4326,9 @@ class MaintenanceReminderRule {
     return MaintenanceReminderRule(
       type: type ?? this.type,
       enabled: enabled ?? this.enabled,
-      intervalRounds: clearRounds ? null : (intervalRounds ?? this.intervalRounds),
+      intervalRounds: clearRounds
+          ? null
+          : (intervalRounds ?? this.intervalRounds),
       intervalDays: clearDays ? null : (intervalDays ?? this.intervalDays),
       notes: notes ?? this.notes,
     );
@@ -4320,11 +4392,13 @@ class RifleMaintenanceSnapshot {
     required this.lastService,
   });
 
-  int get overdueCount =>
-      statuses.where((status) => status.status == MaintenanceDueStatus.overdue).length;
+  int get overdueCount => statuses
+      .where((status) => status.status == MaintenanceDueStatus.overdue)
+      .length;
 
-  int get dueSoonCount =>
-      statuses.where((status) => status.status == MaintenanceDueStatus.dueSoon).length;
+  int get dueSoonCount => statuses
+      .where((status) => status.status == MaintenanceDueStatus.dueSoon)
+      .length;
 
   MaintenanceDueStatus get overallStatus {
     if (overdueCount > 0) return MaintenanceDueStatus.overdue;
@@ -4512,7 +4586,8 @@ class RifleServiceEntry {
       notes: (map['notes'] ?? '').toString(),
       taskType: MaintenanceTaskType.values.firstWhere(
         (value) =>
-            value.name == (map['taskType'] ?? MaintenanceTaskType.general.name).toString(),
+            value.name ==
+            (map['taskType'] ?? MaintenanceTaskType.general.name).toString(),
         orElse: () => MaintenanceTaskType.general,
       ),
     );
@@ -4716,7 +4791,7 @@ class TrainingSession {
       confirmedShotCount: confirmedShotCount ?? this.confirmedShotCount,
       shotCountAppliedToRifle:
           shotCountAppliedToRifle ?? this.shotCountAppliedToRifle,
-        endedAt: endedAt == _unsetDateTime ? this.endedAt : endedAt as DateTime?,
+      endedAt: endedAt == _unsetDateTime ? this.endedAt : endedAt as DateTime?,
       shotTimerElapsedMs: shotTimerElapsedMs ?? this.shotTimerElapsedMs,
       shotTimerFirstShotMs: shotTimerFirstShotMs ?? this.shotTimerFirstShotMs,
       shotTimerSplitMs: shotTimerSplitMs ?? this.shotTimerSplitMs,
@@ -5674,7 +5749,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final message = _sub.isEntitled
         ? 'Purchase restored. Full access enabled.'
         : 'No active subscription found for this Apple ID.';
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _loadCloudBackupStatus() async {
@@ -5700,14 +5777,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await backup();
       await _loadCloudBackupStatus();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cloud backup completed.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Cloud backup completed.')));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Cloud backup failed: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Cloud backup failed: $e')));
     } finally {
       if (mounted) setState(() => _cloudBusy = false);
     }
@@ -5753,9 +5830,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Cloud restore failed: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Cloud restore failed: $e')));
     } finally {
       if (mounted) setState(() => _cloudBusy = false);
     }
@@ -5871,7 +5948,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: ListTile(
               leading: const Icon(Icons.refresh_outlined),
               title: const Text('Restore purchases'),
-              subtitle: const Text('Use this after reinstall or new device setup.'),
+              subtitle: const Text(
+                'Use this after reinstall or new device setup.',
+              ),
               onTap: _sub.loading ? null : _restorePurchases,
             ),
           ),
@@ -5879,7 +5958,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: ListTile(
               leading: const Icon(Icons.person_outline),
               title: const Text('Manage users'),
-              subtitle: const Text('Switch active user or add another user profile.'),
+              subtitle: const Text(
+                'Switch active user or add another user profile.',
+              ),
               onTap: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(
@@ -5893,7 +5974,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: ListTile(
               leading: const Icon(Icons.info_outline),
               title: const Text('App version'),
-              subtitle: Text(_versionText.isEmpty ? 'Loading...' : _versionText),
+              subtitle: Text(
+                _versionText.isEmpty ? 'Loading...' : _versionText,
+              ),
             ),
           ),
         ],
@@ -5904,10 +5987,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
 class DataScreen extends StatefulWidget {
   final AppState state;
-  const DataScreen({
-    super.key,
-    required this.state,
-  });
+  const DataScreen({super.key, required this.state});
 
   @override
   State<DataScreen> createState() => _DataScreenState();
@@ -6150,6 +6230,7 @@ class _DataScreenState extends State<DataScreen> {
                           DataColumn(label: Text('Wind')),
                           DataColumn(label: Text('Windage Left')),
                           DataColumn(label: Text('Windage Right')),
+                          DataColumn(label: Text('Actions')),
                         ],
                         rows: dks.map((dk) {
                           final e = inner[dk]!;
@@ -6186,6 +6267,72 @@ class _DataScreenState extends State<DataScreen> {
                               ),
                               DataCell(Text(e.windageLeft.toStringAsFixed(2))),
                               DataCell(Text(e.windageRight.toStringAsFixed(2))),
+                              DataCell(
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline),
+                                  tooltip: 'Delete working DOPE',
+                                  onPressed: () async {
+                                    final ok = await showDialog<bool>(
+                                      context: context,
+                                      builder: (_) => AlertDialog(
+                                        title: const Text(
+                                          'Delete working DOPE entry?',
+                                        ),
+                                        content: const Text(
+                                          'This cannot be undone.',
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () =>
+                                                Navigator.pop(context, false),
+                                            child: const Text('Cancel'),
+                                          ),
+                                          FilledButton(
+                                            onPressed: () =>
+                                                Navigator.pop(context, true),
+                                            child: const Text('Delete'),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                    if (ok != true) return;
+
+                                    var removed = widget.state
+                                        .deleteWorkingDopeEntry(
+                                          rifleOnly: _rifleOnly,
+                                          bucketKey: key,
+                                          distanceKey: dk,
+                                        );
+
+                                    // In rifle-only mode we may be showing a merged
+                                    // derived entry from a rifle+ammo bucket.
+                                    if (!removed && _rifleOnly) {
+                                      final rid = e.rifleId;
+                                      final aid = e.ammoLotId;
+                                      if (rid != null && aid != null) {
+                                        removed = widget.state
+                                            .deleteWorkingDopeEntry(
+                                              rifleOnly: false,
+                                              bucketKey: '${rid}_$aid',
+                                              distanceKey: dk,
+                                            );
+                                      }
+                                    }
+
+                                    if (context.mounted && !removed) {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                            'Could not find that DOPE entry to delete.',
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                  },
+                                ),
+                              ),
                             ],
                           );
                         }).toList(),
@@ -6401,13 +6548,15 @@ class _DataScreenState extends State<DataScreen> {
                   final overdue = snapshots
                       .where(
                         (snapshot) =>
-                            snapshot.overallStatus == MaintenanceDueStatus.overdue,
+                            snapshot.overallStatus ==
+                            MaintenanceDueStatus.overdue,
                       )
                       .length;
                   final dueSoon = snapshots
                       .where(
                         (snapshot) =>
-                            snapshot.overallStatus == MaintenanceDueStatus.dueSoon,
+                            snapshot.overallStatus ==
+                            MaintenanceDueStatus.dueSoon,
                       )
                       .length;
                   return Card(
@@ -6518,25 +6667,25 @@ class _UsersScreenState extends State<UsersScreen> {
           final isActive = active?.id == u.id;
           final canDelete = users.length > 1;
           return ListTile(
-                  title: Text(_displayUserName(u)),
-                  subtitle: Text(_displayUserIdentifier(u.identifier)),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (isActive) const Icon(Icons.check_circle_outline),
-                      if (canDelete)
-                        IconButton(
-                          tooltip: 'Delete user',
-                          onPressed: () => _deleteUser(u),
-                          icon: const Icon(Icons.delete_outline),
-                        ),
-                    ],
+            title: Text(_displayUserName(u)),
+            subtitle: Text(_displayUserIdentifier(u.identifier)),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (isActive) const Icon(Icons.check_circle_outline),
+                if (canDelete)
+                  IconButton(
+                    tooltip: 'Delete user',
+                    onPressed: () => _deleteUser(u),
+                    icon: const Icon(Icons.delete_outline),
                   ),
-                  onTap: () {
-                    widget.state.switchUser(u);
-                    Navigator.of(context).pop();
-                  },
-                );
+              ],
+            ),
+            onTap: () {
+              widget.state.switchUser(u);
+              Navigator.of(context).pop();
+            },
+          );
         },
       ),
     );
@@ -6678,7 +6827,9 @@ class _SessionsScreenState extends State<SessionsScreen> {
     if (_monthFilter != null) parts.add(_monthLabel(_monthFilter!));
     if (_folderFilter != null) {
       parts.add(
-        _folderFilter == '__unfiled__' ? 'Unfiled only' : 'Folder ${_folderFilter!}',
+        _folderFilter == '__unfiled__'
+            ? 'Unfiled only'
+            : 'Folder ${_folderFilter!}',
       );
     }
     return parts.join(' • ');
@@ -6708,13 +6859,17 @@ class _SessionsScreenState extends State<SessionsScreen> {
     );
   }
 
-  Future<void> _editFolder(BuildContext context, TrainingSession session) async {
-    final existingFolders = widget.state.sessions
-        .map((s) => s.folderName.trim())
-        .where((name) => name.isNotEmpty)
-        .toSet()
-        .toList()
-      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+  Future<void> _editFolder(
+    BuildContext context,
+    TrainingSession session,
+  ) async {
+    final existingFolders =
+        widget.state.sessions
+            .map((s) => s.folderName.trim())
+            .where((name) => name.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
     final ctrl = TextEditingController(text: session.folderName.trim());
     try {
       final next = await showDialog<String>(
@@ -6810,7 +6965,10 @@ class _SessionsScreenState extends State<SessionsScreen> {
     );
     if (confirmed != true) return;
     for (final session in sessions) {
-      widget.state.setSessionArchived(sessionId: session.id, archived: archived);
+      widget.state.setSessionArchived(
+        sessionId: session.id,
+        archived: archived,
+      );
     }
   }
 
@@ -6819,19 +6977,22 @@ class _SessionsScreenState extends State<SessionsScreen> {
     List<TrainingSession> sessions,
   ) async {
     if (sessions.isEmpty) return;
-    final existingFolders = widget.state.sessions
-        .map((s) => s.folderName.trim())
-        .where((name) => name.isNotEmpty)
-        .toSet()
-        .toList()
-      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    final existingFolders =
+        widget.state.sessions
+            .map((s) => s.folderName.trim())
+            .where((name) => name.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
     final ctrl = TextEditingController();
     try {
       final next = await showDialog<String>(
         context: context,
         builder: (_) => StatefulBuilder(
           builder: (context, setLocalState) => AlertDialog(
-            title: Text('Move ${sessions.length} session${sessions.length == 1 ? '' : 's'}'),
+            title: Text(
+              'Move ${sessions.length} session${sessions.length == 1 ? '' : 's'}',
+            ),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -6884,7 +7045,10 @@ class _SessionsScreenState extends State<SessionsScreen> {
       );
       if (next == null) return;
       for (final session in sessions) {
-        widget.state.updateSessionFolder(sessionId: session.id, folderName: next);
+        widget.state.updateSessionFolder(
+          sessionId: session.id,
+          folderName: next,
+        );
       }
       if (!mounted) return;
       if (next.trim().isNotEmpty && _folderFilter == null) {
@@ -7016,16 +7180,19 @@ class _SessionsScreenState extends State<SessionsScreen> {
           );
         }
 
-        final availableYears = sessions.map((s) => s.dateTime.year).toSet().toList()
-          ..sort((a, b) => b.compareTo(a));
-        final availableMonths = sessions.map((s) => _monthKey(s.dateTime)).toSet().toList()
-          ..sort((a, b) => b.compareTo(a));
-        final availableFolders = sessions
-            .map((s) => s.folderName.trim())
-            .where((f) => f.isNotEmpty)
-            .toSet()
-            .toList()
-          ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+        final availableYears =
+            sessions.map((s) => s.dateTime.year).toSet().toList()
+              ..sort((a, b) => b.compareTo(a));
+        final availableMonths =
+            sessions.map((s) => _monthKey(s.dateTime)).toSet().toList()
+              ..sort((a, b) => b.compareTo(a));
+        final availableFolders =
+            sessions
+                .map((s) => s.folderName.trim())
+                .where((f) => f.isNotEmpty)
+                .toSet()
+                .toList()
+              ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
 
         final filtered = sessions.where((s) {
           if (!_showArchived && s.archived) return false;
@@ -7057,7 +7224,9 @@ class _SessionsScreenState extends State<SessionsScreen> {
               key = _monthLabel(_monthKey(s.dateTime));
               break;
             case 'folder':
-              key = s.folderName.trim().isEmpty ? 'Unfiled' : s.folderName.trim();
+              key = s.folderName.trim().isEmpty
+                  ? 'Unfiled'
+                  : s.folderName.trim();
               break;
             default:
               key = 'Sessions';
@@ -7068,7 +7237,8 @@ class _SessionsScreenState extends State<SessionsScreen> {
         if (_groupBy == 'folder') {
           for (final entry in grouped.entries) {
             final key = _groupStorageKey('folder', entry.key);
-            if (_initializedCollapsedGroups.add(key) && entry.key != 'Unfiled') {
+            if (_initializedCollapsedGroups.add(key) &&
+                entry.key != 'Unfiled') {
               _collapsedGroups.add(key);
             }
           }
@@ -7107,7 +7277,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
                               : Icons.expand_less,
                         ),
                         onTap: () =>
-                          _setFiltersPanelCollapsed(!_filtersPanelCollapsed),
+                            _setFiltersPanelCollapsed(!_filtersPanelCollapsed),
                       ),
                       if (!_filtersPanelCollapsed) ...[
                         const SizedBox(height: 8),
@@ -7124,10 +7294,22 @@ class _SessionsScreenState extends State<SessionsScreen> {
                             labelText: 'Group by',
                           ),
                           items: const [
-                            DropdownMenuItem(value: 'none', child: Text('Newest first')),
-                            DropdownMenuItem(value: 'year', child: Text('Year')),
-                            DropdownMenuItem(value: 'month', child: Text('Month')),
-                            DropdownMenuItem(value: 'folder', child: Text('Folder')),
+                            DropdownMenuItem(
+                              value: 'none',
+                              child: Text('Newest first'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'year',
+                              child: Text('Year'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'month',
+                              child: Text('Month'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'folder',
+                              child: Text('Folder'),
+                            ),
                           ],
                           onChanged: (value) =>
                               setState(() => _groupBy = value ?? 'none'),
@@ -7135,7 +7317,9 @@ class _SessionsScreenState extends State<SessionsScreen> {
                         const SizedBox(height: 8),
                         DropdownButtonFormField<int?>(
                           initialValue: _yearFilter,
-                          decoration: const InputDecoration(labelText: 'Year filter'),
+                          decoration: const InputDecoration(
+                            labelText: 'Year filter',
+                          ),
                           items: [
                             const DropdownMenuItem<int?>(
                               value: null,
@@ -7148,12 +7332,15 @@ class _SessionsScreenState extends State<SessionsScreen> {
                               ),
                             ),
                           ],
-                          onChanged: (value) => setState(() => _yearFilter = value),
+                          onChanged: (value) =>
+                              setState(() => _yearFilter = value),
                         ),
                         const SizedBox(height: 8),
                         DropdownButtonFormField<String?>(
                           initialValue: _monthFilter,
-                          decoration: const InputDecoration(labelText: 'Month filter'),
+                          decoration: const InputDecoration(
+                            labelText: 'Month filter',
+                          ),
                           items: [
                             const DropdownMenuItem<String?>(
                               value: null,
@@ -7166,12 +7353,15 @@ class _SessionsScreenState extends State<SessionsScreen> {
                               ),
                             ),
                           ],
-                          onChanged: (value) => setState(() => _monthFilter = value),
+                          onChanged: (value) =>
+                              setState(() => _monthFilter = value),
                         ),
                         const SizedBox(height: 8),
                         DropdownButtonFormField<String?>(
                           initialValue: _folderFilter,
-                          decoration: const InputDecoration(labelText: 'Folder filter'),
+                          decoration: const InputDecoration(
+                            labelText: 'Folder filter',
+                          ),
                           items: [
                             const DropdownMenuItem<String?>(
                               value: null,
@@ -7188,7 +7378,8 @@ class _SessionsScreenState extends State<SessionsScreen> {
                               ),
                             ),
                           ],
-                          onChanged: (value) => setState(() => _folderFilter = value),
+                          onChanged: (value) =>
+                              setState(() => _folderFilter = value),
                         ),
                         const SizedBox(height: 8),
                         Wrap(
@@ -7212,7 +7403,8 @@ class _SessionsScreenState extends State<SessionsScreen> {
                             FilledButton.tonalIcon(
                               onPressed: filtered.isEmpty
                                   ? null
-                                  : () => _bulkArchive(context, filtered, false),
+                                  : () =>
+                                        _bulkArchive(context, filtered, false),
                               icon: const Icon(Icons.unarchive_outlined),
                               label: Text('Unarchive ${filtered.length}'),
                             ),
@@ -7228,7 +7420,8 @@ class _SessionsScreenState extends State<SessionsScreen> {
                 const _HintCard(
                   icon: Icons.folder_open_outlined,
                   title: 'No sessions match current filters',
-                  message: 'Adjust year/month/folder or include archived sessions.',
+                  message:
+                      'Adjust year/month/folder or include archived sessions.',
                 )
               else
                 ...grouped.entries.expand((entry) {
@@ -7293,6 +7486,8 @@ class _DopeResult {
 
   _DopeResult(this.entry, this.promote, this.rifleOnly);
 }
+
+enum _WorkingDopeConflictChoice { replace, addBoth }
 
 class _DopeEntryDialog extends StatefulWidget {
   const _DopeEntryDialog({
@@ -7382,7 +7577,8 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
             Row(
               children: [
                 Expanded(
-                  child: TextField(textCapitalization: TextCapitalization.none, 
+                  child: TextField(
+                    textCapitalization: TextCapitalization.none,
                     controller: _distanceCtrl,
                     decoration: const InputDecoration(labelText: 'Distance'),
                     keyboardType: TextInputType.number,
@@ -7463,7 +7659,8 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
                     ),
                   ],
                 ),
-                TextField(textCapitalization: TextCapitalization.none, 
+                TextField(
+                  textCapitalization: TextCapitalization.none,
                   controller: _elevationNotesCtrl,
                   decoration: const InputDecoration(
                     labelText: 'Elevation notes (optional)',
@@ -7670,7 +7867,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
         if (split > 0) split,
     ];
     _selectedRifleId ??=
-      session?.rifleId ?? widget.state.shotTimerSelectedRifleId;
+        session?.rifleId ?? widget.state.shotTimerSelectedRifleId;
     _audioThresholdDb = widget.state.audioThresholdDb;
   }
 
@@ -8122,10 +8319,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
                 Chip(label: Text('Marked shots: $totalShotsMarked')),
                 if (_startDelayMs > 0)
                   Chip(
-                    avatar: const Icon(
-                      Icons.hourglass_top_outlined,
-                      size: 18,
-                    ),
+                    avatar: const Icon(Icons.hourglass_top_outlined, size: 18),
                     label: Text(
                       'Delayed start: ${(_startDelayMs / 1000).toStringAsFixed(1)}s',
                     ),
@@ -8157,7 +8351,8 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
             Row(
               children: [
                 Expanded(
-                  child: TextFormField(textCapitalization: TextCapitalization.none, 
+                  child: TextFormField(
+                    textCapitalization: TextCapitalization.none,
                     controller: _delayCtrl,
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
@@ -8171,7 +8366,8 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: TextFormField(textCapitalization: TextCapitalization.none, 
+                  child: TextFormField(
+                    textCapitalization: TextCapitalization.none,
                     controller: _goalCtrl,
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
@@ -8868,10 +9064,7 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
                 Chip(label: Text('Marked shots: $totalShotsMarked')),
                 if (_startDelayMs > 0)
                   Chip(
-                    avatar: const Icon(
-                      Icons.hourglass_top_outlined,
-                      size: 18,
-                    ),
+                    avatar: const Icon(Icons.hourglass_top_outlined, size: 18),
                     label: Text(
                       'Delayed start: ${(_startDelayMs / 1000).toStringAsFixed(1)}s',
                     ),
@@ -8903,7 +9096,8 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
             Row(
               children: [
                 Expanded(
-                  child: TextFormField(textCapitalization: TextCapitalization.none, 
+                  child: TextFormField(
+                    textCapitalization: TextCapitalization.none,
                     controller: _delayCtrl,
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
@@ -8917,7 +9111,8 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: TextFormField(textCapitalization: TextCapitalization.none, 
+                  child: TextFormField(
+                    textCapitalization: TextCapitalization.none,
                     controller: _goalCtrl,
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
@@ -9029,7 +9224,8 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
               value: widget.state.shotTimerApplyAudioShotCountToRifle,
               onChanged: _selectedRifleId == null
                   ? null
-                  : (v) => widget.state.setShotTimerApplyAudioShotCountToRifle(v),
+                  : (v) =>
+                        widget.state.setShotTimerApplyAudioShotCountToRifle(v),
             ),
             if (_audioShotCount > 0 && _selectedRifleId != null)
               FilledButton.icon(
@@ -9391,7 +9587,10 @@ class SessionDetailScreen extends StatelessWidget {
     return DateTime(date.year, date.month, date.day, time.hour, time.minute);
   }
 
-  Future<void> _editSessionDateTimes(BuildContext context, TrainingSession s) async {
+  Future<void> _editSessionDateTimes(
+    BuildContext context,
+    TrainingSession s,
+  ) async {
     var startAt = s.dateTime;
     var hasEnd = s.endedAt != null;
     var endAt = s.endedAt ?? DateTime.now();
@@ -9413,7 +9612,9 @@ class SessionDetailScreen extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        Expanded(child: Text('Start: ${_fmtDateTime(startAt)}')),
+                        Expanded(
+                          child: Text('Start: ${_fmtDateTime(startAt)}'),
+                        ),
                         TextButton.icon(
                           onPressed: () async {
                             final picked = await _pickSessionDateTime(
@@ -9452,7 +9653,9 @@ class SessionDetailScreen extends StatelessWidget {
                         });
                       },
                       title: const Text('Session ended'),
-                      subtitle: const Text('Turn off to keep the session active.'),
+                      subtitle: const Text(
+                        'Turn off to keep the session active.',
+                      ),
                     ),
                     if (hasEnd)
                       Row(
@@ -9525,9 +9728,9 @@ class SessionDetailScreen extends StatelessWidget {
     );
 
     if (!context.mounted || !didSave) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Session date/time updated.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Session date/time updated.')));
   }
 
   Future<void> _endSession(BuildContext context, TrainingSession s) async {
@@ -9709,32 +9912,43 @@ class SessionDetailScreen extends StatelessWidget {
       final key = res.rifleOnly
           ? s.rifleId!
           : '${s.rifleId}_${res.entry.ammoLotId}';
-      final wmap = res.rifleOnly
-          ? state.workingDopeRifleOnly[key] ?? {}
-          : state.workingDopeRifleAmmo[key] ?? {};
-      final dk = DistanceKey(res.entry.distance, res.entry.distanceUnit);
+      final existingBucket = res.rifleOnly
+          ? state.workingDopeRifleOnly[key]
+          : state.workingDopeRifleAmmo[key];
 
-      if (wmap.containsKey(dk)) {
-        final confirm = await showDialog<bool>(
+      if (existingBucket != null && existingBucket.isNotEmpty) {
+        final choice = await showDialog<_WorkingDopeConflictChoice>(
           context: context,
           builder: (_) => AlertDialog(
-            title: const Text('Replace existing?'),
+            title: const Text('Working DOPE already exists'),
             content: Text(
-              'Replace existing DOPE at ${dk.value} ${dk.unit.name}?',
+              'This ${res.rifleOnly ? 'rifle' : 'rifle + ammo'} combo already has working DOPE. Replace existing entries or add both?',
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context, false),
+                onPressed: () => Navigator.pop(context),
                 child: const Text('Cancel'),
               ),
+              OutlinedButton(
+                onPressed: () =>
+                    Navigator.pop(context, _WorkingDopeConflictChoice.addBoth),
+                child: const Text('Add Both'),
+              ),
               FilledButton(
-                onPressed: () => Navigator.pop(context, true),
+                onPressed: () =>
+                    Navigator.pop(context, _WorkingDopeConflictChoice.replace),
                 child: const Text('Replace'),
               ),
             ],
           ),
         );
-        if (confirm != true) return;
+        if (choice == null) return;
+        if (choice == _WorkingDopeConflictChoice.replace) {
+          state.clearWorkingDopeBucket(
+            rifleOnly: res.rifleOnly,
+            bucketKey: key,
+          );
+        }
       }
 
       state.addTrainingDope(
@@ -10140,7 +10354,8 @@ class SessionDetailScreen extends StatelessWidget {
                       );
 
                       // If we haven't completed a loadout yet, just set it (no prompt).
-                      if (current.rifleId == null || current.ammoLotId == null) {
+                      if (current.rifleId == null ||
+                          current.ammoLotId == null) {
                         state.updateSessionLoadout(
                           sessionId: s.id,
                           rifleId: v,
@@ -10173,10 +10388,11 @@ class SessionDetailScreen extends StatelessWidget {
                         excludeStringId: current.id,
                       );
                       if (existing != null) {
-                        final shouldSwitch = await _promptSwitchToExistingStringDialog(
-                          context,
-                          existing,
-                        );
+                        final shouldSwitch =
+                            await _promptSwitchToExistingStringDialog(
+                              context,
+                              existing,
+                            );
                         if (shouldSwitch) {
                           state.setActiveString(
                             sessionId: s.id,
@@ -10396,6 +10612,38 @@ class SessionDetailScreen extends StatelessWidget {
                         subtitle: Text(
                           'Wind: $wind${e.windNotes.trim().isEmpty ? '' : ' • ${e.windNotes.trim()}'}',
                         ),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete_outline),
+                          tooltip: 'Delete DOPE',
+                          onPressed: () async {
+                            final ok = await showDialog<bool>(
+                              context: context,
+                              builder: (_) => AlertDialog(
+                                title: const Text(
+                                  'Delete training DOPE entry?',
+                                ),
+                                content: const Text('This cannot be undone.'),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, false),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  FilledButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, true),
+                                    child: const Text('Delete'),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (ok != true) return;
+                            state.deleteTrainingDopeEntry(
+                              sessionId: s.id,
+                              dopeEntryId: e.id,
+                            );
+                          },
+                        ),
                       ),
                     );
                   }).toList();
@@ -10486,6 +10734,7 @@ class SessionDetailScreen extends StatelessWidget {
                   final useMap = useAmmoScoped
                       ? rifleAmmoMap
                       : (rifleOnlyMap ?? <DistanceKey, DopeEntry>{});
+                  final workingBucketKey = useAmmoScoped ? ammoKey : rifleKey;
 
                   final scopeLabel = useAmmoScoped
                       ? 'Rifle + Ammo'
@@ -10534,6 +10783,41 @@ class SessionDetailScreen extends StatelessWidget {
                               'Wind: $wind'
                               '${e.windNotes.trim().isEmpty ? '' : ' • ${e.windNotes.trim()}'}'
                               '${e.elevationNotes.trim().isEmpty ? '' : ' • Elev: ${e.elevationNotes.trim()}'}',
+                            ),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.delete_outline),
+                              tooltip: 'Delete working DOPE',
+                              onPressed: () async {
+                                final ok = await showDialog<bool>(
+                                  context: context,
+                                  builder: (_) => AlertDialog(
+                                    title: const Text(
+                                      'Delete working DOPE entry?',
+                                    ),
+                                    content: const Text(
+                                      'This cannot be undone.',
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () =>
+                                            Navigator.pop(context, false),
+                                        child: const Text('Cancel'),
+                                      ),
+                                      FilledButton(
+                                        onPressed: () =>
+                                            Navigator.pop(context, true),
+                                        child: const Text('Delete'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                                if (ok != true) return;
+                                state.deleteWorkingDopeEntry(
+                                  rifleOnly: !useAmmoScoped,
+                                  bucketKey: workingBucketKey!,
+                                  distanceKey: dk,
+                                );
+                              },
                             ),
                           ),
                         );
@@ -11069,9 +11353,10 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
                                 Text(
                                   'Avg drift: ${(s['avg'] as double).toStringAsFixed(2)} MOA • Latest: ${dir(s['dx'] as double, 'Right', 'Left')} • ${dir(s['dy'] as double, 'Up', 'Down')}',
                                   style: TextStyle(
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.onSurface.withValues(alpha: 0.7),
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurface
+                                        .withValues(alpha: 0.7),
                                   ),
                                 ),
                                 const SizedBox(height: 8),
@@ -11987,7 +12272,8 @@ class _EndSessionDialogState extends State<_EndSessionDialog> {
                         style: Theme.of(context).textTheme.titleSmall,
                       ),
                       const SizedBox(height: 6),
-                      TextField(textCapitalization: TextCapitalization.none, 
+                      TextField(
+                        textCapitalization: TextCapitalization.none,
                         controller: _shotCountCtrls[index],
                         keyboardType: TextInputType.number,
                         inputFormatters: [
@@ -12542,9 +12828,9 @@ class _PdfExportOptions {
       endDate: map['endDate'] == null
           ? null
           : DateTime.tryParse(map['endDate'].toString()),
-        folderFilter: map['folderFilter']?.toString(),
-        yearFilter: _toNullableInt(map['yearFilter']),
-        monthFilter: map['monthFilter']?.toString(),
+      folderFilter: map['folderFilter']?.toString(),
+      yearFilter: _toNullableInt(map['yearFilter']),
+      monthFilter: map['monthFilter']?.toString(),
     );
   }
 }
@@ -12690,7 +12976,8 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
               child: const Text('Cancel'),
             ),
             FilledButton(
-              onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+              onPressed: () =>
+                  Navigator.of(context).pop(controller.text.trim()),
               child: const Text('Save'),
             ),
           ],
@@ -12772,25 +13059,25 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
     String? folderFilter;
     int? yearFilter;
     String? monthFilter;
-    final availableFolders = availableSessions
-        .map((s) => s.folderName.trim())
-        .where((name) => name.isNotEmpty)
-        .toSet()
-        .toList()
-      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
-    final availableYears = availableSessions
-        .map((s) => s.dateTime.year)
-        .toSet()
-        .toList()
-      ..sort((a, b) => b.compareTo(a));
-    final availableMonths = availableSessions
-        .map(
-          (s) =>
-              '${s.dateTime.year}-${s.dateTime.month.toString().padLeft(2, '0')}',
-        )
-        .toSet()
-        .toList()
-      ..sort((a, b) => b.compareTo(a));
+    final availableFolders =
+        availableSessions
+            .map((s) => s.folderName.trim())
+            .where((name) => name.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    final availableYears =
+        availableSessions.map((s) => s.dateTime.year).toSet().toList()
+          ..sort((a, b) => b.compareTo(a));
+    final availableMonths =
+        availableSessions
+            .map(
+              (s) =>
+                  '${s.dateTime.year}-${s.dateTime.month.toString().padLeft(2, '0')}',
+            )
+            .toSet()
+            .toList()
+          ..sort((a, b) => b.compareTo(a));
 
     String monthLabel(String monthKey) {
       final parts = monthKey.split('-');
@@ -13114,7 +13401,8 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                       ),
                     ),
                   ],
-                  onChanged: (value) => setLocalState(() => folderFilter = value),
+                  onChanged: (value) =>
+                      setLocalState(() => folderFilter = value),
                 ),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<int?>(
@@ -13150,7 +13438,8 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                       ),
                     ),
                   ],
-                  onChanged: (value) => setLocalState(() => monthFilter = value),
+                  onChanged: (value) =>
+                      setLocalState(() => monthFilter = value),
                 ),
                 const SizedBox(height: 8),
                 Row(
@@ -13470,14 +13759,14 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
     final center = size / 2;
 
     pw.Positioned point(_ColdBoreRow row) {
-      final xInches = _shotOffsetToInches(row.shot, row.shot.offsetX!).clamp(
-        -halfSpanInches,
-        halfSpanInches,
-      );
-      final yInches = _shotOffsetToInches(row.shot, row.shot.offsetY!).clamp(
-        -halfSpanInches,
-        halfSpanInches,
-      );
+      final xInches = _shotOffsetToInches(
+        row.shot,
+        row.shot.offsetX!,
+      ).clamp(-halfSpanInches, halfSpanInches);
+      final yInches = _shotOffsetToInches(
+        row.shot,
+        row.shot.offsetY!,
+      ).clamp(-halfSpanInches, halfSpanInches);
       final nx = (xInches + halfSpanInches) / fullSpanInches;
       final ny = (halfSpanInches - yInches) / fullSpanInches;
       final x = nx * size;
@@ -13541,7 +13830,10 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                       top: i * step,
                       left: 0,
                       right: 0,
-                      child: pw.Container(height: 0.7, color: PdfColors.grey400),
+                      child: pw.Container(
+                        height: 0.7,
+                        color: PdfColors.grey400,
+                      ),
                     ),
                 ],
                 pw.Positioned(
@@ -13583,10 +13875,13 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
   }
 
   pw.Widget _pdfColdBoreAdjustmentChart(List<_ColdBoreRow> rows) {
-    final plottedRows = rows
-        .where((row) => row.shot.offsetX != null && row.shot.offsetY != null)
-        .toList()
-      ..sort((a, b) => a.shot.time.compareTo(b.shot.time));
+    final plottedRows =
+        rows
+            .where(
+              (row) => row.shot.offsetX != null && row.shot.offsetY != null,
+            )
+            .toList()
+          ..sort((a, b) => a.shot.time.compareTo(b.shot.time));
 
     if (plottedRows.isEmpty) {
       return pw.Container(
@@ -13608,13 +13903,11 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
       byDate.putIfAbsent(dateKey, () => <double>[]).add(radialInches);
     }
 
-    final avgByDate = byDate.entries
-        .map((entry) {
-          final vals = entry.value;
-          final avg = vals.fold<double>(0, (sum, v) => sum + v) / vals.length;
-          return MapEntry(entry.key, avg);
-        })
-        .toList();
+    final avgByDate = byDate.entries.map((entry) {
+      final vals = entry.value;
+      final avg = vals.fold<double>(0, (sum, v) => sum + v) / vals.length;
+      return MapEntry(entry.key, avg);
+    }).toList();
 
     final recent = avgByDate.length > 10
         ? avgByDate.sublist(avgByDate.length - 10)
@@ -15075,7 +15368,8 @@ class _NewUserDialogState extends State<_NewUserDialog> {
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          TextField(textCapitalization: TextCapitalization.none, 
+          TextField(
+            textCapitalization: TextCapitalization.none,
             controller: _id,
             decoration: const InputDecoration(labelText: 'Identifier *'),
             textInputAction: TextInputAction.next,
@@ -15104,7 +15398,8 @@ class _NewUserDialogState extends State<_NewUserDialog> {
             ],
           ),
 
-          TextField(textCapitalization: TextCapitalization.none, 
+          TextField(
+            textCapitalization: TextCapitalization.none,
             controller: _name,
             decoration: const InputDecoration(labelText: 'Name (optional)'),
           ),
@@ -15303,14 +15598,16 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(textCapitalization: TextCapitalization.none, 
+            TextField(
+              textCapitalization: TextCapitalization.none,
               controller: _location,
               decoration: const InputDecoration(labelText: 'Location *'),
               maxLines: 1,
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 8),
-            TextField(textCapitalization: TextCapitalization.none, 
+            TextField(
+              textCapitalization: TextCapitalization.none,
               controller: _folder,
               decoration: const InputDecoration(
                 labelText: 'Folder (optional)',
@@ -15320,7 +15617,8 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 8),
-            TextField(textCapitalization: TextCapitalization.none, 
+            TextField(
+              textCapitalization: TextCapitalization.none,
               controller: _notes,
               decoration: const InputDecoration(labelText: 'Notes (optional)'),
               maxLines: 2,
@@ -15370,7 +15668,8 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
             Row(
               children: [
                 Expanded(
-                  child: TextField(textCapitalization: TextCapitalization.none, 
+                  child: TextField(
+                    textCapitalization: TextCapitalization.none,
                     controller: _tempF,
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
@@ -15380,7 +15679,8 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: TextField(textCapitalization: TextCapitalization.none, 
+                  child: TextField(
+                    textCapitalization: TextCapitalization.none,
                     controller: _windMph,
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
@@ -15390,7 +15690,8 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: TextField(textCapitalization: TextCapitalization.none, 
+                  child: TextField(
+                    textCapitalization: TextCapitalization.none,
                     controller: _windDir,
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(
@@ -15578,12 +15879,14 @@ class _ColdBoreDialogState extends State<_ColdBoreDialog> {
                   TextButton(onPressed: _pickTime, child: const Text('Edit')),
                 ],
               ),
-              TextField(textCapitalization: TextCapitalization.none, 
+              TextField(
+                textCapitalization: TextCapitalization.none,
                 controller: _distance,
                 decoration: const InputDecoration(labelText: 'Distance'),
                 textInputAction: TextInputAction.next,
               ),
-              TextField(textCapitalization: TextCapitalization.none, 
+              TextField(
+                textCapitalization: TextCapitalization.none,
                 controller: _result,
                 decoration: const InputDecoration(
                   labelText: 'Result',
@@ -15609,7 +15912,8 @@ class _ColdBoreDialogState extends State<_ColdBoreDialog> {
                   }).toList(),
                 ),
               ),
-              TextField(textCapitalization: TextCapitalization.none, 
+              TextField(
+                textCapitalization: TextCapitalization.none,
                 controller: _notes,
                 decoration: const InputDecoration(
                   labelText: 'Notes (optional)',
@@ -15706,7 +16010,8 @@ class _ColdBoreDialogState extends State<_ColdBoreDialog> {
                       ],
                     ),
                     const SizedBox(height: 8),
-                    TextField(textCapitalization: TextCapitalization.none, 
+                    TextField(
+                      textCapitalization: TextCapitalization.none,
                       controller: _hOffsetCtrl,
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
@@ -15736,7 +16041,8 @@ class _ColdBoreDialogState extends State<_ColdBoreDialog> {
                       ],
                     ),
                     const SizedBox(height: 8),
-                    TextField(textCapitalization: TextCapitalization.none, 
+                    TextField(
+                      textCapitalization: TextCapitalization.none,
                       controller: _vOffsetCtrl,
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
@@ -15838,7 +16144,8 @@ class _EditNotesDialogState extends State<_EditNotesDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(textCapitalization: TextCapitalization.none, 
+            TextField(
+              textCapitalization: TextCapitalization.none,
               controller: _c,
               decoration: const InputDecoration(
                 labelText: 'Session notes (optional)',
@@ -15888,7 +16195,8 @@ class _PhotoNoteDialogState extends State<_PhotoNoteDialog> {
       title: const Text('Photo caption'),
       content: SizedBox(
         width: 520,
-        child: TextField(textCapitalization: TextCapitalization.none, 
+        child: TextField(
+          textCapitalization: TextCapitalization.none,
           controller: _c,
           decoration: const InputDecoration(labelText: 'Caption (optional)'),
           textInputAction: TextInputAction.done,
@@ -15937,7 +16245,8 @@ class _EditDopeDialogState extends State<_EditDopeDialog> {
       title: const Text('Edit DOPE'),
       content: SizedBox(
         width: 520,
-        child: TextField(textCapitalization: TextCapitalization.none, 
+        child: TextField(
+          textCapitalization: TextCapitalization.none,
           controller: _c,
           decoration: const InputDecoration(labelText: 'DOPE notes'),
           maxLines: 6,
@@ -16179,7 +16488,8 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(textCapitalization: TextCapitalization.none, 
+            TextField(
+              textCapitalization: TextCapitalization.none,
               controller: _caliber,
               decoration: const InputDecoration(
                 labelText: 'Caliber (ex: .308) *',
@@ -16187,19 +16497,22 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
-            TextField(textCapitalization: TextCapitalization.none, 
+            TextField(
+              textCapitalization: TextCapitalization.none,
               controller: _manufacturer,
               decoration: const InputDecoration(labelText: 'Manufacturer *'),
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
-            TextField(textCapitalization: TextCapitalization.none, 
+            TextField(
+              textCapitalization: TextCapitalization.none,
               controller: _model,
               decoration: const InputDecoration(labelText: 'Model *'),
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
-            TextField(textCapitalization: TextCapitalization.none, 
+            TextField(
+              textCapitalization: TextCapitalization.none,
               controller: _name,
               decoration: const InputDecoration(labelText: 'Name (optional)'),
               textInputAction: TextInputAction.next,
@@ -16211,7 +16524,8 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
               title: const Text('Other details'),
               children: [
                 const SizedBox(height: 8),
-                TextField(textCapitalization: TextCapitalization.none, 
+                TextField(
+                  textCapitalization: TextCapitalization.none,
                   controller: _serialNumber,
                   decoration: const InputDecoration(
                     labelText: 'Serial number (optional)',
@@ -16222,7 +16536,8 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
                 Row(
                   children: [
                     Expanded(
-                      child: TextField(textCapitalization: TextCapitalization.none, 
+                      child: TextField(
+                        textCapitalization: TextCapitalization.none,
                         controller: _barrelLength,
                         decoration: const InputDecoration(
                           labelText: 'Barrel length (optional)',
@@ -16232,7 +16547,8 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: TextField(textCapitalization: TextCapitalization.none, 
+                      child: TextField(
+                        textCapitalization: TextCapitalization.none,
                         controller: _twistRate,
                         decoration: const InputDecoration(
                           labelText: 'Twist rate (optional)',
@@ -16269,7 +16585,8 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                TextField(textCapitalization: TextCapitalization.none, 
+                TextField(
+                  textCapitalization: TextCapitalization.none,
                   controller: _purchasePrice,
                   decoration: const InputDecoration(
                     labelText: 'Purchase price (optional)',
@@ -16278,7 +16595,8 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
                   textInputAction: TextInputAction.next,
                 ),
                 const SizedBox(height: 12),
-                TextField(textCapitalization: TextCapitalization.none, 
+                TextField(
+                  textCapitalization: TextCapitalization.none,
                   controller: _purchaseLocation,
                   decoration: const InputDecoration(
                     labelText: 'Purchase location (optional)',
@@ -16286,7 +16604,8 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
                   textInputAction: TextInputAction.next,
                 ),
                 const SizedBox(height: 12),
-                TextField(textCapitalization: TextCapitalization.none, 
+                TextField(
+                  textCapitalization: TextCapitalization.none,
                   controller: _notes,
                   decoration: const InputDecoration(
                     labelText: 'Notes (optional)',
@@ -16324,7 +16643,8 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
                       setState(() => _scopeUnit = v ?? ScopeUnit.mil),
                 ),
                 const SizedBox(height: 12),
-                TextField(textCapitalization: TextCapitalization.none, 
+                TextField(
+                  textCapitalization: TextCapitalization.none,
                   controller: _scopeMake,
                   decoration: const InputDecoration(
                     labelText: 'Scope make (optional)',
@@ -16332,7 +16652,8 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
                   textInputAction: TextInputAction.next,
                 ),
                 const SizedBox(height: 12),
-                TextField(textCapitalization: TextCapitalization.none, 
+                TextField(
+                  textCapitalization: TextCapitalization.none,
                   controller: _scopeModel,
                   decoration: const InputDecoration(
                     labelText: 'Scope model (optional)',
@@ -16340,7 +16661,8 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
                   textInputAction: TextInputAction.next,
                 ),
                 const SizedBox(height: 12),
-                TextField(textCapitalization: TextCapitalization.none, 
+                TextField(
+                  textCapitalization: TextCapitalization.none,
                   controller: _scopeSerial,
                   decoration: const InputDecoration(
                     labelText: 'Scope serial (optional)',
@@ -16348,7 +16670,8 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
                   textInputAction: TextInputAction.next,
                 ),
                 const SizedBox(height: 12),
-                TextField(textCapitalization: TextCapitalization.none, 
+                TextField(
+                  textCapitalization: TextCapitalization.none,
                   controller: _scopeMount,
                   decoration: const InputDecoration(
                     labelText: 'Mount/rings (optional)',
@@ -16356,7 +16679,8 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
                   textInputAction: TextInputAction.next,
                 ),
                 const SizedBox(height: 12),
-                TextField(textCapitalization: TextCapitalization.none, 
+                TextField(
+                  textCapitalization: TextCapitalization.none,
                   controller: _scopeNotes,
                   decoration: const InputDecoration(
                     labelText: 'Scope notes (optional)',
@@ -16521,7 +16845,8 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(textCapitalization: TextCapitalization.none, 
+            TextField(
+              textCapitalization: TextCapitalization.none,
               controller: _caliber,
               decoration: const InputDecoration(
                 labelText: 'Caliber (ex: .308) *',
@@ -16529,7 +16854,8 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
-            TextField(textCapitalization: TextCapitalization.none, 
+            TextField(
+              textCapitalization: TextCapitalization.none,
               controller: _bullet,
               decoration: const InputDecoration(
                 labelText: 'Bullet (ex: SMK) *',
@@ -16537,7 +16863,8 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
-            TextField(textCapitalization: TextCapitalization.none, 
+            TextField(
+              textCapitalization: TextCapitalization.none,
               controller: _grain,
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
@@ -16546,7 +16873,8 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
-            TextField(textCapitalization: TextCapitalization.none, 
+            TextField(
+              textCapitalization: TextCapitalization.none,
               controller: _bc,
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
@@ -16557,13 +16885,15 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
-            TextField(textCapitalization: TextCapitalization.none, 
+            TextField(
+              textCapitalization: TextCapitalization.none,
               controller: _manufacturer,
               decoration: const InputDecoration(labelText: 'Manufacturer *'),
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
-            TextField(textCapitalization: TextCapitalization.none, 
+            TextField(
+              textCapitalization: TextCapitalization.none,
               controller: _lot,
               decoration: const InputDecoration(
                 labelText: 'Lot number (optional)',
@@ -16571,7 +16901,8 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
-            TextField(textCapitalization: TextCapitalization.none, 
+            TextField(
+              textCapitalization: TextCapitalization.none,
               controller: _name,
               decoration: const InputDecoration(labelText: 'Name (optional)'),
               textInputAction: TextInputAction.next,
@@ -16610,7 +16941,8 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
               ],
             ),
             const SizedBox(height: 12),
-            TextField(textCapitalization: TextCapitalization.none, 
+            TextField(
+              textCapitalization: TextCapitalization.none,
               controller: _purchasePrice,
               decoration: const InputDecoration(
                 labelText: 'Purchase price (optional)',
@@ -16619,7 +16951,8 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
-            TextField(textCapitalization: TextCapitalization.none, 
+            TextField(
+              textCapitalization: TextCapitalization.none,
               controller: _notes,
               decoration: const InputDecoration(labelText: 'Notes (optional)'),
               minLines: 2,
@@ -16874,24 +17207,28 @@ class _RifleDopeEntryDialogState extends State<_RifleDopeEntryDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(textCapitalization: TextCapitalization.none, 
+            TextField(
+              textCapitalization: TextCapitalization.none,
               controller: _distance,
               decoration: const InputDecoration(labelText: 'Distance (yd/m)'),
             ),
             const SizedBox(height: 10),
-            TextField(textCapitalization: TextCapitalization.none, 
+            TextField(
+              textCapitalization: TextCapitalization.none,
               controller: _elev,
               decoration: const InputDecoration(labelText: 'Elevation (dial)'),
             ),
             const SizedBox(height: 10),
-            TextField(textCapitalization: TextCapitalization.none, 
+            TextField(
+              textCapitalization: TextCapitalization.none,
               controller: _wind,
               decoration: const InputDecoration(
                 labelText: 'Windage (e.g., R0.2 / L0.1 / 0)',
               ),
             ),
             const SizedBox(height: 10),
-            TextField(textCapitalization: TextCapitalization.none, 
+            TextField(
+              textCapitalization: TextCapitalization.none,
               controller: _notes,
               maxLines: 3,
               decoration: const InputDecoration(labelText: 'Notes (optional)'),
@@ -16950,21 +17287,19 @@ Color _maintenanceDueColor(BuildContext context, MaintenanceDueStatus status) {
 String _maintenanceStatusSummary(MaintenanceReminderStatus status) {
   final parts = <String>[];
   if (status.roundsSince != null && status.rule.intervalRounds != null) {
-    final roundsPart =
-        status.roundsRemaining == null
-            ? '${status.roundsSince} rounds since last ${_maintenanceTaskLabel(status.rule.type).toLowerCase()}'
-            : (status.roundsRemaining! <= 0
-                  ? '${status.roundsSince} rounds since last ${_maintenanceTaskLabel(status.rule.type).toLowerCase()} (${status.roundsRemaining!.abs()} overdue)'
-                  : '${status.roundsRemaining} rounds remaining');
+    final roundsPart = status.roundsRemaining == null
+        ? '${status.roundsSince} rounds since last ${_maintenanceTaskLabel(status.rule.type).toLowerCase()}'
+        : (status.roundsRemaining! <= 0
+              ? '${status.roundsSince} rounds since last ${_maintenanceTaskLabel(status.rule.type).toLowerCase()} (${status.roundsRemaining!.abs()} overdue)'
+              : '${status.roundsRemaining} rounds remaining');
     parts.add(roundsPart);
   }
   if (status.daysSince != null && status.rule.intervalDays != null) {
-    final daysPart =
-        status.daysRemaining == null
-            ? '${status.daysSince} days since last ${_maintenanceTaskLabel(status.rule.type).toLowerCase()}'
-            : (status.daysRemaining! <= 0
-                  ? '${status.daysSince} days since last ${_maintenanceTaskLabel(status.rule.type).toLowerCase()} (${status.daysRemaining!.abs()} overdue)'
-                  : '${status.daysRemaining} days remaining');
+    final daysPart = status.daysRemaining == null
+        ? '${status.daysSince} days since last ${_maintenanceTaskLabel(status.rule.type).toLowerCase()}'
+        : (status.daysRemaining! <= 0
+              ? '${status.daysSince} days since last ${_maintenanceTaskLabel(status.rule.type).toLowerCase()} (${status.daysRemaining!.abs()} overdue)'
+              : '${status.daysRemaining} days remaining');
     parts.add(daysPart);
   }
   if (parts.isEmpty && status.lastService != null) {
@@ -17005,12 +17340,14 @@ class MaintenanceHubScreen extends StatelessWidget {
           });
         final overdueCount = snapshots
             .where(
-              (snapshot) => snapshot.overallStatus == MaintenanceDueStatus.overdue,
+              (snapshot) =>
+                  snapshot.overallStatus == MaintenanceDueStatus.overdue,
             )
             .length;
         final dueSoonCount = snapshots
             .where(
-              (snapshot) => snapshot.overallStatus == MaintenanceDueStatus.dueSoon,
+              (snapshot) =>
+                  snapshot.overallStatus == MaintenanceDueStatus.dueSoon,
             )
             .length;
         final attention = snapshots
@@ -17025,7 +17362,8 @@ class MaintenanceHubScreen extends StatelessWidget {
               ? const _EmptyState(
                   icon: Icons.build_outlined,
                   title: 'No rifles yet',
-                  message: 'Add a rifle first to track maintenance and reminders.',
+                  message:
+                      'Add a rifle first to track maintenance and reminders.',
                 )
               : ListView(
                   padding: const EdgeInsets.all(12),
@@ -17110,7 +17448,8 @@ class MaintenanceHubScreen extends StatelessWidget {
                         context,
                         snapshot.overallStatus,
                       );
-                      final barrelDate = snapshot.rifle.barrelInstalledDate == null
+                      final barrelDate =
+                          snapshot.rifle.barrelInstalledDate == null
                           ? null
                           : _fmtDate(snapshot.rifle.barrelInstalledDate!);
                       final subtitleParts = <String>[
@@ -17118,7 +17457,8 @@ class MaintenanceHubScreen extends StatelessWidget {
                         'Current barrel: ${snapshot.barrelRounds}',
                         if (barrelDate != null) 'Barrel since $barrelDate',
                       ];
-                      final detail = snapshot.overallStatus == MaintenanceDueStatus.good
+                      final detail =
+                          snapshot.overallStatus == MaintenanceDueStatus.good
                           ? (snapshot.lastService == null
                                 ? 'No services logged yet'
                                 : 'Last service ${_fmtDate(snapshot.lastService!.date)}')
@@ -17127,7 +17467,9 @@ class MaintenanceHubScreen extends StatelessWidget {
                         child: ListTile(
                           leading: Icon(Icons.build_outlined, color: color),
                           title: Text(_rifleLabel(snapshot.rifle)),
-                          subtitle: Text('${subtitleParts.join(' • ')}\n$detail'),
+                          subtitle: Text(
+                            '${subtitleParts.join(' • ')}\n$detail',
+                          ),
                           isThreeLine: true,
                           trailing: const Icon(Icons.chevron_right),
                           onTap: () {
@@ -17334,19 +17676,24 @@ class _RifleServiceLogScreenState extends State<RifleServiceLogScreen> {
             return const Center(child: Text('Rifle not found.'));
           }
 
-          final snapshot = widget.state.maintenanceSnapshotForRifle(widget.rifleId);
+          final snapshot = widget.state.maintenanceSnapshotForRifle(
+            widget.rifleId,
+          );
           final services = [...rifle.services]
             ..sort((a, b) => b.date.compareTo(a.date));
-          final filteredServices =
-              _serviceFilter == null
-                  ? services
-                  : services
-                      .where((entry) => entry.taskType == _serviceFilter)
-                      .toList();
-          final presentServiceTypes = <MaintenanceTaskType>{
-            for (final service in services) service.taskType,
-          }.toList()
-            ..sort((a, b) => _maintenanceTaskLabel(a).compareTo(_maintenanceTaskLabel(b)));
+          final filteredServices = _serviceFilter == null
+              ? services
+              : services
+                    .where((entry) => entry.taskType == _serviceFilter)
+                    .toList();
+          final presentServiceTypes =
+              <MaintenanceTaskType>{
+                for (final service in services) service.taskType,
+              }.toList()..sort(
+                (a, b) => _maintenanceTaskLabel(
+                  a,
+                ).compareTo(_maintenanceTaskLabel(b)),
+              );
           final overallColor = _maintenanceDueColor(
             context,
             snapshot.overallStatus,
@@ -17423,7 +17770,9 @@ class _RifleServiceLogScreenState extends State<RifleServiceLogScreen> {
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                         const SizedBox(height: 8),
-                        const Text('No reminder rules are enabled for this rifle.'),
+                        const Text(
+                          'No reminder rules are enabled for this rifle.',
+                        ),
                         const SizedBox(height: 8),
                         FilledButton.tonal(
                           onPressed: _editReminders,
@@ -17440,7 +17789,10 @@ class _RifleServiceLogScreenState extends State<RifleServiceLogScreen> {
                 ),
                 const SizedBox(height: 8),
                 ...snapshot.statuses.map((status) {
-                  final statusColor = _maintenanceDueColor(context, status.status);
+                  final statusColor = _maintenanceDueColor(
+                    context,
+                    status.status,
+                  );
                   return Card(
                     child: Padding(
                       padding: const EdgeInsets.all(12),
@@ -17457,7 +17809,9 @@ class _RifleServiceLogScreenState extends State<RifleServiceLogScreen> {
                               Expanded(
                                 child: Text(
                                   _maintenanceTaskLabel(status.rule.type),
-                                  style: const TextStyle(fontWeight: FontWeight.w700),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
                               ),
                               Text(
@@ -17483,12 +17837,14 @@ class _RifleServiceLogScreenState extends State<RifleServiceLogScreen> {
                               FilledButton.tonal(
                                 onPressed: () => _markReminderDone(status),
                                 child: Text(
-                                  status.rule.type == MaintenanceTaskType.barrelLife
+                                  status.rule.type ==
+                                          MaintenanceTaskType.barrelLife
                                       ? 'Replace barrel'
                                       : 'Mark done',
                                 ),
                               ),
-                              if (status.rule.type != MaintenanceTaskType.barrelLife)
+                              if (status.rule.type !=
+                                  MaintenanceTaskType.barrelLife)
                                 TextButton(
                                   onPressed: () => _addService(
                                     initialTaskType: status.rule.type,
@@ -17649,13 +18005,15 @@ class _AddRifleServiceDialogState extends State<_AddRifleServiceDialog> {
               },
             ),
             const SizedBox(height: 8),
-            TextField(textCapitalization: TextCapitalization.none, 
+            TextField(
+              textCapitalization: TextCapitalization.none,
               controller: _serviceCtrl,
               decoration: const InputDecoration(labelText: 'Service'),
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 8),
-            TextField(textCapitalization: TextCapitalization.none, 
+            TextField(
+              textCapitalization: TextCapitalization.none,
               controller: _notesCtrl,
               decoration: const InputDecoration(labelText: 'Notes (optional)'),
               textInputAction: TextInputAction.next,
@@ -17687,7 +18045,8 @@ class _AddRifleServiceDialogState extends State<_AddRifleServiceDialog> {
               onChanged: (v) => setState(() => _useCurrentRounds = v),
             ),
             if (!_useCurrentRounds)
-              TextField(textCapitalization: TextCapitalization.none, 
+              TextField(
+                textCapitalization: TextCapitalization.none,
                 controller: _roundsCtrl,
                 decoration: const InputDecoration(
                   labelText: 'Rounds at service',
@@ -17747,7 +18106,8 @@ class RifleMaintenanceRulesScreen extends StatefulWidget {
       _RifleMaintenanceRulesScreenState();
 }
 
-class _RifleMaintenanceRulesScreenState extends State<RifleMaintenanceRulesScreen> {
+class _RifleMaintenanceRulesScreenState
+    extends State<RifleMaintenanceRulesScreen> {
   final Map<MaintenanceTaskType, bool> _enabled = <MaintenanceTaskType, bool>{};
   final Map<MaintenanceTaskType, TextEditingController> _roundCtrls =
       <MaintenanceTaskType, TextEditingController>{};
@@ -17831,9 +18191,7 @@ class _RifleMaintenanceRulesScreenState extends State<RifleMaintenanceRulesScree
     return Scaffold(
       appBar: AppBar(
         title: const Text('Reminder rules'),
-        actions: [
-          TextButton(onPressed: _save, child: const Text('Save')),
-        ],
+        actions: [TextButton(onPressed: _save, child: const Text('Save'))],
       ),
       body: ListView(
         padding: const EdgeInsets.all(12),
@@ -17849,69 +18207,76 @@ class _RifleMaintenanceRulesScreenState extends State<RifleMaintenanceRulesScree
           const SizedBox(height: 12),
           ...MaintenanceTaskType.values
               .where(_isConfigurableMaintenanceTask)
-              .map((type) => Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          SwitchListTile(
-                            contentPadding: EdgeInsets.zero,
-                            secondary: Icon(_maintenanceTaskIcon(type)),
-                            title: Text(_maintenanceTaskLabel(type)),
-                            value: _enabled[type] == true,
-                            onChanged: (value) =>
-                                setState(() => _enabled[type] = value),
-                          ),
-                          if (_enabled[type] == true) ...[
-                            if (_maintenanceTaskSupportsRounds(type) ||
-                                _maintenanceTaskSupportsDays(type))
-                              Row(
-                                children: [
-                                  if (_maintenanceTaskSupportsRounds(type))
-                                    Expanded(
-                                      child: TextField(textCapitalization: TextCapitalization.none, 
-                                        controller: _roundCtrls[type],
-                                        decoration: const InputDecoration(
-                                          labelText: 'Rounds interval',
-                                        ),
-                                        keyboardType: TextInputType.number,
-                                        inputFormatters: [
-                                          FilteringTextInputFormatter.digitsOnly,
-                                        ],
+              .map(
+                (type) => Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          secondary: Icon(_maintenanceTaskIcon(type)),
+                          title: Text(_maintenanceTaskLabel(type)),
+                          value: _enabled[type] == true,
+                          onChanged: (value) =>
+                              setState(() => _enabled[type] = value),
+                        ),
+                        if (_enabled[type] == true) ...[
+                          if (_maintenanceTaskSupportsRounds(type) ||
+                              _maintenanceTaskSupportsDays(type))
+                            Row(
+                              children: [
+                                if (_maintenanceTaskSupportsRounds(type))
+                                  Expanded(
+                                    child: TextField(
+                                      textCapitalization:
+                                          TextCapitalization.none,
+                                      controller: _roundCtrls[type],
+                                      decoration: const InputDecoration(
+                                        labelText: 'Rounds interval',
                                       ),
+                                      keyboardType: TextInputType.number,
+                                      inputFormatters: [
+                                        FilteringTextInputFormatter.digitsOnly,
+                                      ],
                                     ),
-                                  if (_maintenanceTaskSupportsRounds(type) &&
-                                      _maintenanceTaskSupportsDays(type))
-                                    const SizedBox(width: 12),
-                                  if (_maintenanceTaskSupportsDays(type))
-                                    Expanded(
-                                      child: TextField(textCapitalization: TextCapitalization.none, 
-                                        controller: _dayCtrls[type],
-                                        decoration: const InputDecoration(
-                                          labelText: 'Days interval',
-                                        ),
-                                        keyboardType: TextInputType.number,
-                                        inputFormatters: [
-                                          FilteringTextInputFormatter.digitsOnly,
-                                        ],
+                                  ),
+                                if (_maintenanceTaskSupportsRounds(type) &&
+                                    _maintenanceTaskSupportsDays(type))
+                                  const SizedBox(width: 12),
+                                if (_maintenanceTaskSupportsDays(type))
+                                  Expanded(
+                                    child: TextField(
+                                      textCapitalization:
+                                          TextCapitalization.none,
+                                      controller: _dayCtrls[type],
+                                      decoration: const InputDecoration(
+                                        labelText: 'Days interval',
                                       ),
+                                      keyboardType: TextInputType.number,
+                                      inputFormatters: [
+                                        FilteringTextInputFormatter.digitsOnly,
+                                      ],
                                     ),
-                                ],
-                              ),
-                            const SizedBox(height: 8),
-                            TextField(textCapitalization: TextCapitalization.none, 
-                              controller: _notesCtrls[type],
-                              maxLines: 2,
-                              decoration: const InputDecoration(
-                                labelText: 'Notes (optional)',
-                              ),
+                                  ),
+                              ],
                             ),
-                          ],
+                          const SizedBox(height: 8),
+                          TextField(
+                            textCapitalization: TextCapitalization.none,
+                            controller: _notesCtrls[type],
+                            maxLines: 2,
+                            decoration: const InputDecoration(
+                              labelText: 'Notes (optional)',
+                            ),
+                          ),
                         ],
-                      ),
+                      ],
                     ),
-                  )),
+                  ),
+                ),
+              ),
         ],
       ),
     );
@@ -17982,7 +18347,8 @@ class _ResetBarrelDialogState extends State<_ResetBarrelDialog> {
               },
             ),
             const SizedBox(height: 8),
-            TextField(textCapitalization: TextCapitalization.none, 
+            TextField(
+              textCapitalization: TextCapitalization.none,
               controller: _notesCtrl,
               maxLines: 3,
               decoration: const InputDecoration(
@@ -18116,9 +18482,9 @@ class _BackupScreen extends StatelessWidget {
     try {
       state.importBackupJson(jsonText, replaceExisting: true);
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Restore complete.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Restore complete.')));
     } catch (_) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -18215,7 +18581,8 @@ class _ImportBackupDialogState extends State<_ImportBackupDialog> {
               ),
             ),
             const SizedBox(height: 8),
-            TextField(textCapitalization: TextCapitalization.none, 
+            TextField(
+              textCapitalization: TextCapitalization.none,
               controller: _ctrl,
               decoration: const InputDecoration(
                 labelText: 'Paste backup JSON',
@@ -18244,4 +18611,3 @@ class _ImportBackupDialogState extends State<_ImportBackupDialog> {
     );
   }
 }
-
