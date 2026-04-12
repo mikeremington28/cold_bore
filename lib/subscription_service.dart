@@ -6,8 +6,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 const String kSubscriptionProductId = 'Coldbore_Pro_Yearly';
 const String _entitlementPrefsKey = 'cold_bore.subscription.entitled.v1';
-const String _entitlementExpiryPrefsKey =
-    'cold_bore.subscription.expiry_ms.v1';
+const String _entitlementExpiryPrefsKey = 'cold_bore.subscription.expiry_ms.v1';
+const String _trialStartPrefsKey = 'cold_bore.subscription.trial_start_ms.v1';
+const int _trialDays = 30;
 
 /// Lightweight subscription service.
 ///
@@ -23,6 +24,7 @@ class SubscriptionService extends ChangeNotifier {
   StreamSubscription<List<PurchaseDetails>>? _purchaseSub;
 
   bool _entitled = false;
+  DateTime? _trialEndsAt;
   bool _loading = false;
   bool _available = false;
   ProductDetails? _product;
@@ -32,7 +34,18 @@ class SubscriptionService extends ChangeNotifier {
   bool get loading => _loading;
 
   /// True when the user has an active subscription or is in their free trial.
-  bool get isEntitled => _entitled;
+  bool get isEntitled => _entitled || _isTrialActive;
+
+  bool get _isTrialActive =>
+      _trialEndsAt != null && DateTime.now().isBefore(_trialEndsAt!);
+
+  DateTime? get trialEndsAt => _trialEndsAt;
+
+  int get trialDaysRemaining {
+    if (!_isTrialActive || _trialEndsAt == null) return 0;
+    final remaining = _trialEndsAt!.difference(DateTime.now()).inDays + 1;
+    return remaining.clamp(0, _trialDays);
+  }
 
   /// The product to display in the paywall (may be null until loaded).
   ProductDetails? get product => _product;
@@ -45,6 +58,7 @@ class SubscriptionService extends ChangeNotifier {
   Future<void> initialize() async {
     // Restore cached entitlement quickly so UI doesn't flash locked state.
     await _loadCachedEntitlement();
+    await _loadOrStartTrial();
 
     if (kIsWeb) return; // IAP not available on web.
 
@@ -164,8 +178,9 @@ class SubscriptionService extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_entitlementPrefsKey, true);
     // Store a far-future expiry; StoreKit handles actual renewal checks.
-    final farFuture =
-        DateTime.now().add(const Duration(days: 400)).millisecondsSinceEpoch;
+    final farFuture = DateTime.now()
+        .add(const Duration(days: 400))
+        .millisecondsSinceEpoch;
     await prefs.setInt(_entitlementExpiryPrefsKey, farFuture);
     notifyListeners();
   }
@@ -183,6 +198,30 @@ class SubscriptionService extends ChangeNotifier {
       }
     } catch (_) {
       _entitled = false;
+    }
+    notifyListeners();
+  }
+
+  Future<void> _loadOrStartTrial() async {
+    // On iOS, rely on App Store introductory offer eligibility (Apple ID based)
+    // instead of local trial storage that can be reset by reinstall.
+    if (!kIsWeb && Platform.isIOS) {
+      _trialEndsAt = null;
+      notifyListeners();
+      return;
+    }
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      var startMs = prefs.getInt(_trialStartPrefsKey);
+      if (startMs == null) {
+        startMs = DateTime.now().millisecondsSinceEpoch;
+        await prefs.setInt(_trialStartPrefsKey, startMs);
+      }
+      final start = DateTime.fromMillisecondsSinceEpoch(startMs);
+      _trialEndsAt = start.add(const Duration(days: _trialDays));
+    } catch (_) {
+      _trialEndsAt = null;
     }
     notifyListeners();
   }

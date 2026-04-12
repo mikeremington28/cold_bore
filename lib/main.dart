@@ -548,6 +548,12 @@ String _buildSessionReportText(
   required TrainingSession s,
   bool redactLocation = true,
   bool includePhotoBase64 = false,
+  bool includeNotes = true,
+  bool includeTrainingDope = true,
+  bool includeLocation = true,
+  bool includePhotos = true,
+  bool includeShotResults = true,
+  bool includeTimerData = true,
 }) {
   final rifle = s.rifleId == null ? null : state.findRifleById(s.rifleId!);
   final ammo = s.ammoLotId == null ? null : state.findAmmoLotById(s.ammoLotId!);
@@ -574,7 +580,7 @@ String _buildSessionReportText(
   b.writeln('COLD BORE - SESSION REPORT');
   b.writeln('Schema: $kExportSchemaVersion');
   b.writeln('Generated: ${_fmtDateTimeIso(DateTime.now())}');
-  if (s.timerRuns.isNotEmpty) {
+  if (includeTimerData && s.timerRuns.isNotEmpty) {
     b.writeln('Saved timer runs: ${s.timerRuns.length}');
     for (final run in s.timerRuns) {
       final marks = <int>[
@@ -589,13 +595,14 @@ String _buildSessionReportText(
       );
     }
   }
-  if ((s.shotTimerElapsedMs ?? 0) > 0 ||
+  if (includeTimerData &&
+      ((s.shotTimerElapsedMs ?? 0) > 0 ||
       (s.shotTimerFirstShotMs ?? 0) > 0 ||
-      s.shotTimerSplitMs.isNotEmpty) {
-    b.writeln('â€¢ Shot timer total (ms): ${s.shotTimerElapsedMs ?? 0}');
-    b.writeln('â€¢ First shot (ms): ${s.shotTimerFirstShotMs ?? 0}');
+      s.shotTimerSplitMs.isNotEmpty)) {
+    b.writeln('• Shot timer total (ms): ${s.shotTimerElapsedMs ?? 0}');
+    b.writeln('• First shot (ms): ${s.shotTimerFirstShotMs ?? 0}');
     b.writeln(
-      'â€¢ Split times (ms): ${s.shotTimerSplitMs.isEmpty ? '-' : s.shotTimerSplitMs.join(', ')}',
+      '• Split times (ms): ${s.shotTimerSplitMs.isEmpty ? '-' : s.shotTimerSplitMs.join(', ')}',
     );
   }
 
@@ -605,15 +612,20 @@ String _buildSessionReportText(
   b.writeln('• Evidence ID (CRC32): $evidenceId');
   b.writeln('• User ID: ${s.userId}');
   b.writeln('• Date/Time: ${_fmtDateTimeIso(s.dateTime)}');
-  b.writeln(
-    '• Location: ${redactLocation ? '[REDACTED]' : (s.locationName.isEmpty ? '-' : s.locationName)}',
-  );
-  if (!redactLocation) {
-    b.writeln(
-      '• GPS: ${s.latitude?.toStringAsFixed(6) ?? '-'}, ${s.longitude?.toStringAsFixed(6) ?? '-'}',
-    );
+  if (!includeLocation) {
+    b.writeln('• Location: [NOT SHARED]');
+    b.writeln('• GPS: [NOT SHARED]');
   } else {
-    b.writeln('• GPS: [REDACTED]');
+    b.writeln(
+      '• Location: ${redactLocation ? '[REDACTED]' : (s.locationName.isEmpty ? '-' : s.locationName)}',
+    );
+    if (!redactLocation) {
+      b.writeln(
+        '• GPS: ${s.latitude?.toStringAsFixed(6) ?? '-'}, ${s.longitude?.toStringAsFixed(6) ?? '-'}',
+      );
+    } else {
+      b.writeln('• GPS: [REDACTED]');
+    }
   }
   b.writeln('• Rifle: ${rifleLabel()}');
   b.writeln('• Ammo: ${ammoLabel()}');
@@ -631,12 +643,18 @@ String _buildSessionReportText(
 
   b.writeln('');
   b.writeln('NOTES');
-  b.writeln(s.notes.trim().isEmpty ? '-' : s.notes.trim());
+  if (includeNotes) {
+    b.writeln(s.notes.trim().isEmpty ? '-' : s.notes.trim());
+  } else {
+    b.writeln('[NOT SHARED]');
+  }
 
   // Session-level photos (caption-only notes)
   b.writeln('');
   b.writeln('SESSION PHOTOS (NOTES)');
-  if (s.photos.isEmpty) {
+  if (!includePhotos) {
+    b.writeln('[NOT SHARED]');
+  } else if (s.photos.isEmpty) {
     b.writeln('-');
   } else {
     for (final p in s.photos) {
@@ -647,23 +665,29 @@ String _buildSessionReportText(
   // Dope
   b.writeln('');
   b.writeln('TRAINING DOPE');
-  if (s.trainingDope.isEmpty) {
-    b.writeln('-');
+  if (!includeTrainingDope) {
+    b.writeln('[NOT SHARED]');
   } else {
-    for (final d in s.trainingDope) {
-      b.writeln(
-        '• ${d.distance} - Elev: ${d.elevation} ${d.elevationUnit.name} '
-        '(notes: ${d.elevationNotes.isEmpty ? '-' : d.elevationNotes}); '
-        'Wind: ${d.windType.name}: ${d.windValue} '
-        '(notes: ${d.windNotes.isEmpty ? '-' : d.windNotes})',
-      );
+    if (s.trainingDope.isEmpty) {
+      b.writeln('-');
+    } else {
+      for (final d in s.trainingDope) {
+        b.writeln(
+          '• ${d.distance} - Elev: ${d.elevation} ${d.elevationUnit.name} '
+          '(notes: ${d.elevationNotes.isEmpty ? '-' : d.elevationNotes}); '
+          'Wind: ${d.windType.name}: ${d.windValue} '
+          '(notes: ${d.windNotes.isEmpty ? '-' : d.windNotes})',
+        );
+      }
     }
   }
 
   // Shots
   b.writeln('');
   b.writeln('SHOTS');
-  if (s.shots.isEmpty) {
+  if (!includeShotResults) {
+    b.writeln('[NOT SHARED]');
+  } else if (s.shots.isEmpty) {
     b.writeln('-');
   } else {
     for (final sh in s.shots) {
@@ -1369,6 +1393,9 @@ class _PaywallScreenState extends State<_PaywallScreen> {
   Widget build(BuildContext context) {
     final product = _sub.product;
     final priceText = product?.price ?? '—';
+    final trialDays = _sub.trialDaysRemaining;
+    final inTrial = trialDays > 0;
+    final isIos = defaultTargetPlatform == TargetPlatform.iOS;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Cold Bore Pro')),
@@ -1379,22 +1406,70 @@ class _PaywallScreenState extends State<_PaywallScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: 16),
-              const Icon(Icons.lock_open_outlined, size: 56),
-              const SizedBox(height: 16),
+              if (inTrial) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.primaryContainer.withOpacity(0.55),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.hourglass_bottom_outlined,
+                        size: 20,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          '$trialDays ${trialDays == 1 ? 'day' : 'days'} left in your free trial',
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
+                                color: Theme.of(context).colorScheme.primary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+              if (!inTrial) const Icon(Icons.lock_open_outlined, size: 56),
+              if (!inTrial) const SizedBox(height: 16),
               Text(
-                'Subscribe to keep adding data',
+                inTrial
+                    ? 'Unlock Cold Bore Pro'
+                    : 'Subscribe to keep adding data',
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.bold,
                 ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 12),
-              const Text(
-                'Your existing data is always available to view and export. '
-                'A Cold Bore Pro subscription lets you continue logging sessions, '
-                'shots, gear, and maintenance records.',
+              Text(
+                inTrial
+                    ? 'Subscribe now to keep all features after your trial ends. '
+                        'Your data is always yours to view and export.'
+                    : 'Your existing data is always available to view and export. '
+                        'A Cold Bore Pro subscription lets you continue logging sessions, '
+                        'shots, gear, and maintenance records.',
                 textAlign: TextAlign.center,
               ),
+              if (!inTrial && isIos) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'On iPhone/iPad, free-trial eligibility is checked by the App Store using your Apple ID when you tap Subscribe.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                  textAlign: TextAlign.center,
+                ),
+              ],
               const SizedBox(height: 24),
               _FeatureRow(
                 icon: Icons.event_note_outlined,
@@ -2231,6 +2306,12 @@ class AppState extends ChangeNotifier {
   void shareSessionWithUsers({
     required String sessionId,
     required List<String> userIds,
+    bool? shareNotesWithMembers,
+    bool? shareTrainingDopeWithMembers,
+    bool? shareLocationWithMembers,
+    bool? sharePhotosWithMembers,
+    bool? shareShotResultsWithMembers,
+    bool? shareTimerDataWithMembers,
   }) {
     final idx = _sessions.indexWhere((s) => s.id == sessionId);
     if (idx == -1) return;
@@ -2238,7 +2319,15 @@ class AppState extends ChangeNotifier {
     final existing = _sessions[idx];
     final merged = <String>{...existing.memberUserIds, ...userIds}.toList();
 
-    _sessions[idx] = existing.copyWith(memberUserIds: merged);
+    _sessions[idx] = existing.copyWith(
+      memberUserIds: merged,
+      shareNotesWithMembers: shareNotesWithMembers,
+      shareTrainingDopeWithMembers: shareTrainingDopeWithMembers,
+      shareLocationWithMembers: shareLocationWithMembers,
+      sharePhotosWithMembers: sharePhotosWithMembers,
+      shareShotResultsWithMembers: shareShotResultsWithMembers,
+      shareTimerDataWithMembers: shareTimerDataWithMembers,
+    );
     notifyListeners();
   }
 
@@ -2658,6 +2747,43 @@ class AppState extends ChangeNotifier {
       map.remove(bucketKey);
     }
 
+    notifyListeners();
+    return true;
+  }
+
+  bool updateWorkingDopeEntry({
+    required bool rifleOnly,
+    required String bucketKey,
+    required DistanceKey oldDistanceKey,
+    required DopeEntry entry,
+  }) {
+    final map = rifleOnly ? _workingDopeRifleOnly : _workingDopeRifleAmmo;
+    final bucket = map[bucketKey];
+    if (bucket == null) return false;
+
+    final existing = bucket[oldDistanceKey];
+    if (existing == null) return false;
+
+    final updated = DopeEntry(
+      id: existing.id,
+      time: DateTime.now(),
+      rifleId: existing.rifleId,
+      ammoLotId: existing.ammoLotId,
+      distance: entry.distance,
+      distanceUnit: entry.distanceUnit,
+      elevation: entry.elevation,
+      elevationUnit: entry.elevationUnit,
+      elevationNotes: entry.elevationNotes,
+      windType: entry.windType,
+      windValue: entry.windValue,
+      windNotes: entry.windNotes,
+      windageLeft: entry.windageLeft,
+      windageRight: entry.windageRight,
+    );
+
+    bucket.remove(oldDistanceKey);
+    final newDistanceKey = DistanceKey(updated.distance, updated.distanceUnit);
+    bucket[newDistanceKey] = updated;
     notifyListeners();
     return true;
   }
@@ -4061,6 +4187,12 @@ Map<String, dynamic> _trainingSessionToMap(TrainingSession session) =>
       'folderName': session.folderName,
       'archived': session.archived,
       'notes': session.notes,
+      'shareNotesWithMembers': session.shareNotesWithMembers,
+      'shareTrainingDopeWithMembers': session.shareTrainingDopeWithMembers,
+      'shareLocationWithMembers': session.shareLocationWithMembers,
+      'sharePhotosWithMembers': session.sharePhotosWithMembers,
+      'shareShotResultsWithMembers': session.shareShotResultsWithMembers,
+      'shareTimerDataWithMembers': session.shareTimerDataWithMembers,
       'latitude': session.latitude,
       'longitude': session.longitude,
       'temperatureF': session.temperatureF,
@@ -4109,6 +4241,12 @@ TrainingSession _trainingSessionFromMap(
   folderName: (map['folderName'] ?? '').toString(),
   archived: map['archived'] == true,
   notes: (map['notes'] ?? '').toString(),
+  shareNotesWithMembers: map['shareNotesWithMembers'] != false,
+  shareTrainingDopeWithMembers: map['shareTrainingDopeWithMembers'] != false,
+  shareLocationWithMembers: map['shareLocationWithMembers'] != false,
+  sharePhotosWithMembers: map['sharePhotosWithMembers'] != false,
+  shareShotResultsWithMembers: map['shareShotResultsWithMembers'] != false,
+  shareTimerDataWithMembers: map['shareTimerDataWithMembers'] != false,
   latitude: _toNullableDouble(map['latitude']),
   longitude: _toNullableDouble(map['longitude']),
   temperatureF: _toNullableDouble(map['temperatureF']),
@@ -4666,6 +4804,12 @@ class TrainingSession {
   final String folderName;
   final bool archived;
   final String notes;
+  final bool shareNotesWithMembers;
+  final bool shareTrainingDopeWithMembers;
+  final bool shareLocationWithMembers;
+  final bool sharePhotosWithMembers;
+  final bool shareShotResultsWithMembers;
+  final bool shareTimerDataWithMembers;
 
   // Optional GPS (saved only if user taps Use GPS)
   final double? latitude;
@@ -4709,6 +4853,12 @@ class TrainingSession {
     this.folderName = '',
     this.archived = false,
     required this.notes,
+    this.shareNotesWithMembers = true,
+    this.shareTrainingDopeWithMembers = true,
+    this.shareLocationWithMembers = true,
+    this.sharePhotosWithMembers = true,
+    this.shareShotResultsWithMembers = true,
+    this.shareTimerDataWithMembers = true,
     this.latitude,
     this.longitude,
     this.temperatureF,
@@ -4741,6 +4891,12 @@ class TrainingSession {
     String? folderName,
     bool? archived,
     String? notes,
+    bool? shareNotesWithMembers,
+    bool? shareTrainingDopeWithMembers,
+    bool? shareLocationWithMembers,
+    bool? sharePhotosWithMembers,
+    bool? shareShotResultsWithMembers,
+    bool? shareTimerDataWithMembers,
     double? latitude,
     double? longitude,
     double? temperatureF,
@@ -4773,6 +4929,18 @@ class TrainingSession {
       folderName: folderName ?? this.folderName,
       archived: archived ?? this.archived,
       notes: notes ?? this.notes,
+      shareNotesWithMembers:
+          shareNotesWithMembers ?? this.shareNotesWithMembers,
+      shareTrainingDopeWithMembers:
+          shareTrainingDopeWithMembers ?? this.shareTrainingDopeWithMembers,
+      shareLocationWithMembers:
+          shareLocationWithMembers ?? this.shareLocationWithMembers,
+      sharePhotosWithMembers:
+          sharePhotosWithMembers ?? this.sharePhotosWithMembers,
+      shareShotResultsWithMembers:
+          shareShotResultsWithMembers ?? this.shareShotResultsWithMembers,
+      shareTimerDataWithMembers:
+          shareTimerDataWithMembers ?? this.shareTimerDataWithMembers,
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
       temperatureF: temperatureF ?? this.temperatureF,
@@ -6268,69 +6436,146 @@ class _DataScreenState extends State<DataScreen> {
                               DataCell(Text(e.windageLeft.toStringAsFixed(2))),
                               DataCell(Text(e.windageRight.toStringAsFixed(2))),
                               DataCell(
-                                IconButton(
-                                  icon: const Icon(Icons.delete_outline),
-                                  tooltip: 'Delete working DOPE',
-                                  onPressed: () async {
-                                    final ok = await showDialog<bool>(
-                                      context: context,
-                                      builder: (_) => AlertDialog(
-                                        title: const Text(
-                                          'Delete working DOPE entry?',
-                                        ),
-                                        content: const Text(
-                                          'This cannot be undone.',
-                                        ),
-                                        actions: [
-                                          TextButton(
-                                            onPressed: () =>
-                                                Navigator.pop(context, false),
-                                            child: const Text('Cancel'),
-                                          ),
-                                          FilledButton(
-                                            onPressed: () =>
-                                                Navigator.pop(context, true),
-                                            child: const Text('Delete'),
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                    if (ok != true) return;
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons.edit_outlined),
+                                      tooltip: 'Edit working DOPE',
+                                      onPressed: () async {
+                                        var targetRifleOnly = _rifleOnly;
+                                        var targetBucketKey = key;
 
-                                    var removed = widget.state
-                                        .deleteWorkingDopeEntry(
-                                          rifleOnly: _rifleOnly,
-                                          bucketKey: key,
-                                          distanceKey: dk,
+                                        // In rifle-only mode we may be showing a merged
+                                        // derived entry from a rifle+ammo bucket.
+                                        if (_rifleOnly) {
+                                          final explicitBucket = widget
+                                              .state
+                                              .workingDopeRifleOnly[key];
+                                          final isExplicit =
+                                              explicitBucket?.containsKey(dk) ??
+                                              false;
+                                          if (!isExplicit) {
+                                            final rid = e.rifleId;
+                                            final aid = e.ammoLotId;
+                                            if (rid != null && aid != null) {
+                                              targetRifleOnly = false;
+                                              targetBucketKey = '${rid}_$aid';
+                                            } else {
+                                              if (!context.mounted) return;
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                const SnackBar(
+                                                  content: Text(
+                                                    'Could not resolve DOPE source for editing.',
+                                                  ),
+                                                ),
+                                              );
+                                              return;
+                                            }
+                                          }
+                                        }
+
+                                        final edited =
+                                            await showDialog<DopeEntry>(
+                                              context: context,
+                                              builder: (_) =>
+                                                  _WorkingDopeEditDialog(
+                                                    initial: e,
+                                                  ),
+                                            );
+                                        if (edited == null) return;
+
+                                        final updated = widget.state
+                                            .updateWorkingDopeEntry(
+                                              rifleOnly: targetRifleOnly,
+                                              bucketKey: targetBucketKey,
+                                              oldDistanceKey: dk,
+                                              entry: edited,
+                                            );
+                                        if (context.mounted && !updated) {
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
+                                            const SnackBar(
+                                              content: Text(
+                                                'Could not update that DOPE entry.',
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                      },
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.delete_outline),
+                                      tooltip: 'Delete working DOPE',
+                                      onPressed: () async {
+                                        final ok = await showDialog<bool>(
+                                          context: context,
+                                          builder: (_) => AlertDialog(
+                                            title: const Text(
+                                              'Delete working DOPE entry?',
+                                            ),
+                                            content: const Text(
+                                              'This cannot be undone.',
+                                            ),
+                                            actions: [
+                                              TextButton(
+                                                onPressed: () => Navigator.pop(
+                                                  context,
+                                                  false,
+                                                ),
+                                                child: const Text('Cancel'),
+                                              ),
+                                              FilledButton(
+                                                onPressed: () => Navigator.pop(
+                                                  context,
+                                                  true,
+                                                ),
+                                                child: const Text('Delete'),
+                                              ),
+                                            ],
+                                          ),
                                         );
+                                        if (ok != true) return;
 
-                                    // In rifle-only mode we may be showing a merged
-                                    // derived entry from a rifle+ammo bucket.
-                                    if (!removed && _rifleOnly) {
-                                      final rid = e.rifleId;
-                                      final aid = e.ammoLotId;
-                                      if (rid != null && aid != null) {
-                                        removed = widget.state
+                                        var removed = widget.state
                                             .deleteWorkingDopeEntry(
-                                              rifleOnly: false,
-                                              bucketKey: '${rid}_$aid',
+                                              rifleOnly: _rifleOnly,
+                                              bucketKey: key,
                                               distanceKey: dk,
                                             );
-                                      }
-                                    }
 
-                                    if (context.mounted && !removed) {
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text(
-                                            'Could not find that DOPE entry to delete.',
-                                          ),
-                                        ),
-                                      );
-                                    }
-                                  },
+                                        // In rifle-only mode we may be showing a merged
+                                        // derived entry from a rifle+ammo bucket.
+                                        if (!removed && _rifleOnly) {
+                                          final rid = e.rifleId;
+                                          final aid = e.ammoLotId;
+                                          if (rid != null && aid != null) {
+                                            removed = widget.state
+                                                .deleteWorkingDopeEntry(
+                                                  rifleOnly: false,
+                                                  bucketKey: '${rid}_$aid',
+                                                  distanceKey: dk,
+                                                );
+                                          }
+                                        }
+
+                                        if (context.mounted && !removed) {
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
+                                            const SnackBar(
+                                              content: Text(
+                                                'Could not find that DOPE entry to delete.',
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                      },
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
@@ -7487,6 +7732,211 @@ class _DopeResult {
   _DopeResult(this.entry, this.promote, this.rifleOnly);
 }
 
+class _WorkingDopeEditDialog extends StatefulWidget {
+  final DopeEntry initial;
+  const _WorkingDopeEditDialog({required this.initial});
+
+  @override
+  State<_WorkingDopeEditDialog> createState() => _WorkingDopeEditDialogState();
+}
+
+class _WorkingDopeEditDialogState extends State<_WorkingDopeEditDialog> {
+  late final TextEditingController _distanceCtrl;
+  late DistanceUnit _distanceUnit;
+  late final TextEditingController _elevationCtrl;
+  late ElevationUnit _elevationUnit;
+  late final TextEditingController _elevationNotesCtrl;
+  late final TextEditingController _windValueCtrl;
+  late final TextEditingController _windNotesCtrl;
+  late final TextEditingController _windageCtrl;
+  late bool _windageIsLeft;
+
+  @override
+  void initState() {
+    super.initState();
+    final e = widget.initial;
+    _distanceCtrl = TextEditingController(text: e.distance.toString());
+    _distanceUnit = e.distanceUnit;
+    _elevationCtrl = TextEditingController(text: e.elevation.toString());
+    _elevationUnit = e.elevationUnit;
+    _elevationNotesCtrl = TextEditingController(text: e.elevationNotes);
+    _windValueCtrl = TextEditingController(text: e.windValue);
+    _windNotesCtrl = TextEditingController(text: e.windNotes);
+    final startsLeft =
+        e.windageLeft > 0 || (e.windageLeft == 0 && e.windageRight == 0);
+    _windageIsLeft = startsLeft;
+    final windageAmount = startsLeft ? e.windageLeft : e.windageRight;
+    _windageCtrl = TextEditingController(text: windageAmount.toString());
+  }
+
+  @override
+  void dispose() {
+    _distanceCtrl.dispose();
+    _elevationCtrl.dispose();
+    _elevationNotesCtrl.dispose();
+    _windValueCtrl.dispose();
+    _windNotesCtrl.dispose();
+    _windageCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Edit Working DOPE'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    textCapitalization: TextCapitalization.none,
+                    controller: _distanceCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(labelText: 'Distance'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                DropdownButton<DistanceUnit>(
+                  value: _distanceUnit,
+                  items: DistanceUnit.values
+                      .map(
+                        (u) => DropdownMenuItem(value: u, child: Text(u.name)),
+                      )
+                      .toList(),
+                  onChanged: (v) => setState(() => _distanceUnit = v!),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    textCapitalization: TextCapitalization.none,
+                    controller: _elevationCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(labelText: 'Elevation'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                DropdownButton<ElevationUnit>(
+                  value: _elevationUnit,
+                  items: ElevationUnit.values
+                      .map(
+                        (u) => DropdownMenuItem(
+                          value: u,
+                          child: Text(u.name.toUpperCase()),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (v) => setState(() => _elevationUnit = v!),
+                ),
+              ],
+            ),
+            TextField(
+              textCapitalization: TextCapitalization.none,
+              controller: _elevationNotesCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Elevation notes (optional)',
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                ToggleButtons(
+                  isSelected: [_windageIsLeft, !_windageIsLeft],
+                  onPressed: (i) => setState(() => _windageIsLeft = i == 0),
+                  children: const [
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 10),
+                      child: Text('Left'),
+                    ),
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 10),
+                      child: Text('Right'),
+                    ),
+                  ],
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextField(
+                    textCapitalization: TextCapitalization.none,
+                    controller: _windageCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(labelText: 'Windage'),
+                  ),
+                ),
+              ],
+            ),
+            TextField(
+              textCapitalization: TextCapitalization.none,
+              controller: _windValueCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Wind value (optional)',
+              ),
+            ),
+            TextField(
+              textCapitalization: TextCapitalization.none,
+              controller: _windNotesCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Wind notes (optional)',
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () {
+            final distance = double.tryParse(_distanceCtrl.text.trim());
+            final elevation = double.tryParse(_elevationCtrl.text.trim());
+            final windage = double.tryParse(_windageCtrl.text.trim());
+            if (distance == null || elevation == null || windage == null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Enter valid numeric values.')),
+              );
+              return;
+            }
+
+            final updated = DopeEntry(
+              id: widget.initial.id,
+              time: DateTime.now(),
+              rifleId: widget.initial.rifleId,
+              ammoLotId: widget.initial.ammoLotId,
+              distance: distance,
+              distanceUnit: _distanceUnit,
+              elevation: elevation,
+              elevationUnit: _elevationUnit,
+              elevationNotes: _elevationNotesCtrl.text.trim(),
+              windType: widget.initial.windType,
+              windValue: _windValueCtrl.text.trim(),
+              windNotes: _windNotesCtrl.text.trim(),
+              windageLeft: _windageIsLeft ? windage : 0.0,
+              windageRight: _windageIsLeft ? 0.0 : windage,
+            );
+
+            Navigator.pop(context, updated);
+          },
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
 enum _WorkingDopeConflictChoice { replace, addBoth }
 
 class _DopeEntryDialog extends StatefulWidget {
@@ -7511,7 +7961,7 @@ class _DopeEntryDialog extends StatefulWidget {
 class _DopeEntryDialogState extends State<_DopeEntryDialog> {
   final _distanceCtrl = TextEditingController();
   DistanceUnit _distanceUnit = DistanceUnit.yards;
-  double _elevation = 0.0;
+  final _elevationCtrl = TextEditingController(text: '0.0');
   late ElevationUnit _elevationUnit;
   String? _ammoLotId;
   final _elevationNotesCtrl = TextEditingController();
@@ -7528,16 +7978,19 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
 
   final _windValueCtrl = TextEditingController();
   final _windNotesCtrl = TextEditingController();
-  double _windageLeft = 0.0;
-  double _windageRight = 0.0;
+  final _windageCtrl = TextEditingController(text: '0.0');
+  bool _windageIsLeft = true;
   bool _promote = true;
   bool _rifleOnly = false;
 
   @override
   void dispose() {
+    _distanceCtrl.dispose();
+    _elevationCtrl.dispose();
     _elevationNotesCtrl.dispose();
     _windValueCtrl.dispose();
     _windNotesCtrl.dispose();
+    _windageCtrl.dispose();
     super.dispose();
   }
 
@@ -7603,48 +8056,19 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    IconButton(
-                      tooltip: '-',
-                      onPressed: () {
-                        final step = _elevationUnit == ElevationUnit.mil
-                            ? 0.1
-                            : (_elevationUnit == ElevationUnit.moa
-                                  ? 0.25
-                                  : 0.5);
-                        setState(
-                          () => _elevation = (_elevation - step).clamp(
-                            0.0,
-                            999.0,
-                          ),
-                        );
-                      },
-                      icon: const Icon(Icons.remove_circle_outline),
-                    ),
-                    Text(
-                      _elevation.toStringAsFixed(2),
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
+                    Expanded(
+                      child: TextField(
+                        textCapitalization: TextCapitalization.none,
+                        controller: _elevationCtrl,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: const InputDecoration(
+                          labelText: 'Elevation value',
+                        ),
                       ),
                     ),
-                    IconButton(
-                      tooltip: '+',
-                      onPressed: () {
-                        final step = _elevationUnit == ElevationUnit.mil
-                            ? 0.1
-                            : (_elevationUnit == ElevationUnit.moa
-                                  ? 0.25
-                                  : 0.5);
-                        setState(
-                          () => _elevation = (_elevation + step).clamp(
-                            0.0,
-                            999.0,
-                          ),
-                        );
-                      },
-                      icon: const Icon(Icons.add_circle_outline),
-                    ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 8),
                     DropdownButton<ElevationUnit>(
                       value: _elevationUnit,
                       items: ElevationUnit.values
@@ -7671,25 +8095,6 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
             const SizedBox(height: 8),
             Builder(
               builder: (context) {
-                final isLeft = _windageLeft > 0 || (_windageRight == 0);
-                final val = isLeft ? _windageLeft : _windageRight;
-                final step = _elevationUnit == ElevationUnit.mil
-                    ? 0.1
-                    : (_elevationUnit == ElevationUnit.moa ? 0.25 : 0.5);
-
-                void setWind(bool left, double v) {
-                  final nv = v.clamp(0.0, 999.0);
-                  setState(() {
-                    if (left) {
-                      _windageLeft = nv;
-                      _windageRight = 0.0;
-                    } else {
-                      _windageRight = nv;
-                      _windageLeft = 0.0;
-                    }
-                  });
-                }
-
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -7698,8 +8103,9 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
                     Row(
                       children: [
                         ToggleButtons(
-                          isSelected: [isLeft, !isLeft],
-                          onPressed: (i) => setWind(i == 0, val),
+                          isSelected: [_windageIsLeft, !_windageIsLeft],
+                          onPressed: (i) =>
+                              setState(() => _windageIsLeft = i == 0),
                           children: const [
                             Padding(
                               padding: EdgeInsets.symmetric(horizontal: 10),
@@ -7711,25 +8117,34 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
                             ),
                           ],
                         ),
-                        const SizedBox(width: 12),
-                        IconButton(
-                          tooltip: '-',
-                          onPressed: () => setWind(isLeft, val - step),
-                          icon: const Icon(Icons.remove_circle_outline),
-                        ),
-                        Text(
-                          val.toStringAsFixed(2),
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextField(
+                            textCapitalization: TextCapitalization.none,
+                            controller: _windageCtrl,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            decoration: const InputDecoration(
+                              labelText: 'Windage value',
+                            ),
                           ),
                         ),
-                        IconButton(
-                          tooltip: '+',
-                          onPressed: () => setWind(isLeft, val + step),
-                          icon: const Icon(Icons.add_circle_outline),
-                        ),
                       ],
+                    ),
+                    TextField(
+                      textCapitalization: TextCapitalization.none,
+                      controller: _windValueCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Wind value (optional)',
+                      ),
+                    ),
+                    TextField(
+                      textCapitalization: TextCapitalization.none,
+                      controller: _windNotesCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Wind notes (optional)',
+                      ),
                     ),
                   ],
                 );
@@ -7757,7 +8172,11 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
         ElevatedButton(
           onPressed: () {
             final dist = double.tryParse(_distanceCtrl.text.trim());
+            final elevation = double.tryParse(_elevationCtrl.text.trim());
+            final windage = double.tryParse(_windageCtrl.text.trim());
             if (dist == null) return;
+            if (elevation == null) return;
+            if (windage == null) return;
             if (_ammoLotId == null) return;
 
             final entry = DopeEntry(
@@ -7767,14 +8186,14 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
               ammoLotId: _ammoLotId,
               distance: dist,
               distanceUnit: _distanceUnit,
-              elevation: _elevation,
+              elevation: elevation,
               elevationUnit: _elevationUnit,
               elevationNotes: _elevationNotesCtrl.text.trim(),
               windType: _windType,
               windValue: _windValueCtrl.text.trim(),
               windNotes: _windNotesCtrl.text.trim(),
-              windageLeft: _windageLeft,
-              windageRight: _windageRight,
+              windageLeft: _windageIsLeft ? windage : 0.0,
+              windageRight: _windageIsLeft ? 0.0 : windage,
             );
 
             Navigator.pop(context, _DopeResult(entry, _promote, _rifleOnly));
@@ -9501,21 +9920,38 @@ class SessionDetailScreen extends StatelessWidget {
       return;
     }
 
-    final selected = await showDialog<Set<String>>(
+    final shareResult = await showDialog<_ShareSessionResult>(
       context: context,
       builder: (_) => _ShareSessionDialog(
         sessionTitle: s.locationName.isEmpty ? 'Session' : s.locationName,
         users: others,
         initiallySelected: s.memberUserIds.where((id) => id != me.id).toSet(),
+        initialShareNotesWithMembers: s.shareNotesWithMembers,
+        initialShareTrainingDopeWithMembers: s.shareTrainingDopeWithMembers,
+        initialShareLocationWithMembers: s.shareLocationWithMembers,
+        initialSharePhotosWithMembers: s.sharePhotosWithMembers,
+        initialShareShotResultsWithMembers: s.shareShotResultsWithMembers,
+        initialShareTimerDataWithMembers: s.shareTimerDataWithMembers,
       ),
     );
 
-    if (selected == null) return;
-    state.shareSessionWithUsers(sessionId: s.id, userIds: selected.toList());
+    if (shareResult == null) return;
+    state.shareSessionWithUsers(
+      sessionId: s.id,
+      userIds: shareResult.userIds.toList(),
+      shareNotesWithMembers: shareResult.shareNotesWithMembers,
+      shareTrainingDopeWithMembers: shareResult.shareTrainingDopeWithMembers,
+      shareLocationWithMembers: shareResult.shareLocationWithMembers,
+      sharePhotosWithMembers: shareResult.sharePhotosWithMembers,
+      shareShotResultsWithMembers: shareResult.shareShotResultsWithMembers,
+      shareTimerDataWithMembers: shareResult.shareTimerDataWithMembers,
+    );
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Session shared with ${selected.length} user(s).'),
+        content: Text(
+          'Session shared with ${shareResult.userIds.length} user(s).',
+        ),
       ),
     );
   }
@@ -9777,6 +10213,15 @@ class SessionDetailScreen extends StatelessWidget {
   ) async {
     bool redact = true;
     bool includeB64 = false;
+    final activeUserId = state.activeUser?.id;
+    final isSessionOwner = activeUserId != null && activeUserId == s.userId;
+    final canShareNotes = isSessionOwner || s.shareNotesWithMembers;
+    final canShareTrainingDope =
+        isSessionOwner || s.shareTrainingDopeWithMembers;
+    final canShareLocation = isSessionOwner || s.shareLocationWithMembers;
+    final canSharePhotos = isSessionOwner || s.sharePhotosWithMembers;
+    final canShareShotResults = isSessionOwner || s.shareShotResultsWithMembers;
+    final canShareTimerData = isSessionOwner || s.shareTimerDataWithMembers;
 
     await showDialog<void>(
       context: context,
@@ -9788,6 +10233,12 @@ class SessionDetailScreen extends StatelessWidget {
               s: s,
               redactLocation: redact,
               includePhotoBase64: includeB64,
+              includeNotes: canShareNotes,
+              includeTrainingDope: canShareTrainingDope,
+              includeLocation: canShareLocation,
+              includePhotos: canSharePhotos,
+              includeShotResults: canShareShotResults,
+              includeTimerData: canShareTimerData,
             );
 
             return AlertDialog(
@@ -10046,6 +10497,16 @@ class SessionDetailScreen extends StatelessWidget {
         final compatibleAmmo = (rifle == null)
             ? <AmmoLot>[]
             : state.ammoLots.where((a) => a.caliber == rifle.caliber).toList();
+        final activeUserId = state.activeUser?.id;
+        final isSessionOwner = activeUserId != null && activeUserId == s.userId;
+        final canViewNotes = isSessionOwner || s.shareNotesWithMembers;
+        final canViewTrainingDope =
+            isSessionOwner || s.shareTrainingDopeWithMembers;
+        final canViewLocation = isSessionOwner || s.shareLocationWithMembers;
+        final canViewPhotos = isSessionOwner || s.sharePhotosWithMembers;
+        final canViewShotResults =
+          isSessionOwner || s.shareShotResultsWithMembers;
+        final canViewTimerData = isSessionOwner || s.shareTimerDataWithMembers;
 
         String rifleLoadoutLabel(Rifle? r, {String? deletedId}) {
           if (r == null) {
@@ -10067,13 +10528,16 @@ class SessionDetailScreen extends StatelessWidget {
           if (a == null) {
             return deletedId == null ? '- None -' : 'Deleted ammo ($deletedId)';
           }
+          final modelOrNickname = [
+            a.bullet.trim(),
+            (a.name ?? '').trim(),
+          ].where((v) => v.isNotEmpty).join(' / ');
           final parts = <String>[
             if ((a.manufacturer ?? '').trim().isNotEmpty)
               (a.manufacturer ?? '').trim(),
-            if (a.bullet.trim().isNotEmpty) a.bullet.trim(),
-            if (a.grain > 0) '${a.grain}gr',
+            if (modelOrNickname.isNotEmpty) modelOrNickname,
             if (a.caliber.trim().isNotEmpty) a.caliber.trim(),
-            if ((a.name ?? '').trim().isNotEmpty) (a.name ?? '').trim(),
+            if (a.grain > 0) '${a.grain}gr',
           ];
           return parts.isEmpty ? 'Ammo' : parts.join(' • ');
         }
@@ -10156,7 +10620,9 @@ class SessionDetailScreen extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             children: [
               Text(
-                s.locationName,
+                canViewLocation
+                    ? (s.locationName.isEmpty ? 'Session' : s.locationName)
+                    : 'Private location',
                 style: const TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
@@ -10211,7 +10677,7 @@ class SessionDetailScreen extends StatelessWidget {
                       Align(
                         alignment: Alignment.centerLeft,
                         child: SelectableText(
-                          'Location: ${s.locationName.isEmpty ? '-' : s.locationName}',
+                          'Location: ${canViewLocation ? (s.locationName.isEmpty ? '-' : s.locationName) : '[PRIVATE]'}',
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -10232,10 +10698,12 @@ class SessionDetailScreen extends StatelessWidget {
                       Align(
                         alignment: Alignment.centerLeft,
                         child: SelectableText(
-                          'Shot timer: ${(s.shotTimerElapsedMs ?? 0) > 0 ? '${(s.shotTimerElapsedMs! / 1000).toStringAsFixed(3)}s total' : '-'}'
-                          '${(s.shotTimerFirstShotMs ?? 0) > 0 ? ' • first ${(s.shotTimerFirstShotMs! / 1000).toStringAsFixed(3)}s' : ''}'
-                          '${s.shotTimerSplitMs.isNotEmpty ? ' • ${s.shotTimerSplitMs.length} split${s.shotTimerSplitMs.length == 1 ? '' : 's'}' : ''}'
-                          '${s.timerRuns.isNotEmpty ? ' • ${s.timerRuns.length} saved run${s.timerRuns.length == 1 ? '' : 's'}' : ''}',
+                          canViewTimerData
+                              ? 'Shot timer: ${(s.shotTimerElapsedMs ?? 0) > 0 ? '${(s.shotTimerElapsedMs! / 1000).toStringAsFixed(3)}s total' : '-'}'
+                                    '${(s.shotTimerFirstShotMs ?? 0) > 0 ? ' • first ${(s.shotTimerFirstShotMs! / 1000).toStringAsFixed(3)}s' : ''}'
+                                    '${s.shotTimerSplitMs.isNotEmpty ? ' • ${s.shotTimerSplitMs.length} split${s.shotTimerSplitMs.length == 1 ? '' : 's'}' : ''}'
+                                    '${s.timerRuns.isNotEmpty ? ' • ${s.timerRuns.length} saved run${s.timerRuns.length == 1 ? '' : 's'}' : ''}'
+                              : 'Shot timer: [PRIVATE]',
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -10260,19 +10728,22 @@ class SessionDetailScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        s.notes.isEmpty
-                            ? 'No notes yet. Tap Edit to add session notes.'
-                            : s.notes,
+                        canViewNotes
+                            ? (s.notes.isEmpty
+                                  ? 'No notes yet. Tap Edit to add session notes.'
+                                  : s.notes)
+                            : 'Notes are private for this shared session.',
                       ),
                       const SizedBox(height: 8),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton.icon(
-                          onPressed: () => _editTrainingNotes(context, s),
-                          icon: const Icon(Icons.edit_note_outlined),
-                          label: const Text('Edit'),
+                      if (canViewNotes)
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton.icon(
+                            onPressed: () => _editTrainingNotes(context, s),
+                            icon: const Icon(Icons.edit_note_outlined),
+                            label: const Text('Edit'),
+                          ),
                         ),
-                      ),
                     ],
                   ),
                 ),
@@ -10575,15 +11046,23 @@ class SessionDetailScreen extends StatelessWidget {
               Row(
                 children: [
                   Expanded(child: _SectionTitle('Training DOPE')),
-                  TextButton.icon(
-                    onPressed: () => _addDope(context, s),
-                    icon: const Icon(Icons.add),
-                    label: const Text('Add'),
-                  ),
+                  if (canViewTrainingDope)
+                    TextButton.icon(
+                      onPressed: () => _addDope(context, s),
+                      icon: const Icon(Icons.add),
+                      label: const Text('Add'),
+                    ),
                 ],
               ),
               const SizedBox(height: 8),
-              if (s.trainingDope.isEmpty)
+              if (!canViewTrainingDope)
+                _HintCard(
+                  icon: Icons.lock_outline,
+                  title: 'Training DOPE is private',
+                  message:
+                      'The session owner has chosen not to share training DOPE for this session.',
+                )
+              else if (s.trainingDope.isEmpty)
                 _HintCard(
                   icon: Icons.my_location_outlined,
                   title: 'No training DOPE yet',
@@ -10651,7 +11130,14 @@ class SessionDetailScreen extends StatelessWidget {
               const SizedBox(height: 16),
               _SectionTitle('Cold Bore Entries'),
               const SizedBox(height: 8),
-              if (s.shots.where((x) => x.isColdBore).isEmpty)
+              if (!canViewShotResults)
+                _HintCard(
+                  icon: Icons.lock_outline,
+                  title: 'Shot results are private',
+                  message:
+                      'The session owner has chosen not to share shot results for this session.',
+                )
+              else if (s.shots.where((x) => x.isColdBore).isEmpty)
                 _HintCard(
                   icon: Icons.ac_unit_outlined,
                   title: 'No cold bore entries yet',
@@ -10711,6 +11197,15 @@ class SessionDetailScreen extends StatelessWidget {
               const SizedBox(height: 8),
               Builder(
                 builder: (context) {
+                  if (!canViewTrainingDope) {
+                    return _HintCard(
+                      icon: Icons.lock_outline,
+                      title: 'Working DOPE is private',
+                      message:
+                          'The session owner has chosen not to share DOPE for this session.',
+                    );
+                  }
+
                   if (s.rifleId == null) {
                     return _HintCard(
                       icon: Icons.info_outline,
@@ -10729,16 +11224,20 @@ class SessionDetailScreen extends StatelessWidget {
                       : state.workingDopeRifleAmmo[ammoKey];
                   final rifleOnlyMap = state.workingDopeRifleOnly[rifleKey];
 
-                  final useAmmoScoped =
-                      (rifleAmmoMap != null && rifleAmmoMap.isNotEmpty);
-                  final useMap = useAmmoScoped
-                      ? rifleAmmoMap
-                      : (rifleOnlyMap ?? <DistanceKey, DopeEntry>{});
-                  final workingBucketKey = useAmmoScoped ? ammoKey : rifleKey;
+                  final ammoScopedMap =
+                      rifleAmmoMap ?? <DistanceKey, DopeEntry>{};
+                  final rifleScopedMap =
+                      rifleOnlyMap ?? <DistanceKey, DopeEntry>{};
+                  final useMap = <DistanceKey, DopeEntry>{
+                    ...rifleScopedMap,
+                    ...ammoScopedMap,
+                  };
 
-                  final scopeLabel = useAmmoScoped
-                      ? 'Rifle + Ammo'
-                      : 'Rifle only';
+                  final hasAmmoScoped = ammoScopedMap.isNotEmpty;
+                  final hasRifleOnly = rifleScopedMap.isNotEmpty;
+                  final scopeLabel = hasAmmoScoped && hasRifleOnly
+                      ? 'Rifle + Ammo (with Rifle only fallback)'
+                      : (hasAmmoScoped ? 'Rifle + Ammo' : 'Rifle only');
 
                   if (useMap.isEmpty) {
                     return _HintCard(
@@ -10812,9 +11311,24 @@ class SessionDetailScreen extends StatelessWidget {
                                   ),
                                 );
                                 if (ok != true) return;
+
+                                final fromAmmoScoped =
+                                    ammoKey != null &&
+                                    (rifleAmmoMap?.containsKey(dk) ?? false);
+                                final fromRifleOnly =
+                                    rifleOnlyMap?.containsKey(dk) ?? false;
+
+                                final deleteRifleOnly = fromAmmoScoped
+                                    ? false
+                                    : (fromRifleOnly
+                                          ? true
+                                          : e.ammoLotId == null);
+                                final deleteBucketKey = deleteRifleOnly
+                                    ? rifleKey
+                                    : (ammoKey ?? '${rifleKey}_${e.ammoLotId}');
                                 state.deleteWorkingDopeEntry(
-                                  rifleOnly: !useAmmoScoped,
-                                  bucketKey: workingBucketKey!,
+                                  rifleOnly: deleteRifleOnly,
+                                  bucketKey: deleteBucketKey,
                                   distanceKey: dk,
                                 );
                               },
@@ -10829,125 +11343,144 @@ class SessionDetailScreen extends StatelessWidget {
               const SizedBox(height: 16),
               _SectionTitle('Photos'),
               const SizedBox(height: 8),
-              Wrap(
-                spacing: 12,
-                runSpacing: 8,
-                children: [
-                  FilledButton.icon(
-                    onPressed: () async {
-                      final picker = ImagePicker();
-                      try {
-                        final x = await picker.pickImage(
-                          source: ImageSource.camera,
-                          imageQuality: 85,
-                        );
-                        if (x == null) return;
-                        final bytes = await x.readAsBytes();
-
-                        String caption = '';
-                        final cap = await showDialog<String>(
-                          context: context,
-                          builder: (_) => _PhotoNoteDialog(),
-                        );
-                        if (cap != null) caption = cap;
-
-                        state.addSessionPhoto(
-                          sessionId: s.id,
-                          bytes: bytes,
-                          caption: caption,
-                        );
-                      } catch (e) {
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Camera error: $e')),
+              if (!canViewPhotos)
+                _HintCard(
+                  icon: Icons.lock_outline,
+                  title: 'Photos are private',
+                  message:
+                      'The session owner has chosen not to share photos for this session.',
+                )
+              else ...[
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 8,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: () async {
+                        final picker = ImagePicker();
+                        try {
+                          final x = await picker.pickImage(
+                            source: ImageSource.camera,
+                            imageQuality: 85,
                           );
+                          if (x == null) return;
+                          final bytes = await x.readAsBytes();
+
+                          String caption = '';
+                          final cap = await showDialog<String>(
+                            context: context,
+                            builder: (_) => _PhotoNoteDialog(),
+                          );
+                          if (cap != null) caption = cap;
+
+                          state.addSessionPhoto(
+                            sessionId: s.id,
+                            bytes: bytes,
+                            caption: caption,
+                          );
+                        } catch (e) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Camera error: $e')),
+                            );
+                          }
                         }
-                      }
-                    },
-                    icon: const Icon(Icons.photo_camera_outlined),
-                    label: const Text('Capture'),
+                      },
+                      icon: const Icon(Icons.photo_camera_outlined),
+                      label: const Text('Capture'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: () => _addPhotoNote(context, s),
+                      icon: const Icon(Icons.note_add_outlined),
+                      label: const Text('Add note'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                if (s.sessionPhotos.isEmpty && s.photos.isEmpty)
+                  _HintCard(
+                    icon: Icons.photo_outlined,
+                    title: 'No photos yet',
+                    message: 'Capture a photo for this session or add a note.',
                   ),
-                  OutlinedButton.icon(
-                    onPressed: () => _addPhotoNote(context, s),
-                    icon: const Icon(Icons.note_add_outlined),
-                    label: const Text('Add note'),
+                if (s.sessionPhotos.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  ...s.sessionPhotos.map(
+                    (p) => Card(
+                      child: ListTile(
+                        leading: ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: Image.memory(
+                            p.bytes,
+                            width: 52,
+                            height: 52,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                        title: Text(
+                          p.caption.trim().isEmpty ? 'Photo' : p.caption.trim(),
+                        ),
+                        subtitle: Text(
+                          '${_fmtDateTime(p.time)} • ${p.bytes.lengthInBytes} bytes',
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () {
+                          showDialog<void>(
+                            context: context,
+                            builder: (_) => Dialog(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: Text(
+                                      p.caption.trim().isEmpty
+                                          ? 'Photo'
+                                          : p.caption.trim(),
+                                    ),
+                                  ),
+                                  InteractiveViewer(
+                                    child: Image.memory(p.bytes),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context),
+                                    child: const Text('Close'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
                   ),
                 ],
-              ),
-              const SizedBox(height: 8),
-              if (s.sessionPhotos.isEmpty && s.photos.isEmpty)
-                _HintCard(
-                  icon: Icons.photo_outlined,
-                  title: 'No photos yet',
-                  message: 'Capture a photo for this session or add a note.',
-                ),
-              if (s.sessionPhotos.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                ...s.sessionPhotos.map(
-                  (p) => Card(
-                    child: ListTile(
-                      leading: ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
-                        child: Image.memory(
-                          p.bytes,
-                          width: 52,
-                          height: 52,
-                          fit: BoxFit.cover,
-                        ),
+                if (s.photos.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  ...s.photos.map(
+                    (p) => Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.sticky_note_2_outlined),
+                        title: Text(p.caption),
+                        subtitle: Text(_fmtDateTime(p.time)),
                       ),
-                      title: Text(
-                        p.caption.trim().isEmpty ? 'Photo' : p.caption.trim(),
-                      ),
-                      subtitle: Text(
-                        '${_fmtDateTime(p.time)} • ${p.bytes.lengthInBytes} bytes',
-                      ),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () {
-                        showDialog<void>(
-                          context: context,
-                          builder: (_) => Dialog(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Padding(
-                                  padding: const EdgeInsets.all(12),
-                                  child: Text(
-                                    p.caption.trim().isEmpty
-                                        ? 'Photo'
-                                        : p.caption.trim(),
-                                  ),
-                                ),
-                                InteractiveViewer(child: Image.memory(p.bytes)),
-                                const SizedBox(height: 12),
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context),
-                                  child: const Text('Close'),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
                     ),
                   ),
-                ),
-              ],
-              if (s.photos.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                ...s.photos.map(
-                  (p) => Card(
-                    child: ListTile(
-                      leading: const Icon(Icons.sticky_note_2_outlined),
-                      title: Text(p.caption),
-                      subtitle: Text(_fmtDateTime(p.time)),
-                    ),
-                  ),
-                ),
+                ],
               ],
               const SizedBox(height: 16),
               _SectionTitle('Shot Timer'),
               const SizedBox(height: 8),
-              _SessionShotTimerCard(state: state, sessionId: s.id),
+              if (!canViewTimerData)
+                _HintCard(
+                  icon: Icons.lock_outline,
+                  title: 'Timer data is private',
+                  message:
+                      'The session owner has chosen not to share timer data for this session.',
+                )
+              else
+                _SessionShotTimerCard(state: state, sessionId: s.id),
               const SizedBox(height: 8),
               const Divider(),
               const SizedBox(height: 8),
@@ -16270,11 +16803,23 @@ class _ShareSessionDialog extends StatefulWidget {
   final String sessionTitle;
   final List<UserProfile> users;
   final Set<String> initiallySelected;
+  final bool initialShareNotesWithMembers;
+  final bool initialShareTrainingDopeWithMembers;
+  final bool initialShareLocationWithMembers;
+  final bool initialSharePhotosWithMembers;
+  final bool initialShareShotResultsWithMembers;
+  final bool initialShareTimerDataWithMembers;
 
   const _ShareSessionDialog({
     required this.sessionTitle,
     required this.users,
     required this.initiallySelected,
+    required this.initialShareNotesWithMembers,
+    required this.initialShareTrainingDopeWithMembers,
+    required this.initialShareLocationWithMembers,
+    required this.initialSharePhotosWithMembers,
+    required this.initialShareShotResultsWithMembers,
+    required this.initialShareTimerDataWithMembers,
   });
 
   @override
@@ -16283,11 +16828,23 @@ class _ShareSessionDialog extends StatefulWidget {
 
 class _ShareSessionDialogState extends State<_ShareSessionDialog> {
   late final Set<String> _selected;
+  late bool _shareNotesWithMembers;
+  late bool _shareTrainingDopeWithMembers;
+  late bool _shareLocationWithMembers;
+  late bool _sharePhotosWithMembers;
+  late bool _shareShotResultsWithMembers;
+  late bool _shareTimerDataWithMembers;
 
   @override
   void initState() {
     super.initState();
     _selected = {...widget.initiallySelected};
+    _shareNotesWithMembers = widget.initialShareNotesWithMembers;
+    _shareTrainingDopeWithMembers = widget.initialShareTrainingDopeWithMembers;
+    _shareLocationWithMembers = widget.initialShareLocationWithMembers;
+    _sharePhotosWithMembers = widget.initialSharePhotosWithMembers;
+    _shareShotResultsWithMembers = widget.initialShareShotResultsWithMembers;
+    _shareTimerDataWithMembers = widget.initialShareTimerDataWithMembers;
   }
 
   @override
@@ -16298,23 +16855,76 @@ class _ShareSessionDialogState extends State<_ShareSessionDialog> {
         width: 420,
         child: ListView(
           shrinkWrap: true,
-          children: widget.users.map((u) {
-            final checked = _selected.contains(u.id);
-            return CheckboxListTile(
+          children: [
+            const Text(
+              'Who should have access?',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 6),
+            ...widget.users.map((u) {
+              final checked = _selected.contains(u.id);
+              return CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                value: checked,
+                title: Text(_displayUserIdentifier(u.identifier)),
+                onChanged: (v) {
+                  setState(() {
+                    if (v == true) {
+                      _selected.add(u.id);
+                    } else {
+                      _selected.remove(u.id);
+                    }
+                  });
+                },
+              );
+            }),
+            const Divider(height: 24),
+            const Text(
+              'What should members see?',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              value: checked,
-              title: Text(_displayUserIdentifier(u.identifier)),
-              onChanged: (v) {
-                setState(() {
-                  if (v == true) {
-                    _selected.add(u.id);
-                  } else {
-                    _selected.remove(u.id);
-                  }
-                });
-              },
-            );
-          }).toList(),
+              title: const Text('Share notes'),
+              value: _shareNotesWithMembers,
+              onChanged: (v) => setState(() => _shareNotesWithMembers = v),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Share training DOPE'),
+              subtitle: const Text(
+                'Turn off to keep your training/working DOPE private.',
+              ),
+              value: _shareTrainingDopeWithMembers,
+              onChanged: (v) =>
+                  setState(() => _shareTrainingDopeWithMembers = v),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Share location and GPS'),
+              value: _shareLocationWithMembers,
+              onChanged: (v) => setState(() => _shareLocationWithMembers = v),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Share photos and photo notes'),
+              value: _sharePhotosWithMembers,
+              onChanged: (v) => setState(() => _sharePhotosWithMembers = v),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Share shot results'),
+              value: _shareShotResultsWithMembers,
+              onChanged: (v) =>
+                  setState(() => _shareShotResultsWithMembers = v),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Share timer data'),
+              value: _shareTimerDataWithMembers,
+              onChanged: (v) => setState(() => _shareTimerDataWithMembers = v),
+            ),
+          ],
         ),
       ),
       actions: [
@@ -16323,12 +16933,42 @@ class _ShareSessionDialogState extends State<_ShareSessionDialog> {
           child: const Text('Cancel'),
         ),
         ElevatedButton(
-          onPressed: () => Navigator.of(context).pop(_selected),
+          onPressed: () => Navigator.of(context).pop(
+            _ShareSessionResult(
+              userIds: _selected,
+              shareNotesWithMembers: _shareNotesWithMembers,
+              shareTrainingDopeWithMembers: _shareTrainingDopeWithMembers,
+              shareLocationWithMembers: _shareLocationWithMembers,
+              sharePhotosWithMembers: _sharePhotosWithMembers,
+              shareShotResultsWithMembers: _shareShotResultsWithMembers,
+              shareTimerDataWithMembers: _shareTimerDataWithMembers,
+            ),
+          ),
           child: const Text('Share'),
         ),
       ],
     );
   }
+}
+
+class _ShareSessionResult {
+  final Set<String> userIds;
+  final bool shareNotesWithMembers;
+  final bool shareTrainingDopeWithMembers;
+  final bool shareLocationWithMembers;
+  final bool sharePhotosWithMembers;
+  final bool shareShotResultsWithMembers;
+  final bool shareTimerDataWithMembers;
+
+  const _ShareSessionResult({
+    required this.userIds,
+    required this.shareNotesWithMembers,
+    required this.shareTrainingDopeWithMembers,
+    required this.shareLocationWithMembers,
+    required this.sharePhotosWithMembers,
+    required this.shareShotResultsWithMembers,
+    required this.shareTimerDataWithMembers,
+  });
 }
 
 class _NewRifleDialog extends StatefulWidget {
