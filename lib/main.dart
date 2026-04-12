@@ -20,6 +20,7 @@ import 'package:printing/printing.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import 'package:file_picker/file_picker.dart';
+import 'cloud_sync_service.dart';
 import 'subscription_service.dart';
 
 const String kBackupSchemaVersion = '2026-02-05';
@@ -981,6 +982,7 @@ class RifleDopeEntry {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await AppThemeController().initialize();
+  await CloudSyncService().initialize();
   runApp(const ColdBoreApp());
 }
 
@@ -1085,6 +1087,7 @@ class _AppRoot extends StatefulWidget {
 
 class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
   final AppState _state = AppState();
+  final CloudSyncService _cloud = CloudSyncService();
   static const MethodChannel _iCloudChannel = MethodChannel(
     'com.remington.coldbore/icloud',
   );
@@ -1103,6 +1106,8 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
   bool _autoICloudBackupArmed = false;
   bool _startGuidedTourOnHome = false;
   bool _ready = false;
+  String? _lastCloudIdentifier;
+  Timer? _cloudSyncDebounce;
 
   @override
   void initState() {
@@ -1113,6 +1118,7 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
 
   Future<void> _loadState() async {
     await _state.loadPersistedState();
+    await _attachCloudIdentityIfNeeded();
     await _attemptAutoICloudRestoreIfEligible();
     await _prepareFirstLaunchTutorialFlag();
     await SubscriptionService().initialize();
@@ -1189,6 +1195,35 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
   void _onStateChanged() {
     if (!_autoICloudBackupArmed || !_canAutoBackupToICloud || !_ready) return;
     _scheduleAutoICloudBackup();
+
+    unawaited(_attachCloudIdentityIfNeeded());
+    _cloudSyncDebounce?.cancel();
+    _cloudSyncDebounce = Timer(const Duration(milliseconds: 900), () async {
+      final ownerIdentifier = _state.activeUserIdentifier;
+      if (ownerIdentifier == null || ownerIdentifier.trim().isEmpty) return;
+      await _cloud.syncOwnedSessions(
+        ownerIdentifier: ownerIdentifier,
+        sessionsById: _state.exportOwnedSessionMapsById(),
+      );
+    });
+  }
+
+  Future<void> _attachCloudIdentityIfNeeded() async {
+    final identifier = _state.activeUserIdentifier?.trim();
+    if (identifier == null || identifier.isEmpty) return;
+    if (_lastCloudIdentifier == identifier) return;
+
+    await _cloud.attachIdentity(
+      identifier: identifier,
+      onRemoteSession: (sessionMap, ownerId, updatedAtMs) {
+        _state.upsertSessionFromCloud(
+          sessionMap: sessionMap,
+          ownerIdentifier: ownerId,
+          updatedAtMs: updatedAtMs,
+        );
+      },
+    );
+    _lastCloudIdentifier = identifier;
   }
 
   void _scheduleAutoICloudBackup() {
@@ -1328,6 +1363,7 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _state.removeListener(_onStateChanged);
     _iCloudBackupDebounceTimer?.cancel();
+    _cloudSyncDebounce?.cancel();
     _state.dispose();
     super.dispose();
   }
@@ -1339,6 +1375,7 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
     }
     return HomeShell(
       state: _state,
+      cloud: _cloud,
       startGuidedTour: _startGuidedTourOnHome,
       cloudRecoverySupported: _canAutoBackupToICloud,
       readLastCloudBackupAt: _readLastICloudBackupAt,
@@ -1557,12 +1594,30 @@ class _FeatureRow extends StatelessWidget {
 }
 
 class AppState extends ChangeNotifier {
+  static const String sharedFieldNotes = 'notes';
+  static const String sharedFieldTrainingDope = 'trainingDope';
+  static const String sharedFieldLocation = 'location';
+  static const String sharedFieldPhotos = 'photos';
+  static const String sharedFieldShotResults = 'shotResults';
+  static const String sharedFieldTimerData = 'timerData';
+  static const List<String> _sharedFieldKeys = <String>[
+    sharedFieldNotes,
+    sharedFieldTrainingDope,
+    sharedFieldLocation,
+    sharedFieldPhotos,
+    sharedFieldShotResults,
+    sharedFieldTimerData,
+  ];
+
   final List<UserProfile> _users = [];
   final List<Rifle> _rifles = [];
   final List<AmmoLot> _ammoLots = [];
   final List<TrainingSession> _sessions = [];
   final Map<String, Map<DistanceKey, DopeEntry>> _workingDopeRifleOnly = {};
   final Map<String, Map<DistanceKey, DopeEntry>> _workingDopeRifleAmmo = {};
+  final Map<String, Map<String, bool>> _acceptedSharedFieldsBySession = {};
+  final List<String> _pendingSharedAcceptancePromptSessionIds = <String>[];
+  final Map<String, int> _cloudSessionUpdatedAtMs = {};
   Timer? _persistTimer;
   bool _didHydrate = false;
   bool _isRestoring = false;
@@ -1773,6 +1828,12 @@ class AppState extends ChangeNotifier {
         (key, value) =>
             MapEntry(key, value.values.map(_dopeEntryToMap).toList()),
       ),
+      'acceptedSharedFieldsBySession': _acceptedSharedFieldsBySession.map(
+        (sessionId, acceptedFields) => MapEntry(
+          sessionId,
+          Map<String, dynamic>.from(acceptedFields),
+        ),
+      ),
     };
   }
 
@@ -1812,6 +1873,13 @@ class AppState extends ChangeNotifier {
     _workingDopeRifleAmmo
       ..clear()
       ..addAll(_decodeWorkingDopeMap(map['workingDopeRifleAmmo']));
+    _acceptedSharedFieldsBySession
+      ..clear()
+      ..addAll(
+        _decodeAcceptedSharedFieldsBySession(
+          map['acceptedSharedFieldsBySession'],
+        ),
+      );
 
     final env = map['environment'];
     if (env is Map) {
@@ -1889,6 +1957,11 @@ class AppState extends ChangeNotifier {
         }
       }
     }
+
+    final validSessionIds = _sessions.map((s) => s.id).toSet();
+    _acceptedSharedFieldsBySession.removeWhere(
+      (sessionId, _) => !validSessionIds.contains(sessionId),
+    );
   }
 
   Map<String, Map<DistanceKey, DopeEntry>> _decodeWorkingDopeMap(dynamic raw) {
@@ -1902,6 +1975,24 @@ class AppState extends ChangeNotifier {
         inner[DistanceKey(dope.distance, dope.distanceUnit)] = dope;
       }
       out[entry.key.toString()] = inner;
+    }
+    return out;
+  }
+
+  Map<String, Map<String, bool>> _decodeAcceptedSharedFieldsBySession(
+    dynamic raw,
+  ) {
+    if (raw is! Map) return <String, Map<String, bool>>{};
+    final out = <String, Map<String, bool>>{};
+    for (final entry in raw.entries) {
+      final sessionId = entry.key.toString();
+      final fieldsRaw = entry.value;
+      if (fieldsRaw is! Map) continue;
+      final accepted = <String, bool>{};
+      for (final fieldKey in _sharedFieldKeys) {
+        accepted[fieldKey] = fieldsRaw[fieldKey] != false;
+      }
+      out[sessionId] = accepted;
     }
     return out;
   }
@@ -2303,6 +2394,122 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  String? get activeUserIdentifier => _activeUser?.identifier;
+
+  Map<String, bool> sharedFieldAcceptanceForSession(String sessionId) {
+    final accepted = _acceptedSharedFieldsBySession[sessionId];
+    return <String, bool>{
+      for (final fieldKey in _sharedFieldKeys)
+        fieldKey: accepted == null ? true : accepted[fieldKey] != false,
+    };
+  }
+
+  String? takeNextPendingSharedAcceptancePromptSessionId() {
+    if (_pendingSharedAcceptancePromptSessionIds.isEmpty) return null;
+    return _pendingSharedAcceptancePromptSessionIds.removeAt(0);
+  }
+
+  void _enqueueSharedAcceptancePrompt(String sessionId) {
+    if (_acceptedSharedFieldsBySession.containsKey(sessionId)) return;
+    if (_pendingSharedAcceptancePromptSessionIds.contains(sessionId)) return;
+    _pendingSharedAcceptancePromptSessionIds.add(sessionId);
+  }
+
+  void setSessionAcceptedSharedFields({
+    required String sessionId,
+    required bool acceptNotes,
+    required bool acceptTrainingDope,
+    required bool acceptLocation,
+    required bool acceptPhotos,
+    required bool acceptShotResults,
+    required bool acceptTimerData,
+  }) {
+    _acceptedSharedFieldsBySession[sessionId] = <String, bool>{
+      sharedFieldNotes: acceptNotes,
+      sharedFieldTrainingDope: acceptTrainingDope,
+      sharedFieldLocation: acceptLocation,
+      sharedFieldPhotos: acceptPhotos,
+      sharedFieldShotResults: acceptShotResults,
+      sharedFieldTimerData: acceptTimerData,
+    };
+    notifyListeners();
+  }
+
+  UserProfile _ensureUserByIdentifier(String identifier) {
+    final normalized = identifier.trim().toUpperCase();
+    for (final u in _users) {
+      if (u.identifier.trim().toUpperCase() == normalized) {
+        return u;
+      }
+    }
+    final created = UserProfile(id: _newId(), name: null, identifier: normalized);
+    _users.add(created);
+    return created;
+  }
+
+  Map<String, dynamic>? exportSessionMapById(String sessionId) {
+    final s = getSessionById(sessionId);
+    if (s == null) return null;
+    return _trainingSessionToMap(s);
+  }
+
+  Map<String, Map<String, dynamic>> exportOwnedSessionMapsById() {
+    final active = _activeUser;
+    if (active == null) return const <String, Map<String, dynamic>>{};
+    final out = <String, Map<String, dynamic>>{};
+    for (final s in _sessions) {
+      if (s.userId != active.id) continue;
+      out[s.id] = _trainingSessionToMap(s);
+    }
+    return out;
+  }
+
+  void upsertSessionFromCloud({
+    required Map<String, dynamic> sessionMap,
+    required String ownerIdentifier,
+    required int updatedAtMs,
+  }) {
+    final incoming = _trainingSessionFromMap(sessionMap);
+    final owner = _ensureUserByIdentifier(ownerIdentifier);
+    final viewer = _activeUser ?? owner;
+
+    final normalized = incoming.copyWith(
+      userId: owner.id,
+      memberUserIds: <String>{viewer.id, owner.id}.toList(),
+    );
+    final shouldPromptRecipientAcceptance = viewer.id != owner.id;
+
+    final idx = _sessions.indexWhere((s) => s.id == normalized.id);
+    final knownMs = _cloudSessionUpdatedAtMs[normalized.id] ?? 0;
+    if (updatedAtMs <= knownMs) {
+      return;
+    }
+
+    if (idx < 0) {
+      _sessions.add(normalized);
+      if (shouldPromptRecipientAcceptance) {
+        _enqueueSharedAcceptancePrompt(normalized.id);
+      }
+      _cloudSessionUpdatedAtMs[normalized.id] = updatedAtMs;
+      notifyListeners();
+      return;
+    }
+
+    final existingMap = _trainingSessionToMap(_sessions[idx]);
+    final incomingMap = _trainingSessionToMap(normalized);
+    if (jsonEncode(existingMap) == jsonEncode(incomingMap)) {
+      _cloudSessionUpdatedAtMs[normalized.id] = updatedAtMs;
+      return;
+    }
+
+    _sessions[idx] = normalized;
+    if (shouldPromptRecipientAcceptance) {
+      _enqueueSharedAcceptancePrompt(normalized.id);
+    }
+    _cloudSessionUpdatedAtMs[normalized.id] = updatedAtMs;
+    notifyListeners();
+  }
+
   void shareSessionWithUsers({
     required String sessionId,
     required List<String> userIds,
@@ -2528,6 +2735,8 @@ class AppState extends ChangeNotifier {
     final idx = _sessions.indexWhere((s) => s.id == sessionId);
     if (idx < 0) return;
     _sessions.removeAt(idx);
+    _acceptedSharedFieldsBySession.remove(sessionId);
+    _pendingSharedAcceptancePromptSessionIds.removeWhere((id) => id == sessionId);
     notifyListeners();
   }
 
@@ -5445,6 +5654,7 @@ class _GuidedTourStep {
 
 class HomeShell extends StatefulWidget {
   final AppState state;
+  final CloudSyncService cloud;
   final bool startGuidedTour;
   final bool cloudRecoverySupported;
   final Future<DateTime?> Function()? readLastCloudBackupAt;
@@ -5454,6 +5664,7 @@ class HomeShell extends StatefulWidget {
   const HomeShell({
     super.key,
     required this.state,
+    required this.cloud,
     this.startGuidedTour = false,
     this.cloudRecoverySupported = false,
     this.readLastCloudBackupAt,
@@ -5471,6 +5682,7 @@ class _HomeShellState extends State<HomeShell> {
   bool _tourActive = false;
   int _tourStepIndex = 0;
   bool _didAutoStartTour = false;
+  bool _sharedAcceptancePromptInFlight = false;
 
   Future<void> _openSettings() async {
     await Navigator.of(context).push(
@@ -5530,27 +5742,28 @@ class _HomeShellState extends State<HomeShell> {
       icon: Icons.list_alt_outlined,
       title: 'Data',
       description:
-          'Review quick-reference DOPE, working DOPE, and maintenance status in one place.',
+          'Review quick-reference DOPE (rifle-only + rifle+ammo), working DOPE, and maintenance status in one place.',
     ),
     _GuidedTourStep(
       tabIndex: 6,
       icon: Icons.ios_share_outlined,
       title: 'Export',
       description:
-          'Create PDF reports and share export summaries. Backup and restore now live under Settings.',
+          'Create PDF reports and share sessions with per-field privacy controls (notes, DOPE, location, photos, shots, timer). Shared sessions auto-populate to devices with matching user identifiers, and recipients get a first-time prompt to choose which shared fields they accept per session.',
     ),
     _GuidedTourStep(
       tabIndex: 0,
       icon: Icons.settings_outlined,
       title: 'Settings',
       description:
-          'Use Settings for Cloud Backup & Restore, manual JSON backup files, appearance mode, purchases, and user management.',
+          'Use Settings for Cloud Backup & Restore, manual JSON backup files, appearance mode, purchases/restores, trial and subscription status, and user management.',
     ),
   ];
 
   @override
   void initState() {
     super.initState();
+    widget.state.addListener(_maybePromptForNewSharedSession);
     if (widget.startGuidedTour) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || _didAutoStartTour) return;
@@ -5558,6 +5771,15 @@ class _HomeShellState extends State<HomeShell> {
         _startGuidedTour();
       });
     }
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _maybePromptForNewSharedSession(),
+    );
+  }
+
+  @override
+  void dispose() {
+    widget.state.removeListener(_maybePromptForNewSharedSession);
+    super.dispose();
   }
 
   void _startGuidedTour() {
@@ -5588,6 +5810,190 @@ class _HomeShellState extends State<HomeShell> {
     setState(() {
       _tourStepIndex -= 1;
       _tab = _tourSteps[_tourStepIndex].tabIndex;
+    });
+  }
+
+  void _maybePromptForNewSharedSession() {
+    if (!mounted || _sharedAcceptancePromptInFlight) return;
+
+    final nextSessionId = widget.state
+        .takeNextPendingSharedAcceptancePromptSessionId();
+    if (nextSessionId == null) return;
+
+    final session = widget.state.getSessionById(nextSessionId);
+    final activeUser = widget.state.activeUser;
+    if (session == null || activeUser == null || session.userId == activeUser.id) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _maybePromptForNewSharedSession(),
+      );
+      return;
+    }
+
+    _sharedAcceptancePromptInFlight = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) {
+        _sharedAcceptancePromptInFlight = false;
+        return;
+      }
+
+      final ownerIdentifier = (() {
+        try {
+          return widget.state.users
+              .firstWhere((u) => u.id == session.userId)
+              .identifier;
+        } catch (_) {
+          return 'UNKNOWN';
+        }
+      })();
+
+      final accepted = widget.state.sharedFieldAcceptanceForSession(session.id);
+      var acceptNotes = accepted[AppState.sharedFieldNotes] == true;
+      var acceptTrainingDope =
+          accepted[AppState.sharedFieldTrainingDope] == true;
+      var acceptLocation = accepted[AppState.sharedFieldLocation] == true;
+      var acceptPhotos = accepted[AppState.sharedFieldPhotos] == true;
+      var acceptShotResults = accepted[AppState.sharedFieldShotResults] == true;
+      var acceptTimerData = accepted[AppState.sharedFieldTimerData] == true;
+
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogCtx) {
+          return StatefulBuilder(
+            builder: (context, setState) {
+              return AlertDialog(
+                title: const Text('New shared session received'),
+                content: SizedBox(
+                  width: 520,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Choose what you want to accept for this session.',
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Shared by: $ownerIdentifier',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Accept notes'),
+                        subtitle: session.shareNotesWithMembers
+                            ? null
+                            : const Text('Owner did not share this field.'),
+                        value: session.shareNotesWithMembers && acceptNotes,
+                        onChanged: session.shareNotesWithMembers
+                            ? (v) => setState(() => acceptNotes = v)
+                            : null,
+                      ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Accept training DOPE'),
+                        subtitle: session.shareTrainingDopeWithMembers
+                            ? null
+                            : const Text('Owner did not share this field.'),
+                        value:
+                            session.shareTrainingDopeWithMembers &&
+                            acceptTrainingDope,
+                        onChanged: session.shareTrainingDopeWithMembers
+                            ? (v) => setState(() => acceptTrainingDope = v)
+                            : null,
+                      ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Accept location and GPS'),
+                        subtitle: session.shareLocationWithMembers
+                            ? null
+                            : const Text('Owner did not share this field.'),
+                        value: session.shareLocationWithMembers && acceptLocation,
+                        onChanged: session.shareLocationWithMembers
+                            ? (v) => setState(() => acceptLocation = v)
+                            : null,
+                      ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Accept photos and photo notes'),
+                        subtitle: session.sharePhotosWithMembers
+                            ? null
+                            : const Text('Owner did not share this field.'),
+                        value: session.sharePhotosWithMembers && acceptPhotos,
+                        onChanged: session.sharePhotosWithMembers
+                            ? (v) => setState(() => acceptPhotos = v)
+                            : null,
+                      ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Accept shot results'),
+                        subtitle: session.shareShotResultsWithMembers
+                            ? null
+                            : const Text('Owner did not share this field.'),
+                        value:
+                            session.shareShotResultsWithMembers &&
+                            acceptShotResults,
+                        onChanged: session.shareShotResultsWithMembers
+                            ? (v) => setState(() => acceptShotResults = v)
+                            : null,
+                      ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Accept timer data'),
+                        subtitle: session.shareTimerDataWithMembers
+                            ? null
+                            : const Text('Owner did not share this field.'),
+                        value: session.shareTimerDataWithMembers && acceptTimerData,
+                        onChanged: session.shareTimerDataWithMembers
+                            ? (v) => setState(() => acceptTimerData = v)
+                            : null,
+                      ),
+                    ],
+                  ),
+                ),
+                actions: [
+                  FilledButton(
+                    onPressed: () {
+                      widget.state.setSessionAcceptedSharedFields(
+                        sessionId: session.id,
+                        acceptNotes: session.shareNotesWithMembers
+                            ? acceptNotes
+                            : false,
+                        acceptTrainingDope: session.shareTrainingDopeWithMembers
+                            ? acceptTrainingDope
+                            : false,
+                        acceptLocation: session.shareLocationWithMembers
+                            ? acceptLocation
+                            : false,
+                        acceptPhotos: session.sharePhotosWithMembers
+                            ? acceptPhotos
+                            : false,
+                        acceptShotResults: session.shareShotResultsWithMembers
+                            ? acceptShotResults
+                            : false,
+                        acceptTimerData: session.shareTimerDataWithMembers
+                            ? acceptTimerData
+                            : false,
+                      );
+                      Navigator.of(dialogCtx).pop();
+                    },
+                    child: const Text('Save choices'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+
+      _sharedAcceptancePromptInFlight = false;
+      if (!mounted) return;
+      _maybePromptForNewSharedSession();
     });
   }
 
@@ -5691,9 +6097,11 @@ class _HomeShellState extends State<HomeShell> {
     ];
 
     return AnimatedBuilder(
-      animation: widget.state,
+      animation: Listenable.merge([widget.state, widget.cloud]),
       builder: (context, _) {
         final user = widget.state.activeUser;
+        final cloudReady = widget.cloud.canSync;
+        final cloudError = widget.cloud.lastError;
 
         return Stack(
           children: [
@@ -5701,6 +6109,26 @@ class _HomeShellState extends State<HomeShell> {
               appBar: AppBar(
                 title: const Text('Cold Bore'),
                 actions: [
+                  Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: Tooltip(
+                      message: cloudError != null && cloudError.trim().isNotEmpty
+                          ? 'Sync error: $cloudError'
+                          : (cloudReady
+                                ? 'Cloud sync connected'
+                                : 'Cloud sync not configured'),
+                      child: Icon(
+                        cloudError != null && cloudError.trim().isNotEmpty
+                            ? Icons.cloud_off_outlined
+                            : (cloudReady
+                                  ? Icons.cloud_done_outlined
+                                  : Icons.cloud_queue_outlined),
+                        color: cloudError != null && cloudError.trim().isNotEmpty
+                            ? Theme.of(context).colorScheme.error
+                            : null,
+                      ),
+                    ),
+                  ),
                   if (user != null && !_isSeedUserIdentifier(user.identifier))
                     Padding(
                       padding: const EdgeInsets.only(right: 8),
@@ -5793,12 +6221,14 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final SubscriptionService _sub = SubscriptionService();
   final AppThemeController _theme = AppThemeController();
+  final CloudSyncService _cloud = CloudSyncService();
   String _versionText = '';
   DateTime? _lastCloudBackupAt;
   DateTime? _lastCloudRestoreAt;
   bool _cloudBusy = false;
   late final VoidCallback _subListener;
   late final VoidCallback _themeListener;
+  late final VoidCallback _cloudListener;
 
   bool get _hasMeaningfulLocalData {
     return widget.state.rifles.isNotEmpty ||
@@ -5836,8 +6266,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
       setState(() {});
     };
+    _cloudListener = () {
+      if (!mounted) return;
+      setState(() {});
+    };
     _sub.addListener(_subListener);
     _theme.addListener(_themeListener);
+    _cloud.addListener(_cloudListener);
     unawaited(_loadVersion());
     unawaited(_loadCloudBackupStatus());
   }
@@ -5846,6 +6281,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void dispose() {
     _sub.removeListener(_subListener);
     _theme.removeListener(_themeListener);
+    _cloud.removeListener(_cloudListener);
     super.dispose();
   }
 
@@ -6076,6 +6512,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
             ),
+          Card(
+            child: ListTile(
+              leading: Icon(
+                _cloud.lastError != null && _cloud.lastError!.trim().isNotEmpty
+                    ? Icons.cloud_off_outlined
+                    : (_cloud.canSync
+                          ? Icons.cloud_done_outlined
+                          : Icons.cloud_queue_outlined),
+              ),
+              title: const Text('Session sync status'),
+              subtitle: Text(
+                _cloud.lastError != null && _cloud.lastError!.trim().isNotEmpty
+                    ? 'Error: ${_cloud.lastError}'
+                    : (_cloud.canSync
+                          ? 'Connected${_cloud.lastSyncAt == null ? '' : ' • Last sync ${_fmtDateTime(_cloud.lastSyncAt!)}'}'
+                          : 'Not connected yet. Sync activates when Firebase is configured and user identifier is available.'),
+              ),
+            ),
+          ),
           Card(
             child: ListTile(
               leading: const Icon(Icons.folder_zip_outlined),
@@ -9947,6 +10402,43 @@ class SessionDetailScreen extends StatelessWidget {
       shareTimerDataWithMembers: shareResult.shareTimerDataWithMembers,
     );
 
+    final ownerIdentifier = state.activeUserIdentifier;
+    final sessionMap = state.exportSessionMapById(s.id);
+    if (ownerIdentifier != null && sessionMap != null) {
+      final localRecipients = shareResult.userIds
+          .map((id) {
+            try {
+              return state.users.firstWhere((u) => u.id == id).identifier;
+            } catch (_) {
+              return '';
+            }
+          })
+          .where((e) => e.trim().isNotEmpty)
+          .toSet();
+      final allRecipients = <String>{
+        ...localRecipients,
+        ...shareResult.externalIdentifiers,
+      }.toList();
+
+      await CloudSyncService().shareSession(
+        sessionId: s.id,
+        ownerIdentifier: ownerIdentifier,
+        memberIdentifiers: allRecipients,
+        sessionMap: sessionMap,
+      ).then((result) {
+        if (!context.mounted) return;
+        if (result.unresolvedIdentifiers.isNotEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Cloud sync pending for: ${result.unresolvedIdentifiers.join(', ')}',
+              ),
+            ),
+          );
+        }
+      });
+    }
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
@@ -9955,6 +10447,7 @@ class SessionDetailScreen extends StatelessWidget {
       ),
     );
   }
+
 
   Future<void> _addColdBore(BuildContext context, TrainingSession s) async {
     if (!await _guardWrite(context)) return;
@@ -10215,13 +10708,30 @@ class SessionDetailScreen extends StatelessWidget {
     bool includeB64 = false;
     final activeUserId = state.activeUser?.id;
     final isSessionOwner = activeUserId != null && activeUserId == s.userId;
-    final canShareNotes = isSessionOwner || s.shareNotesWithMembers;
+    final accepted = state.sharedFieldAcceptanceForSession(s.id);
+    final canShareNotes =
+      isSessionOwner ||
+      (s.shareNotesWithMembers && accepted[AppState.sharedFieldNotes] == true);
     final canShareTrainingDope =
-        isSessionOwner || s.shareTrainingDopeWithMembers;
-    final canShareLocation = isSessionOwner || s.shareLocationWithMembers;
-    final canSharePhotos = isSessionOwner || s.sharePhotosWithMembers;
-    final canShareShotResults = isSessionOwner || s.shareShotResultsWithMembers;
-    final canShareTimerData = isSessionOwner || s.shareTimerDataWithMembers;
+      isSessionOwner ||
+      (s.shareTrainingDopeWithMembers &&
+        accepted[AppState.sharedFieldTrainingDope] == true);
+    final canShareLocation =
+      isSessionOwner ||
+      (s.shareLocationWithMembers &&
+        accepted[AppState.sharedFieldLocation] == true);
+    final canSharePhotos =
+      isSessionOwner ||
+      (s.sharePhotosWithMembers &&
+        accepted[AppState.sharedFieldPhotos] == true);
+    final canShareShotResults =
+      isSessionOwner ||
+      (s.shareShotResultsWithMembers &&
+        accepted[AppState.sharedFieldShotResults] == true);
+    final canShareTimerData =
+      isSessionOwner ||
+      (s.shareTimerDataWithMembers &&
+        accepted[AppState.sharedFieldTimerData] == true);
 
     await showDialog<void>(
       context: context,
@@ -10294,6 +10804,144 @@ class SessionDetailScreen extends StatelessWidget {
           },
         );
       },
+    );
+  }
+
+  Future<void> _editAcceptedSharedData(
+    BuildContext context,
+    TrainingSession s,
+  ) async {
+    final activeUserId = state.activeUser?.id;
+    final isSessionOwner = activeUserId != null && activeUserId == s.userId;
+    if (isSessionOwner) return;
+
+    final accepted = state.sharedFieldAcceptanceForSession(s.id);
+    var acceptNotes = accepted[AppState.sharedFieldNotes] == true;
+    var acceptTrainingDope = accepted[AppState.sharedFieldTrainingDope] == true;
+    var acceptLocation = accepted[AppState.sharedFieldLocation] == true;
+    var acceptPhotos = accepted[AppState.sharedFieldPhotos] == true;
+    var acceptShotResults = accepted[AppState.sharedFieldShotResults] == true;
+    var acceptTimerData = accepted[AppState.sharedFieldTimerData] == true;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('Accepted shared data'),
+              content: SizedBox(
+                width: 520,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Accept notes'),
+                      subtitle: s.shareNotesWithMembers
+                          ? null
+                          : const Text('Owner did not share this field.'),
+                      value: s.shareNotesWithMembers && acceptNotes,
+                      onChanged: s.shareNotesWithMembers
+                          ? (v) => setState(() => acceptNotes = v)
+                          : null,
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Accept training DOPE'),
+                      subtitle: s.shareTrainingDopeWithMembers
+                          ? null
+                          : const Text('Owner did not share this field.'),
+                      value: s.shareTrainingDopeWithMembers && acceptTrainingDope,
+                      onChanged: s.shareTrainingDopeWithMembers
+                          ? (v) => setState(() => acceptTrainingDope = v)
+                          : null,
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Accept location and GPS'),
+                      subtitle: s.shareLocationWithMembers
+                          ? null
+                          : const Text('Owner did not share this field.'),
+                      value: s.shareLocationWithMembers && acceptLocation,
+                      onChanged: s.shareLocationWithMembers
+                          ? (v) => setState(() => acceptLocation = v)
+                          : null,
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Accept photos and photo notes'),
+                      subtitle: s.sharePhotosWithMembers
+                          ? null
+                          : const Text('Owner did not share this field.'),
+                      value: s.sharePhotosWithMembers && acceptPhotos,
+                      onChanged: s.sharePhotosWithMembers
+                          ? (v) => setState(() => acceptPhotos = v)
+                          : null,
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Accept shot results'),
+                      subtitle: s.shareShotResultsWithMembers
+                          ? null
+                          : const Text('Owner did not share this field.'),
+                      value: s.shareShotResultsWithMembers && acceptShotResults,
+                      onChanged: s.shareShotResultsWithMembers
+                          ? (v) => setState(() => acceptShotResults = v)
+                          : null,
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Accept timer data'),
+                      subtitle: s.shareTimerDataWithMembers
+                          ? null
+                          : const Text('Owner did not share this field.'),
+                      value: s.shareTimerDataWithMembers && acceptTimerData,
+                      onChanged: s.shareTimerDataWithMembers
+                          ? (v) => setState(() => acceptTimerData = v)
+                          : null,
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogCtx).pop(),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    state.setSessionAcceptedSharedFields(
+                      sessionId: s.id,
+                      acceptNotes: s.shareNotesWithMembers ? acceptNotes : false,
+                      acceptTrainingDope: s.shareTrainingDopeWithMembers
+                          ? acceptTrainingDope
+                          : false,
+                      acceptLocation: s.shareLocationWithMembers
+                          ? acceptLocation
+                          : false,
+                      acceptPhotos: s.sharePhotosWithMembers ? acceptPhotos : false,
+                      acceptShotResults: s.shareShotResultsWithMembers
+                          ? acceptShotResults
+                          : false,
+                      acceptTimerData: s.shareTimerDataWithMembers
+                          ? acceptTimerData
+                          : false,
+                    );
+                    Navigator.of(dialogCtx).pop();
+                  },
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Shared data preferences updated.')),
     );
   }
 
@@ -10499,14 +11147,37 @@ class SessionDetailScreen extends StatelessWidget {
             : state.ammoLots.where((a) => a.caliber == rifle.caliber).toList();
         final activeUserId = state.activeUser?.id;
         final isSessionOwner = activeUserId != null && activeUserId == s.userId;
-        final canViewNotes = isSessionOwner || s.shareNotesWithMembers;
+        final ownerIdentifier = (() {
+          try {
+            return state.users.firstWhere((u) => u.id == s.userId).identifier;
+          } catch (_) {
+            return s.userId;
+          }
+        })();
+        final accepted = state.sharedFieldAcceptanceForSession(s.id);
+        final canViewNotes =
+          isSessionOwner ||
+          (s.shareNotesWithMembers && accepted[AppState.sharedFieldNotes] == true);
         final canViewTrainingDope =
-            isSessionOwner || s.shareTrainingDopeWithMembers;
-        final canViewLocation = isSessionOwner || s.shareLocationWithMembers;
-        final canViewPhotos = isSessionOwner || s.sharePhotosWithMembers;
+          isSessionOwner ||
+          (s.shareTrainingDopeWithMembers &&
+            accepted[AppState.sharedFieldTrainingDope] == true);
+        final canViewLocation =
+          isSessionOwner ||
+          (s.shareLocationWithMembers &&
+            accepted[AppState.sharedFieldLocation] == true);
+        final canViewPhotos =
+          isSessionOwner ||
+          (s.sharePhotosWithMembers &&
+            accepted[AppState.sharedFieldPhotos] == true);
         final canViewShotResults =
-          isSessionOwner || s.shareShotResultsWithMembers;
-        final canViewTimerData = isSessionOwner || s.shareTimerDataWithMembers;
+          isSessionOwner ||
+          (s.shareShotResultsWithMembers &&
+            accepted[AppState.sharedFieldShotResults] == true);
+        final canViewTimerData =
+          isSessionOwner ||
+          (s.shareTimerDataWithMembers &&
+            accepted[AppState.sharedFieldTimerData] == true);
 
         String rifleLoadoutLabel(Rifle? r, {String? deletedId}) {
           if (r == null) {
@@ -10566,6 +11237,12 @@ class SessionDetailScreen extends StatelessWidget {
                 onPressed: () => _shareSession(context, s),
                 icon: const Icon(Icons.share_outlined),
               ),
+              if (!isSessionOwner)
+                IconButton(
+                  tooltip: 'Accepted shared data',
+                  onPressed: () => _editAcceptedSharedData(context, s),
+                  icon: const Icon(Icons.fact_check_outlined),
+                ),
               IconButton(
                 tooltip: 'Edit session notes',
                 onPressed: () => _editTrainingNotes(context, s),
@@ -10630,6 +11307,13 @@ class SessionDetailScreen extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               Text(_fmtDateTime(s.dateTime)),
+              if (!isSessionOwner) ...[
+                const SizedBox(height: 4),
+                Text(
+                  'Shared by: $ownerIdentifier',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
               if (s.endedAt != null) ...[
                 const SizedBox(height: 8),
                 Wrap(
@@ -16809,6 +17493,7 @@ class _ShareSessionDialog extends StatefulWidget {
   final bool initialSharePhotosWithMembers;
   final bool initialShareShotResultsWithMembers;
   final bool initialShareTimerDataWithMembers;
+  final Set<String> initialExternalIdentifiers;
 
   const _ShareSessionDialog({
     required this.sessionTitle,
@@ -16820,6 +17505,7 @@ class _ShareSessionDialog extends StatefulWidget {
     required this.initialSharePhotosWithMembers,
     required this.initialShareShotResultsWithMembers,
     required this.initialShareTimerDataWithMembers,
+    this.initialExternalIdentifiers = const <String>{},
   });
 
   @override
@@ -16834,6 +17520,7 @@ class _ShareSessionDialogState extends State<_ShareSessionDialog> {
   late bool _sharePhotosWithMembers;
   late bool _shareShotResultsWithMembers;
   late bool _shareTimerDataWithMembers;
+  late final TextEditingController _externalIdentifiersController;
 
   @override
   void initState() {
@@ -16845,6 +17532,15 @@ class _ShareSessionDialogState extends State<_ShareSessionDialog> {
     _sharePhotosWithMembers = widget.initialSharePhotosWithMembers;
     _shareShotResultsWithMembers = widget.initialShareShotResultsWithMembers;
     _shareTimerDataWithMembers = widget.initialShareTimerDataWithMembers;
+    _externalIdentifiersController = TextEditingController(
+      text: widget.initialExternalIdentifiers.join(', '),
+    );
+  }
+
+  @override
+  void dispose() {
+    _externalIdentifiersController.dispose();
+    super.dispose();
   }
 
   @override
@@ -16878,6 +17574,20 @@ class _ShareSessionDialogState extends State<_ShareSessionDialog> {
                 },
               );
             }),
+            const SizedBox(height: 6),
+            TextField(
+              textCapitalization: TextCapitalization.none,
+              controller: _externalIdentifiersController,
+              decoration: const InputDecoration(
+                labelText: 'Also share with identifier(s)',
+                hintText: 'e.g. RANGER1, SPOTTER2',
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Use comma-separated identifiers from the other device user profile. Sessions auto-populate when that identifier is registered in the app; otherwise sync starts once they sign in with that identifier.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
             const Divider(height: 24),
             const Text(
               'What should members see?',
@@ -16936,6 +17646,11 @@ class _ShareSessionDialogState extends State<_ShareSessionDialog> {
           onPressed: () => Navigator.of(context).pop(
             _ShareSessionResult(
               userIds: _selected,
+              externalIdentifiers: _externalIdentifiersController.text
+                  .split(',')
+                  .map((e) => e.trim())
+                  .where((e) => e.isNotEmpty)
+                  .toSet(),
               shareNotesWithMembers: _shareNotesWithMembers,
               shareTrainingDopeWithMembers: _shareTrainingDopeWithMembers,
               shareLocationWithMembers: _shareLocationWithMembers,
@@ -16953,6 +17668,7 @@ class _ShareSessionDialogState extends State<_ShareSessionDialog> {
 
 class _ShareSessionResult {
   final Set<String> userIds;
+  final Set<String> externalIdentifiers;
   final bool shareNotesWithMembers;
   final bool shareTrainingDopeWithMembers;
   final bool shareLocationWithMembers;
@@ -16962,6 +17678,7 @@ class _ShareSessionResult {
 
   const _ShareSessionResult({
     required this.userIds,
+    required this.externalIdentifiers,
     required this.shareNotesWithMembers,
     required this.shareTrainingDopeWithMembers,
     required this.shareLocationWithMembers,
