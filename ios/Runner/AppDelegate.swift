@@ -355,13 +355,6 @@ private final class NearbyShareManager: NSObject, MCNearbyServiceAdvertiserDeleg
     certificateHandler(true)
   }
 
-  @available(iOS 14.0, *)
-  func session(_ session: MCSession,
-               didReceive message: Data,
-               fromPeer peerID: MCPeerID) {
-    self.session(session, didReceive: message, fromPeer: peerID)
-  }
-
   private func peerIDForSession() -> MCPeerID? {
     if let peerID { return peerID }
     guard !localIdentifier.isEmpty else { return nil }
