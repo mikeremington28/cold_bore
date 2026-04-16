@@ -29,6 +29,19 @@ const String kLocalStatePrefsKey = 'cold_bore.local_state.v1';
 const String kPdfExportPresetsPrefsKey = 'cold_bore.pdf_export_presets.v1';
 const String kThemeModePrefsKey = 'cold_bore.theme_mode.v1';
 final AudioPlayer _shotTimerBeepPlayer = AudioPlayer();
+const MethodChannel _nearbyShareChannel = MethodChannel(
+  'com.remington.coldbore/nearby_share',
+);
+const MethodChannel _nearbyShareEventsChannel = MethodChannel(
+  'com.remington.coldbore/nearby_share_events',
+);
+
+class NearbyPeer {
+  final String identifier;
+  final String displayName;
+
+  const NearbyPeer({required this.identifier, required this.displayName});
+}
 
 Uint8List _buildShotTimerBeepWav({
   int sampleRate = 44100,
@@ -1110,8 +1123,10 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
   bool _iCloudBackupQueuedDuringInFlight = false;
   bool _autoICloudBackupArmed = false;
   bool _startGuidedTourOnHome = false;
+  bool _promptUniqueIdentifierOnHome = false;
   bool _ready = false;
   String? _lastCloudIdentifier;
+  String? _lastNearbyPresenceIdentifier;
   Timer? _cloudSyncDebounce;
 
   @override
@@ -1123,7 +1138,9 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
 
   Future<void> _loadState() async {
     await _state.loadPersistedState();
+    _setupNearbyShareEvents();
     await _attachCloudIdentityIfNeeded();
+    await _refreshNearbyPresence(force: true);
     await _attemptAutoICloudRestoreIfEligible();
     await _prepareFirstLaunchTutorialFlag();
     await _consumePendingIncomingShareFromPlatform();
@@ -1142,6 +1159,7 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
 
     await prefs.setBool(_tutorialShownPrefsKey, true);
     _startGuidedTourOnHome = true;
+    _promptUniqueIdentifierOnHome = true;
   }
 
   bool _looksLikeFreshLocalInstall() {
@@ -1208,6 +1226,93 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
     }
   }
 
+  void _setupNearbyShareEvents() {
+    _nearbyShareEventsChannel.setMethodCallHandler((call) async {
+      switch (call.method) {
+        case 'peersUpdated':
+          final peersRaw = (call.arguments as List?) ?? const <Object>[];
+          final peers = peersRaw.map((entry) {
+            final map = Map<String, dynamic>.from(entry as Map);
+            final identifier = (map['identifier'] ?? '').toString();
+            final displayName = (map['displayName'] ?? '').toString();
+            return NearbyPeer(
+              identifier: identifier,
+              displayName: displayName,
+            );
+          }).toList();
+          _state.setNearbyPeers(peers);
+          break;
+        case 'payloadReceived':
+          final args = Map<String, dynamic>.from((call.arguments as Map?) ?? {});
+          final jsonText = (args['jsonText'] ?? '').toString();
+          final senderIdentifier = (args['senderIdentifier'] ?? '').toString();
+          if (senderIdentifier.trim().isNotEmpty) {
+            _state.rememberTrustedPartnerIdentifier(senderIdentifier);
+          }
+          if (jsonText.trim().isNotEmpty) {
+            _state.enqueueIncomingSharedJson(jsonText);
+          }
+          break;
+        case 'payloadSent':
+          final args = Map<String, dynamic>.from((call.arguments as Map?) ?? {});
+          final peerIdentifier = (args['identifier'] ?? '').toString();
+          if (peerIdentifier.trim().isNotEmpty) {
+            _state.rememberTrustedPartnerIdentifier(peerIdentifier);
+          }
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  peerIdentifier.trim().isEmpty
+                      ? 'Nearby session sent.'
+                      : 'Nearby session sent to $peerIdentifier.',
+                ),
+              ),
+            );
+          }
+          break;
+        case 'payloadSendFailed':
+          final args = Map<String, dynamic>.from((call.arguments as Map?) ?? {});
+          final error = (args['error'] ?? 'Nearby sharing failed.').toString();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(error)),
+            );
+          }
+          break;
+      }
+      return null;
+    });
+  }
+
+  Future<void> _refreshNearbyPresence({bool force = false}) async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
+    final identifier = _state.activeUserIdentifier?.trim().toUpperCase();
+    if (identifier == null || identifier.isEmpty) {
+      await _stopNearbyPresence();
+      return;
+    }
+    if (_isSeedUserIdentifier(identifier)) {
+      await _stopNearbyPresence();
+      return;
+    }
+    if (!force && _lastNearbyPresenceIdentifier == identifier) return;
+
+    final displayName = _displayUserName(_state.activeUser!);
+    await _nearbyShareChannel.invokeMethod('startPresence', {
+      'identifier': identifier,
+      'displayName': displayName,
+    });
+    _lastNearbyPresenceIdentifier = identifier;
+  }
+
+  Future<void> _stopNearbyPresence() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
+    _lastNearbyPresenceIdentifier = null;
+    _state.setNearbyPeers(const <NearbyPeer>[]);
+    await _nearbyShareChannel.invokeMethod('stopPresence');
+  }
+
   bool get _canAutoBackupToICloud =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
 
@@ -1216,6 +1321,7 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
     _scheduleAutoICloudBackup();
 
     unawaited(_attachCloudIdentityIfNeeded());
+    unawaited(_refreshNearbyPresence());
     _cloudSyncDebounce?.cancel();
     _cloudSyncDebounce = Timer(const Duration(milliseconds: 900), () async {
       final ownerIdentifier = _state.activeUserIdentifier;
@@ -1369,6 +1475,12 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
       unawaited(SubscriptionService().refreshOnResume());
       unawaited(_attemptAutoICloudRestoreIfEligible());
       unawaited(_consumePendingIncomingShareFromPlatform());
+      unawaited(_refreshNearbyPresence(force: true));
+    }
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      unawaited(_stopNearbyPresence());
     }
     if (!_canAutoBackupToICloud) return;
     if (state == AppLifecycleState.inactive ||
@@ -1385,6 +1497,7 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
     _state.removeListener(_onStateChanged);
     _iCloudBackupDebounceTimer?.cancel();
     _cloudSyncDebounce?.cancel();
+    unawaited(_stopNearbyPresence());
     _state.dispose();
     super.dispose();
   }
@@ -1398,6 +1511,7 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
       state: _state,
       cloud: _cloud,
       startGuidedTour: _startGuidedTourOnHome,
+      promptUniqueIdentifierOnLaunch: _promptUniqueIdentifierOnHome,
       cloudRecoverySupported: _canAutoBackupToICloud,
       readLastCloudBackupAt: _readLastICloudBackupAt,
       readLastCloudRestoreAt: _readLastICloudRestoreAt,
@@ -1639,6 +1753,8 @@ class AppState extends ChangeNotifier {
   final Map<String, Map<String, bool>> _acceptedSharedFieldsBySession = {};
   final List<String> _pendingSharedAcceptancePromptSessionIds = <String>[];
   final List<String> _pendingIncomingSharedJsonTexts = <String>[];
+  final List<String> _trustedPartnerIdentifiers = <String>[];
+  List<NearbyPeer> _nearbyPeers = const <NearbyPeer>[];
   final Map<String, int> _cloudSessionUpdatedAtMs = {};
   Timer? _persistTimer;
   bool _didHydrate = false;
@@ -1781,6 +1897,9 @@ class AppState extends ChangeNotifier {
       _workingDopeRifleOnly;
   Map<String, Map<DistanceKey, DopeEntry>> get workingDopeRifleAmmo =>
       _workingDopeRifleAmmo;
+    List<String> get trustedPartnerIdentifiers =>
+      List.unmodifiable(_trustedPartnerIdentifiers);
+    List<NearbyPeer> get nearbyPeers => List.unmodifiable(_nearbyPeers);
 
   void setShotTimerBeepFrequencyHz(double value) {
     _shotTimerBeepFrequencyHz = value.clamp(400.0, 3000.0);
@@ -1850,6 +1969,7 @@ class AppState extends ChangeNotifier {
         (key, value) =>
             MapEntry(key, value.values.map(_dopeEntryToMap).toList()),
       ),
+      'trustedPartnerIdentifiers': _trustedPartnerIdentifiers,
       'acceptedSharedFieldsBySession': _acceptedSharedFieldsBySession.map(
         (sessionId, acceptedFields) => MapEntry(
           sessionId,
@@ -1901,6 +2021,13 @@ class AppState extends ChangeNotifier {
         _decodeAcceptedSharedFieldsBySession(
           map['acceptedSharedFieldsBySession'],
         ),
+      );
+    _trustedPartnerIdentifiers
+      ..clear()
+      ..addAll(
+        ((map['trustedPartnerIdentifiers'] as List?) ?? const <Object>[])
+            .map((e) => e.toString().trim().toUpperCase())
+            .where((e) => e.isNotEmpty),
       );
 
     final env = map['environment'];
@@ -2027,6 +2154,26 @@ class AppState extends ChangeNotifier {
     );
     _users.add(u);
     _activeUser ??= u;
+    notifyListeners();
+  }
+
+  void updateUserProfile({
+    required String userId,
+    required String name,
+    required String identifier,
+  }) {
+    final idx = _users.indexWhere((u) => u.id == userId);
+    if (idx < 0) return;
+
+    final updated = UserProfile(
+      id: _users[idx].id,
+      name: name.trim().isEmpty ? null : name.trim(),
+      identifier: identifier.trim(),
+    );
+    _users[idx] = updated;
+    if (_activeUser?.id == userId) {
+      _activeUser = updated;
+    }
     notifyListeners();
   }
 
@@ -2435,6 +2582,44 @@ class AppState extends ChangeNotifier {
     final trimmed = jsonText.trim();
     if (trimmed.isEmpty) return;
     _pendingIncomingSharedJsonTexts.add(trimmed);
+    notifyListeners();
+  }
+
+  void setNearbyPeers(List<NearbyPeer> peers) {
+    final normalized = peers
+        .where((peer) => peer.identifier.trim().isNotEmpty)
+        .map(
+          (peer) => NearbyPeer(
+            identifier: peer.identifier.trim().toUpperCase(),
+            displayName: peer.displayName.trim().isEmpty
+                ? peer.identifier.trim().toUpperCase()
+                : peer.displayName.trim(),
+          ),
+        )
+        .toList()
+      ..sort((a, b) => a.displayName.compareTo(b.displayName));
+
+    final isSameLength = normalized.length == _nearbyPeers.length;
+    final unchanged =
+        isSameLength &&
+        normalized.asMap().entries.every((entry) {
+          final current = _nearbyPeers[entry.key];
+          return current.identifier == entry.value.identifier &&
+              current.displayName == entry.value.displayName;
+        });
+    if (unchanged) return;
+
+    _nearbyPeers = normalized;
+    notifyListeners();
+  }
+
+  void rememberTrustedPartnerIdentifier(String? identifier) {
+    final normalized = identifier?.trim().toUpperCase() ?? '';
+    if (normalized.isEmpty) return;
+    if (activeUserIdentifier?.trim().toUpperCase() == normalized) return;
+    if (_trustedPartnerIdentifiers.contains(normalized)) return;
+    _trustedPartnerIdentifiers.add(normalized);
+    _trustedPartnerIdentifiers.sort();
     notifyListeners();
   }
 
@@ -3916,6 +4101,7 @@ class AppState extends ChangeNotifier {
 
     final ownerIdentifier = (map['ownerIdentifier'] ?? '').toString().trim();
     final incoming = _trainingSessionFromMap(Map<String, dynamic>.from(sessionRaw));
+    rememberTrustedPartnerIdentifier(ownerIdentifier);
 
     if (_users.isEmpty) {
       _seedData();
@@ -5807,6 +5993,7 @@ class HomeShell extends StatefulWidget {
   final AppState state;
   final CloudSyncService cloud;
   final bool startGuidedTour;
+  final bool promptUniqueIdentifierOnLaunch;
   final bool cloudRecoverySupported;
   final Future<DateTime?> Function()? readLastCloudBackupAt;
   final Future<DateTime?> Function()? readLastCloudRestoreAt;
@@ -5817,6 +6004,7 @@ class HomeShell extends StatefulWidget {
     required this.state,
     required this.cloud,
     this.startGuidedTour = false,
+    this.promptUniqueIdentifierOnLaunch = false,
     this.cloudRecoverySupported = false,
     this.readLastCloudBackupAt,
     this.readLastCloudRestoreAt,
@@ -5833,6 +6021,7 @@ class _HomeShellState extends State<HomeShell> {
   bool _tourActive = false;
   int _tourStepIndex = 0;
   bool _didAutoStartTour = false;
+  bool _firstRunIdentifierPromptInFlight = false;
   bool _sharedAcceptancePromptInFlight = false;
   bool _incomingSharedImportPromptInFlight = false;
 
@@ -5917,13 +6106,9 @@ class _HomeShellState extends State<HomeShell> {
     super.initState();
     widget.state.addListener(_maybePromptForNewSharedSession);
     widget.state.addListener(_maybePromptForIncomingSharedImport);
-    if (widget.startGuidedTour) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || _didAutoStartTour) return;
-        _didAutoStartTour = true;
-        _startGuidedTour();
-      });
-    }
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _runFirstLaunchPrompts(),
+    );
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _maybePromptForNewSharedSession(),
     );
@@ -5937,6 +6122,49 @@ class _HomeShellState extends State<HomeShell> {
     widget.state.removeListener(_maybePromptForNewSharedSession);
     widget.state.removeListener(_maybePromptForIncomingSharedImport);
     super.dispose();
+  }
+
+  Future<void> _runFirstLaunchPrompts() async {
+    await _promptForUniqueIdentifierIfNeeded();
+    if (!mounted || !widget.startGuidedTour || _didAutoStartTour) return;
+    _didAutoStartTour = true;
+    _startGuidedTour();
+  }
+
+  Future<void> _promptForUniqueIdentifierIfNeeded() async {
+    if (!mounted ||
+        _firstRunIdentifierPromptInFlight ||
+        !widget.promptUniqueIdentifierOnLaunch) {
+      return;
+    }
+
+    final activeUser = widget.state.activeUser;
+    if (activeUser == null || !_isSeedUserIdentifier(activeUser.identifier)) {
+      return;
+    }
+
+    _firstRunIdentifierPromptInFlight = true;
+    final result = await showDialog<_UniqueIdentifierResult>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const _UniqueIdentifierPromptDialog(),
+    );
+
+    if (result != null) {
+      widget.state.updateUserProfile(
+        userId: activeUser.id,
+        name: result.name,
+        identifier: result.identifier,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('User identifier saved. Partner sharing is now ready.'),
+        ),
+      );
+    }
+
+    _firstRunIdentifierPromptInFlight = false;
   }
 
   void _maybePromptForIncomingSharedImport() {
@@ -10788,12 +11016,25 @@ class SessionDetailScreen extends StatelessWidget {
   ) async {
     final me = state.activeUser;
     if (me == null) return;
-
-    final others = state.users.where((u) => u.id != me.id).toList();
-    if (others.isEmpty) {
+    if (_isSeedUserIdentifier(me.identifier)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('No other users found. Create another user first.'),
+          content: Text(
+            'Set a unique user identifier in Manage users before sharing with partners.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final others = state.users.where((u) => u.id != me.id).toList();
+    final hasTrustedPartners = state.trustedPartnerIdentifiers.isNotEmpty;
+    if (others.isEmpty && !hasTrustedPartners) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No other users or trusted partners found. Add another user, pair nearby once, or enter an identifier.',
+          ),
         ),
       );
       return;
@@ -10804,6 +11045,7 @@ class SessionDetailScreen extends StatelessWidget {
       builder: (_) => _ShareSessionDialog(
         sessionTitle: s.locationName.isEmpty ? 'Session' : s.locationName,
         users: others,
+        trustedPartnerIdentifiers: state.trustedPartnerIdentifiers,
         initiallySelected: s.memberUserIds.where((id) => id != me.id).toSet(),
         initialShareNotesWithMembers: s.shareNotesWithMembers,
         initialShareTrainingDopeWithMembers: s.shareTrainingDopeWithMembers,
@@ -10843,6 +11085,9 @@ class SessionDetailScreen extends StatelessWidget {
         ...localRecipients,
         ...shareResult.externalIdentifiers,
       }.toList();
+      for (final recipient in allRecipients) {
+        state.rememberTrustedPartnerIdentifier(recipient);
+      }
 
       await CloudSyncService().shareSession(
         sessionId: s.id,
@@ -10872,6 +11117,76 @@ class SessionDetailScreen extends StatelessWidget {
     );
   }
 
+  Future<void> _shareSessionNearby(BuildContext context, TrainingSession s) async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Nearby in-app sharing is currently available on iPhone.'),
+        ),
+      );
+      return;
+    }
+
+    final ownerIdentifier = state.activeUserIdentifier?.trim().toUpperCase();
+    if (ownerIdentifier == null || ownerIdentifier.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Create or select a user identifier first.')),
+      );
+      return;
+    }
+    if (_isSeedUserIdentifier(ownerIdentifier)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Set a unique user identifier in Manage users before using nearby partner sharing.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final json = state.exportSharedSessionJson(
+      sessionId: s.id,
+      ownerIdentifier: ownerIdentifier,
+    );
+
+    await _nearbyShareChannel.invokeMethod('setSharePayload', {
+      'jsonText': json,
+    });
+
+    var selectedPeerIdentifier = '';
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _NearbySessionShareDialog(
+        state: state,
+        onSelectPeer: (peer) async {
+          selectedPeerIdentifier = peer.identifier;
+          await _nearbyShareChannel.invokeMethod('invitePeer', {
+            'identifier': peer.identifier,
+          });
+        },
+      ),
+    );
+
+    if (selectedPeerIdentifier.isEmpty) {
+      await _nearbyShareChannel.invokeMethod('clearSharePayload');
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Nearby sharing cancelled. Both phones need Cold Bore open nearby.'),
+        ),
+      );
+      return;
+    }
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Sending session nearby to $selectedPeerIdentifier...'),
+      ),
+    );
+  }
+
   Future<void> _shareSession(BuildContext context, TrainingSession s) async {
     final action = await showModalBottomSheet<String>(
       context: context,
@@ -10879,6 +11194,15 @@ class SessionDetailScreen extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (defaultTargetPlatform == TargetPlatform.iOS)
+              ListTile(
+                leading: const Icon(Icons.wifi_tethering_outlined),
+                title: const Text('Share nearby in Cold Bore'),
+                subtitle: const Text(
+                  'Send directly to another nearby iPhone running Cold Bore.',
+                ),
+                onTap: () => Navigator.of(sheetContext).pop('nearby'),
+              ),
             ListTile(
               leading: const Icon(Icons.group_outlined),
               title: const Text('Share with Cold Bore user'),
@@ -10904,6 +11228,10 @@ class SessionDetailScreen extends StatelessWidget {
       ),
     );
 
+    if (action == 'nearby') {
+      await _shareSessionNearby(context, s);
+      return;
+    }
     if (action == 'file') {
       await _shareSessionFile(context, s);
       return;
@@ -17025,6 +17353,137 @@ class _NewUserResult {
   _NewUserResult(this.name, this.identifier);
 }
 
+class _UniqueIdentifierResult {
+  final String name;
+  final String identifier;
+
+  const _UniqueIdentifierResult({
+    required this.name,
+    required this.identifier,
+  });
+}
+
+class _UniqueIdentifierPromptDialog extends StatefulWidget {
+  const _UniqueIdentifierPromptDialog();
+
+  @override
+  State<_UniqueIdentifierPromptDialog> createState() =>
+      _UniqueIdentifierPromptDialogState();
+}
+
+class _UniqueIdentifierPromptDialogState
+    extends State<_UniqueIdentifierPromptDialog> {
+  final TextEditingController _name = TextEditingController();
+  final TextEditingController _identifier = TextEditingController();
+  String? _error;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _identifier.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final rawIdentifier = _identifier.text.trim().toUpperCase();
+    if (rawIdentifier.isEmpty) {
+      setState(() => _error = 'Enter a unique identifier.');
+      return;
+    }
+    final valid = RegExp(r'^[A-Z0-9_-]{3,24}$').hasMatch(rawIdentifier);
+    if (!valid) {
+      setState(
+        () => _error =
+            'Use 3-24 characters: letters, numbers, dash, or underscore.',
+      );
+      return;
+    }
+    if (_isSeedUserIdentifier(rawIdentifier)) {
+      setState(() => _error = 'Choose something unique, not OWNER or DEMO.');
+      return;
+    }
+
+    final rawName = _name.text.trim();
+    Navigator.of(context).pop(
+      _UniqueIdentifierResult(
+        name: rawName.isEmpty ? rawIdentifier : rawName,
+        identifier: rawIdentifier,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Set your user identifier'),
+      content: SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Create a unique identifier so nearby and remote partner sharing can find this device.',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              textCapitalization: TextCapitalization.words,
+              controller: _name,
+              decoration: const InputDecoration(
+                labelText: 'Display name (optional)',
+              ),
+              textInputAction: TextInputAction.next,
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              textCapitalization: TextCapitalization.characters,
+              controller: _identifier,
+              decoration: const InputDecoration(
+                labelText: 'Unique identifier *',
+                hintText: 'e.g. RANGER1',
+              ),
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _submit(),
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Tip: use something short and memorable. Example: RANGER1 or SPOTTER_A.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  _error!,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Set up later'),
+        ),
+        FilledButton(
+          onPressed: _submit,
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
 class _NewUserDialog extends StatefulWidget {
   const _NewUserDialog();
 
@@ -17951,6 +18410,7 @@ class _EditDopeDialogState extends State<_EditDopeDialog> {
 class _ShareSessionDialog extends StatefulWidget {
   final String sessionTitle;
   final List<UserProfile> users;
+  final List<String> trustedPartnerIdentifiers;
   final Set<String> initiallySelected;
   final bool initialShareNotesWithMembers;
   final bool initialShareTrainingDopeWithMembers;
@@ -17963,6 +18423,7 @@ class _ShareSessionDialog extends StatefulWidget {
   const _ShareSessionDialog({
     required this.sessionTitle,
     required this.users,
+    required this.trustedPartnerIdentifiers,
     required this.initiallySelected,
     required this.initialShareNotesWithMembers,
     required this.initialShareTrainingDopeWithMembers,
@@ -17977,8 +18438,65 @@ class _ShareSessionDialog extends StatefulWidget {
   State<_ShareSessionDialog> createState() => _ShareSessionDialogState();
 }
 
+class _NearbySessionShareDialog extends StatelessWidget {
+  final AppState state;
+  final Future<void> Function(NearbyPeer peer) onSelectPeer;
+
+  const _NearbySessionShareDialog({
+    required this.state,
+    required this.onSelectPeer,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: state,
+      builder: (context, _) {
+        final peers = state.nearbyPeers;
+        return AlertDialog(
+          title: const Text('Nearby Cold Bore users'),
+          content: SizedBox(
+            width: 420,
+            child: peers.isEmpty
+                ? const Text(
+                    'No nearby Cold Bore users found yet. Keep both iPhones unlocked, nearby, and open in the app.',
+                  )
+                : ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: peers.length,
+                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final peer = peers[index];
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.phone_iphone_outlined),
+                        title: Text(peer.displayName),
+                        subtitle: Text(peer.identifier),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () async {
+                          await onSelectPeer(peer);
+                          if (!context.mounted) return;
+                          Navigator.of(context).pop();
+                        },
+                      );
+                    },
+                  ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
 class _ShareSessionDialogState extends State<_ShareSessionDialog> {
   late final Set<String> _selected;
+  late final Set<String> _selectedTrustedPartners;
   late bool _shareNotesWithMembers;
   late bool _shareTrainingDopeWithMembers;
   late bool _shareLocationWithMembers;
@@ -17991,6 +18509,7 @@ class _ShareSessionDialogState extends State<_ShareSessionDialog> {
   void initState() {
     super.initState();
     _selected = {...widget.initiallySelected};
+    _selectedTrustedPartners = <String>{};
     _shareNotesWithMembers = widget.initialShareNotesWithMembers;
     _shareTrainingDopeWithMembers = widget.initialShareTrainingDopeWithMembers;
     _shareLocationWithMembers = widget.initialShareLocationWithMembers;
@@ -18039,6 +18558,34 @@ class _ShareSessionDialogState extends State<_ShareSessionDialog> {
                 },
               );
             }),
+            if (widget.trustedPartnerIdentifiers.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              const Text(
+                'Trusted partners',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 4),
+              ...widget.trustedPartnerIdentifiers.map((identifier) {
+                final checked = _selectedTrustedPartners.contains(identifier);
+                return CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: checked,
+                  title: Text(_displayUserIdentifier(identifier)),
+                  subtitle: const Text(
+                    'Remote sharing works once sync is active for this identifier.',
+                  ),
+                  onChanged: (value) {
+                    setState(() {
+                      if (value == true) {
+                        _selectedTrustedPartners.add(identifier);
+                      } else {
+                        _selectedTrustedPartners.remove(identifier);
+                      }
+                    });
+                  },
+                );
+              }),
+            ],
             const SizedBox(height: 6),
             TextField(
               textCapitalization: TextCapitalization.none,
@@ -18115,7 +18662,9 @@ class _ShareSessionDialogState extends State<_ShareSessionDialog> {
                   .split(',')
                   .map((e) => e.trim())
                   .where((e) => e.isNotEmpty)
-                  .toSet(),
+                  .map((e) => e.toUpperCase())
+                  .toSet()
+                ..addAll(_selectedTrustedPartners),
               shareNotesWithMembers: _shareNotesWithMembers,
               shareTrainingDopeWithMembers: _shareTrainingDopeWithMembers,
               shareLocationWithMembers: _shareLocationWithMembers,

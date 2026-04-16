@@ -79,6 +79,18 @@ class CloudSyncService extends ChangeNotifier {
         FirebaseFirestore.instance.settings =
             const Settings(persistenceEnabled: true);
       }
+    } on FirebaseAuthException catch (e) {
+      _ready = false;
+      _userId = null;
+      if (e.code == 'admin-restricted-operation') {
+        _lastError =
+            'Cloud sync is disabled in Firebase. Enable Anonymous sign-in in Firebase Authentication to use session sync.';
+      } else {
+        _lastError = e.message?.trim().isNotEmpty == true
+            ? e.message!.trim()
+            : e.toString();
+      }
+      debugPrint('CloudSyncService auth initialize failed: $e');
     } catch (e) {
       _ready = false;
       _userId = null;
