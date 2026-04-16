@@ -1,6 +1,7 @@
 // ignore_for_file: avoid_types_as_parameter_names, curly_braces_in_flow_control_structures, dead_code, dead_null_aware_expression, deprecated_member_use, library_private_types_in_public_api, unnecessary_underscores, unused_element, unused_element_parameter, unused_local_variable, use_build_context_synchronously
 
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -981,6 +982,7 @@ class RifleDopeEntry {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
   await AppThemeController().initialize();
   await CloudSyncService().initialize();
   runApp(const ColdBoreApp());
@@ -1091,6 +1093,9 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
   static const MethodChannel _iCloudChannel = MethodChannel(
     'com.remington.coldbore/icloud',
   );
+  static const MethodChannel _incomingShareChannel = MethodChannel(
+    'com.remington.coldbore/incoming_share',
+  );
   static const String _lastICloudBackupAtPrefsKey =
       'cold_bore.last_icloud_backup_at_utc.v1';
   static const String _lastICloudRestoreAtPrefsKey =
@@ -1121,6 +1126,7 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
     await _attachCloudIdentityIfNeeded();
     await _attemptAutoICloudRestoreIfEligible();
     await _prepareFirstLaunchTutorialFlag();
+    await _consumePendingIncomingShareFromPlatform();
     await SubscriptionService().initialize();
     _state.addListener(_onStateChanged);
     _autoICloudBackupArmed = true;
@@ -1186,6 +1192,19 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
       debugPrint('Auto iCloud restore applied on first launch.');
     } catch (e, st) {
       debugPrint('Auto iCloud restore skipped/failed: $e\n$st');
+    }
+  }
+
+  Future<void> _consumePendingIncomingShareFromPlatform() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
+    try {
+      final jsonText = await _incomingShareChannel.invokeMethod<String>(
+        'takePendingSharedJson',
+      );
+      if (jsonText == null || jsonText.trim().isEmpty) return;
+      _state.enqueueIncomingSharedJson(jsonText);
+    } catch (e, st) {
+      debugPrint('Incoming shared file check failed: $e\n$st');
     }
   }
 
@@ -1268,6 +1287,7 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
     } catch (e, st) {
       debugPrint('Auto iCloud backup failed: $e\n$st');
     } finally {
+
       _iCloudBackupInFlight = false;
       if (_iCloudBackupQueuedDuringInFlight) {
         _iCloudBackupQueuedDuringInFlight = false;
@@ -1348,6 +1368,7 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       unawaited(SubscriptionService().refreshOnResume());
       unawaited(_attemptAutoICloudRestoreIfEligible());
+      unawaited(_consumePendingIncomingShareFromPlatform());
     }
     if (!_canAutoBackupToICloud) return;
     if (state == AppLifecycleState.inactive ||
@@ -1617,6 +1638,7 @@ class AppState extends ChangeNotifier {
   final Map<String, Map<DistanceKey, DopeEntry>> _workingDopeRifleAmmo = {};
   final Map<String, Map<String, bool>> _acceptedSharedFieldsBySession = {};
   final List<String> _pendingSharedAcceptancePromptSessionIds = <String>[];
+  final List<String> _pendingIncomingSharedJsonTexts = <String>[];
   final Map<String, int> _cloudSessionUpdatedAtMs = {};
   Timer? _persistTimer;
   bool _didHydrate = false;
@@ -2409,6 +2431,18 @@ class AppState extends ChangeNotifier {
     return _pendingSharedAcceptancePromptSessionIds.removeAt(0);
   }
 
+  void enqueueIncomingSharedJson(String jsonText) {
+    final trimmed = jsonText.trim();
+    if (trimmed.isEmpty) return;
+    _pendingIncomingSharedJsonTexts.add(trimmed);
+    notifyListeners();
+  }
+
+  String? takeNextPendingIncomingSharedJson() {
+    if (_pendingIncomingSharedJsonTexts.isEmpty) return null;
+    return _pendingIncomingSharedJsonTexts.removeAt(0);
+  }
+
   void _enqueueSharedAcceptancePrompt(String sessionId) {
     if (_acceptedSharedFieldsBySession.containsKey(sessionId)) return;
     if (_pendingSharedAcceptancePromptSessionIds.contains(sessionId)) return;
@@ -2451,6 +2485,33 @@ class AppState extends ChangeNotifier {
     final s = getSessionById(sessionId);
     if (s == null) return null;
     return _trainingSessionToMap(s);
+  }
+
+  String exportSharedSessionJson({
+    required String sessionId,
+    String? ownerIdentifier,
+  }) {
+    final session = getSessionById(sessionId);
+    if (session == null) {
+      throw StateError('Session not found.');
+    }
+
+    final rifle =
+        session.rifleId == null ? null : findRifleById(session.rifleId!);
+    final ammo =
+        session.ammoLotId == null ? null : findAmmoLotById(session.ammoLotId!);
+
+    final payload = <String, dynamic>{
+      'schema': kBackupSchemaVersion,
+      'exportType': 'sharedSession',
+      'generatedAt': DateTime.now().toIso8601String(),
+      'ownerIdentifier': ownerIdentifier?.trim(),
+      'session': _trainingSessionToMap(session),
+      'rifles': [if (rifle != null) _rifleToMap(rifle)],
+      'ammoLots': [if (ammo != null) _ammoLotToMap(ammo)],
+    };
+
+    return const JsonEncoder.withIndent('  ').convert(payload);
   }
 
   Map<String, Map<String, dynamic>> exportOwnedSessionMapsById() {
@@ -3713,6 +3774,12 @@ class AppState extends ChangeNotifier {
     if (decoded is! Map) throw FormatException('Invalid backup JSON');
     final map = Map<String, dynamic>.from(decoded);
 
+    final exportType = (map['exportType'] ?? '').toString().trim();
+    if (exportType == 'sharedSession' && map['session'] is Map) {
+      importSharedSessionJson(jsonText);
+      return;
+    }
+
     final hasFullAppState =
         map.containsKey('users') ||
         map.containsKey('sessions') ||
@@ -3825,6 +3892,90 @@ class AppState extends ChangeNotifier {
         }
       }
     }
+    notifyListeners();
+  }
+
+  void importSharedSessionJson(
+    String jsonText, {
+    bool? acceptNotes,
+    bool? acceptTrainingDope,
+    bool? acceptLocation,
+    bool? acceptPhotos,
+    bool? acceptShotResults,
+    bool? acceptTimerData,
+  }) {
+    final decoded = json.decode(jsonText);
+    if (decoded is! Map) throw FormatException('Invalid shared session JSON');
+    final map = Map<String, dynamic>.from(decoded);
+    final sessionRaw = map['session'];
+    if (sessionRaw is! Map) {
+      throw FormatException('Missing session payload');
+    }
+
+    mergeBackupJson(jsonText, overwriteScope: false);
+
+    final ownerIdentifier = (map['ownerIdentifier'] ?? '').toString().trim();
+    final incoming = _trainingSessionFromMap(Map<String, dynamic>.from(sessionRaw));
+
+    if (_users.isEmpty) {
+      _seedData();
+    }
+
+    final owner = ownerIdentifier.isNotEmpty
+        ? _ensureUserByIdentifier(ownerIdentifier)
+        : (_activeUser ?? _users.first);
+    final viewer = _activeUser ?? owner;
+
+    final normalized = incoming.copyWith(
+      userId: owner.id,
+      memberUserIds: <String>{owner.id, viewer.id}.toList(),
+    );
+
+    final idx = _sessions.indexWhere((s) => s.id == normalized.id);
+    if (idx >= 0) {
+      _sessions[idx] = normalized;
+    } else {
+      _sessions.add(normalized);
+    }
+
+    final hasExplicitAcceptance =
+        acceptNotes != null &&
+        acceptTrainingDope != null &&
+        acceptLocation != null &&
+        acceptPhotos != null &&
+        acceptShotResults != null &&
+        acceptTimerData != null;
+
+    if (hasExplicitAcceptance) {
+      _acceptedSharedFieldsBySession[normalized.id] = <String, bool>{
+      sharedFieldNotes: normalized.shareNotesWithMembers ? acceptNotes : false,
+        sharedFieldTrainingDope: normalized.shareTrainingDopeWithMembers
+        ? acceptTrainingDope
+            : false,
+        sharedFieldLocation: normalized.shareLocationWithMembers
+        ? acceptLocation
+            : false,
+      sharedFieldPhotos: normalized.sharePhotosWithMembers ? acceptPhotos : false,
+        sharedFieldShotResults: normalized.shareShotResultsWithMembers
+        ? acceptShotResults
+            : false,
+        sharedFieldTimerData: normalized.shareTimerDataWithMembers
+        ? acceptTimerData
+            : false,
+      };
+    } else if (viewer.id != owner.id) {
+      _enqueueSharedAcceptancePrompt(normalized.id);
+    } else {
+      _acceptedSharedFieldsBySession[normalized.id] = <String, bool>{
+        sharedFieldNotes: true,
+        sharedFieldTrainingDope: true,
+        sharedFieldLocation: true,
+        sharedFieldPhotos: true,
+        sharedFieldShotResults: true,
+        sharedFieldTimerData: true,
+      };
+    }
+
     notifyListeners();
   }
 
@@ -5683,6 +5834,7 @@ class _HomeShellState extends State<HomeShell> {
   int _tourStepIndex = 0;
   bool _didAutoStartTour = false;
   bool _sharedAcceptancePromptInFlight = false;
+  bool _incomingSharedImportPromptInFlight = false;
 
   Future<void> _openSettings() async {
     await Navigator.of(context).push(
@@ -5764,6 +5916,7 @@ class _HomeShellState extends State<HomeShell> {
   void initState() {
     super.initState();
     widget.state.addListener(_maybePromptForNewSharedSession);
+    widget.state.addListener(_maybePromptForIncomingSharedImport);
     if (widget.startGuidedTour) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || _didAutoStartTour) return;
@@ -5774,12 +5927,203 @@ class _HomeShellState extends State<HomeShell> {
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _maybePromptForNewSharedSession(),
     );
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _maybePromptForIncomingSharedImport(),
+    );
   }
 
   @override
   void dispose() {
     widget.state.removeListener(_maybePromptForNewSharedSession);
+    widget.state.removeListener(_maybePromptForIncomingSharedImport);
     super.dispose();
+  }
+
+  void _maybePromptForIncomingSharedImport() {
+    if (!mounted || _incomingSharedImportPromptInFlight) return;
+
+    final jsonText = widget.state.takeNextPendingIncomingSharedJson();
+    if (jsonText == null) return;
+
+    final preview = _IncomingSharedSessionPayload.tryParse(jsonText);
+    if (preview == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Received file is not a valid shared session.')),
+        );
+      });
+      return;
+    }
+
+    _incomingSharedImportPromptInFlight = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) {
+        _incomingSharedImportPromptInFlight = false;
+        return;
+      }
+
+      var acceptNotes = preview.session.shareNotesWithMembers;
+      var acceptTrainingDope = preview.session.shareTrainingDopeWithMembers;
+      var acceptLocation = preview.session.shareLocationWithMembers;
+      var acceptPhotos = preview.session.sharePhotosWithMembers;
+      var acceptShotResults = preview.session.shareShotResultsWithMembers;
+      var acceptTimerData = preview.session.shareTimerDataWithMembers;
+      var approved = false;
+
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogCtx) {
+          return StatefulBuilder(
+            builder: (context, setState) {
+              return AlertDialog(
+                title: const Text('Accept shared session?'),
+                content: SizedBox(
+                  width: 520,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          preview.session.locationName.trim().isEmpty
+                              ? 'A Cold Bore session was shared with this device.'
+                              : 'Session: ${preview.session.locationName.trim()}',
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Shared by: ${preview.ownerIdentifier.isEmpty ? 'UNKNOWN' : preview.ownerIdentifier}',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text('Choose what you want to receive.'),
+                      ),
+                      const SizedBox(height: 8),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Accept notes'),
+                        subtitle: preview.session.shareNotesWithMembers
+                            ? null
+                            : const Text('Sender did not share this field.'),
+                        value: preview.session.shareNotesWithMembers && acceptNotes,
+                        onChanged: preview.session.shareNotesWithMembers
+                            ? (v) => setState(() => acceptNotes = v)
+                            : null,
+                      ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Accept training DOPE'),
+                        subtitle: preview.session.shareTrainingDopeWithMembers
+                            ? null
+                            : const Text('Sender did not share this field.'),
+                        value: preview.session.shareTrainingDopeWithMembers &&
+                            acceptTrainingDope,
+                        onChanged: preview.session.shareTrainingDopeWithMembers
+                            ? (v) => setState(() => acceptTrainingDope = v)
+                            : null,
+                      ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Accept location and GPS'),
+                        subtitle: preview.session.shareLocationWithMembers
+                            ? null
+                            : const Text('Sender did not share this field.'),
+                        value: preview.session.shareLocationWithMembers &&
+                            acceptLocation,
+                        onChanged: preview.session.shareLocationWithMembers
+                            ? (v) => setState(() => acceptLocation = v)
+                            : null,
+                      ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Accept photos and photo notes'),
+                        subtitle: preview.session.sharePhotosWithMembers
+                            ? null
+                            : const Text('Sender did not share this field.'),
+                        value: preview.session.sharePhotosWithMembers && acceptPhotos,
+                        onChanged: preview.session.sharePhotosWithMembers
+                            ? (v) => setState(() => acceptPhotos = v)
+                            : null,
+                      ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Accept shot results'),
+                        subtitle: preview.session.shareShotResultsWithMembers
+                            ? null
+                            : const Text('Sender did not share this field.'),
+                        value: preview.session.shareShotResultsWithMembers &&
+                            acceptShotResults,
+                        onChanged: preview.session.shareShotResultsWithMembers
+                            ? (v) => setState(() => acceptShotResults = v)
+                            : null,
+                      ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Accept timer data'),
+                        subtitle: preview.session.shareTimerDataWithMembers
+                            ? null
+                            : const Text('Sender did not share this field.'),
+                        value: preview.session.shareTimerDataWithMembers &&
+                            acceptTimerData,
+                        onChanged: preview.session.shareTimerDataWithMembers
+                            ? (v) => setState(() => acceptTimerData = v)
+                            : null,
+                      ),
+                    ],
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogCtx).pop(),
+                    child: const Text('Decline'),
+                  ),
+                  FilledButton(
+                    onPressed: () {
+                      approved = true;
+                      Navigator.of(dialogCtx).pop();
+                    },
+                    child: const Text('Accept'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+
+      if (approved) {
+        widget.state.importSharedSessionJson(
+          jsonText,
+          acceptNotes: acceptNotes,
+          acceptTrainingDope: acceptTrainingDope,
+          acceptLocation: acceptLocation,
+          acceptPhotos: acceptPhotos,
+          acceptShotResults: acceptShotResults,
+          acceptTimerData: acceptTimerData,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Shared session accepted.')),
+          );
+        }
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Shared session declined.')),
+        );
+      }
+
+      _incomingSharedImportPromptInFlight = false;
+      if (!mounted) return;
+      _maybePromptForIncomingSharedImport();
+      _maybePromptForNewSharedSession();
+    });
   }
 
   void _startGuidedTour() {
@@ -6193,6 +6537,38 @@ class _HomeShellState extends State<HomeShell> {
         );
       },
     );
+  }
+}
+
+class _IncomingSharedSessionPayload {
+  final String jsonText;
+  final String ownerIdentifier;
+  final TrainingSession session;
+
+  const _IncomingSharedSessionPayload({
+    required this.jsonText,
+    required this.ownerIdentifier,
+    required this.session,
+  });
+
+  static _IncomingSharedSessionPayload? tryParse(String jsonText) {
+    try {
+      final decoded = json.decode(jsonText);
+      if (decoded is! Map) return null;
+      final map = Map<String, dynamic>.from(decoded);
+      if ((map['exportType'] ?? '').toString().trim() != 'sharedSession') {
+        return null;
+      }
+      final sessionRaw = map['session'];
+      if (sessionRaw is! Map) return null;
+      return _IncomingSharedSessionPayload(
+        jsonText: jsonText,
+        ownerIdentifier: (map['ownerIdentifier'] ?? '').toString().trim(),
+        session: _trainingSessionFromMap(Map<String, dynamic>.from(sessionRaw)),
+      );
+    } catch (_) {
+      return null;
+    }
   }
 }
 
@@ -10361,7 +10737,55 @@ class SessionDetailScreen extends StatelessWidget {
     return res == true;
   }
 
-  Future<void> _shareSession(BuildContext context, TrainingSession s) async {
+  Rect _shareOriginRect(BuildContext context) {
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return const Rect.fromLTWH(0, 0, 1, 1);
+    final origin = box.localToGlobal(Offset.zero);
+    return origin & box.size;
+  }
+
+  Future<void> _shareSessionFile(BuildContext context, TrainingSession s) async {
+    try {
+      final ownerIdentifier = state.activeUserIdentifier;
+      final json = state.exportSharedSessionJson(
+        sessionId: s.id,
+        ownerIdentifier: ownerIdentifier,
+      );
+      final ts = DateTime.now();
+      final fname =
+          'cold_bore_session_${ts.year.toString().padLeft(4, '0')}-${ts.month.toString().padLeft(2, '0')}-${ts.day.toString().padLeft(2, '0')}.json';
+
+      if (kIsWeb) {
+        _downloadTextFileWeb(fname, json, mimeType: 'application/json');
+      } else {
+        final bytes = Uint8List.fromList(utf8.encode(json));
+        await Share.shareXFiles(
+          [XFile.fromData(bytes, mimeType: 'application/json', name: fname)],
+          text: 'Cold Bore shared session',
+          sharePositionOrigin: _shareOriginRect(context),
+        );
+      }
+
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Session file shared. On the other phone, import the JSON from Backup & Restore.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Session share failed: $e')));
+    }
+  }
+
+  Future<void> _shareSessionWithColdBoreUsers(
+    BuildContext context,
+    TrainingSession s,
+  ) async {
     final me = state.activeUser;
     if (me == null) return;
 
@@ -10446,6 +10870,47 @@ class SessionDetailScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _shareSession(BuildContext context, TrainingSession s) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.group_outlined),
+              title: const Text('Share with Cold Bore user'),
+              subtitle: const Text(
+                'Sync to another identifier or user profile.',
+              ),
+              onTap: () => Navigator.of(sheetContext).pop('cloud'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.phone_iphone_outlined),
+              title: Text(
+                defaultTargetPlatform == TargetPlatform.iOS
+                    ? 'Send session file by AirDrop'
+                    : 'Send session file',
+              ),
+              subtitle: const Text(
+                'Nearby phones can receive a JSON file that Cold Bore can import.',
+              ),
+              onTap: () => Navigator.of(sheetContext).pop('file'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (action == 'file') {
+      await _shareSessionFile(context, s);
+      return;
+    }
+    if (action == 'cloud') {
+      await _shareSessionWithColdBoreUsers(context, s);
+    }
   }
 
 
@@ -19870,9 +20335,9 @@ class _BackupScreen extends StatelessWidget {
           Card(
             child: ListTile(
               leading: const Icon(Icons.download_outlined),
-              title: const Text('Restore From Backup File (JSON)'),
+              title: const Text('Import or Restore JSON File'),
               subtitle: const Text(
-                'Replaces this device data with one backup file.',
+                'Imports a shared session JSON or replaces this device data with a full backup file.',
               ),
               onTap: () => _restoreBackupFile(context),
             ),

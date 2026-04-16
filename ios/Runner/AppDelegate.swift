@@ -3,6 +3,28 @@ import UIKit
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
+  private var pendingSharedJson: String?
+
+  private func loadSharedJson(from url: URL) -> Bool {
+    let shouldStopAccessing = url.startAccessingSecurityScopedResource()
+    defer {
+      if shouldStopAccessing {
+        url.stopAccessingSecurityScopedResource()
+      }
+    }
+
+    do {
+      let data = try Data(contentsOf: url)
+      guard let text = String(data: data, encoding: .utf8), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        return false
+      }
+      pendingSharedJson = text
+      return true
+    } catch {
+      return false
+    }
+  }
+
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
@@ -18,6 +40,23 @@ import UIKit
 
     let icloudChannel = FlutterMethodChannel(name: "com.remington.coldbore/icloud",
                                              binaryMessenger: controller.binaryMessenger)
+    let incomingShareChannel = FlutterMethodChannel(name: "com.remington.coldbore/incoming_share",
+                                                    binaryMessenger: controller.binaryMessenger)
+
+    incomingShareChannel.setMethodCallHandler { [weak self] (call: FlutterMethodCall, result: @escaping FlutterResult) in
+      switch call.method {
+      case "takePendingSharedJson":
+        let json = self?.pendingSharedJson
+        self?.pendingSharedJson = nil
+        DispatchQueue.main.async {
+          result(json)
+        }
+      default:
+        DispatchQueue.main.async {
+          result(FlutterMethodNotImplemented)
+        }
+      }
+    }
 
     icloudChannel.setMethodCallHandler { (call: FlutterMethodCall, result: @escaping FlutterResult) in
       switch call.method {
@@ -53,5 +92,16 @@ import UIKit
     }
 
     return didFinish
+  }
+
+  override func application(
+    _ app: UIApplication,
+    open url: URL,
+    options: [UIApplication.OpenURLOptionsKey : Any] = [:]
+  ) -> Bool {
+    if loadSharedJson(from: url) {
+      return true
+    }
+    return super.application(app, open: url, options: options)
   }
 }
