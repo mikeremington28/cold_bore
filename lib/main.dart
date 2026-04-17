@@ -11199,7 +11199,7 @@ class SessionDetailScreen extends StatelessWidget {
       ownerIdentifier: ownerIdentifier,
     );
 
-    await _refreshNearbyPresence(force: true);
+    await _refreshNearbyPresenceForShare();
     await _nearbyShareChannel.invokeMethod('setSharePayload', {
       'jsonText': json,
     });
@@ -11209,7 +11209,7 @@ class SessionDetailScreen extends StatelessWidget {
       context: context,
       builder: (_) => _NearbySessionShareDialog(
         state: state,
-        onRefresh: () => _refreshNearbyPresence(force: true),
+        onRefresh: _refreshNearbyPresenceForShare,
         onSelectPeer: (peer) async {
           selectedPeerIdentifier = peer.identifier;
           await _nearbyShareChannel.invokeMethod('invitePeer', {
@@ -11236,6 +11236,53 @@ class SessionDetailScreen extends StatelessWidget {
         content: Text('Sending session nearby to $selectedPeerIdentifier...'),
       ),
     );
+  }
+
+  Future<void> _refreshNearbyPresenceForShare() async {
+    final identifier = state.activeUserIdentifier?.trim().toUpperCase();
+    if (identifier == null || identifier.isEmpty) {
+      state.setNearbyStatusMessage(
+        'Nearby discovery is unavailable until a user identifier is set.',
+      );
+      await _stopNearbyPresenceForShare();
+      return;
+    }
+    if (_isSeedUserIdentifier(identifier)) {
+      state.setNearbyStatusMessage(
+        'Set a unique user identifier to discover nearby Cold Bore users.',
+      );
+      await _stopNearbyPresenceForShare();
+      return;
+    }
+
+    final activeUser = state.activeUser;
+    final displayName = activeUser == null
+        ? _displayUserIdentifier(identifier)
+        : _displayUserName(activeUser);
+    try {
+      await _nearbyShareChannel.invokeMethod('startPresence', {
+        'identifier': identifier,
+        'displayName': displayName,
+      });
+      state.setNearbyStatusMessage(
+        'Nearby discovery running as $identifier. Waiting for other Cold Bore users...',
+      );
+    } catch (e, st) {
+      debugPrint('Nearby presence start failed from session share: $e\n$st');
+      state.setNearbyStatusMessage(
+        'Nearby discovery failed to start. Check Local Network permission and try again.',
+      );
+    }
+  }
+
+  Future<void> _stopNearbyPresenceForShare() async {
+    state.setNearbyPeers(const <NearbyPeer>[]);
+    state.setNearbyStatusMessage('Nearby discovery stopped.');
+    try {
+      await _nearbyShareChannel.invokeMethod('stopPresence');
+    } catch (e, st) {
+      debugPrint('Nearby presence stop failed from session share: $e\n$st');
+    }
   }
 
   Future<void> _shareSession(BuildContext context, TrainingSession s) async {
