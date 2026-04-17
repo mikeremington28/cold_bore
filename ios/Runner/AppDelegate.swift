@@ -174,6 +174,18 @@ private final class NearbyShareManager: NSObject, MCNearbyServiceAdvertiserDeleg
   private var pendingTargetIdentifier: String?
   private var outgoingResourceURLs: [String: URL] = [:]
 
+  private func buildFreshSessionIfPossible() {
+    guard let peerID = peerIDForSession() else { return }
+    session?.disconnect()
+    let newSession = MCSession(peer: peerID, securityIdentity: nil, encryptionPreference: .required)
+    newSession.delegate = self
+    session = newSession
+  }
+
+  private func resetSessionForNextTransfer() {
+    buildFreshSessionIfPossible()
+  }
+
   func startPresence(identifier: String, displayName: String) {
     let normalizedIdentifier = identifier.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
     guard !normalizedIdentifier.isEmpty else { return }
@@ -235,11 +247,33 @@ private final class NearbyShareManager: NSObject, MCNearbyServiceAdvertiserDeleg
 
   func invitePeer(identifier: String) throws {
     let normalizedIdentifier = identifier.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-    guard let peer = nearbyPeers[normalizedIdentifier], let session else {
+    guard let peer = nearbyPeers[normalizedIdentifier] else {
       throw NSError(domain: "ColdBoreNearbyShare", code: 404, userInfo: [NSLocalizedDescriptionKey: "Nearby user not found. Make sure both phones are open in Cold Bore."])
     }
+    if session == nil {
+      buildFreshSessionIfPossible()
+    }
+    guard let session else {
+      throw NSError(domain: "ColdBoreNearbyShare", code: 500, userInfo: [NSLocalizedDescriptionKey: "Nearby session could not be started."])
+    }
     pendingTargetIdentifier = normalizedIdentifier
-    browser?.invitePeer(peer, to: session, withContext: nil, timeout: 15)
+
+    if session.connectedPeers.contains(peer) {
+      emitStatus("Nearby peer already connected. Sending now...")
+      sendPayloadIfReady(to: peer)
+      return
+    }
+
+    if !session.connectedPeers.isEmpty {
+      emitStatus("Resetting nearby connection and retrying send...")
+      buildFreshSessionIfPossible()
+    }
+
+    guard let activeSession = self.session else {
+      throw NSError(domain: "ColdBoreNearbyShare", code: 500, userInfo: [NSLocalizedDescriptionKey: "Nearby session could not be reset."])
+    }
+    emitStatus("Connecting to nearby peer \(normalizedIdentifier)...")
+    browser?.invitePeer(peer, to: activeSession, withContext: nil, timeout: 15)
   }
 
   private func emit(_ method: String, arguments: Any? = nil) {
@@ -297,12 +331,14 @@ private final class NearbyShareManager: NSObject, MCNearbyServiceAdvertiserDeleg
             "error": error.localizedDescription,
           ])
           self.emitStatus("Nearby send failed for \(identifier).")
+          self.resetSessionForNextTransfer()
           return
         }
 
         self.pendingTargetIdentifier = nil
         self.emit("payloadSent", arguments: ["identifier": identifier])
         self.emitStatus("Nearby session delivered to \(identifier).")
+        self.resetSessionForNextTransfer()
       }
     } catch {
       emit("payloadSendFailed", arguments: [
@@ -310,6 +346,7 @@ private final class NearbyShareManager: NSObject, MCNearbyServiceAdvertiserDeleg
         "error": error.localizedDescription,
       ])
       emitStatus("Nearby send failed for \(peer.displayName.uppercased()).")
+      resetSessionForNextTransfer()
     }
   }
 
@@ -358,8 +395,16 @@ private final class NearbyShareManager: NSObject, MCNearbyServiceAdvertiserDeleg
   }
 
   func session(_ session: MCSession, peer peerID: MCPeerID, didChange state: MCSessionState) {
-    if state == .connected {
+    switch state {
+    case .connecting:
+      emitStatus("Connecting to \(peerID.displayName.uppercased())...")
+    case .connected:
+      emitStatus("Connected to \(peerID.displayName.uppercased()).")
       sendPayloadIfReady(to: peerID)
+    case .notConnected:
+      emitStatus("Nearby peer \(peerID.displayName.uppercased()) disconnected.")
+    @unknown default:
+      break
     }
   }
 
