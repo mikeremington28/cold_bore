@@ -172,6 +172,7 @@ private final class NearbyShareManager: NSObject, MCNearbyServiceAdvertiserDeleg
   private var nearbyNames: [String: String] = [:]
   private var payloadText: String?
   private var pendingTargetIdentifier: String?
+  private var outgoingResourceURLs: [String: URL] = [:]
 
   func startPresence(identifier: String, displayName: String) {
     let normalizedIdentifier = identifier.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
@@ -276,14 +277,39 @@ private final class NearbyShareManager: NSObject, MCNearbyServiceAdvertiserDeleg
     }
 
     do {
-      try session.send(data, toPeers: [peer], with: .reliable)
-      pendingTargetIdentifier = nil
-      emit("payloadSent", arguments: ["identifier": peer.displayName.uppercased()])
+      let tempDirectory = FileManager.default.temporaryDirectory
+      let filename = "cold_bore_share_\(UUID().uuidString).json"
+      let fileURL = tempDirectory.appendingPathComponent(filename)
+      try data.write(to: fileURL, options: .atomic)
+      outgoingResourceURLs[peer.displayName.uppercased()] = fileURL
+      emitStatus("Sending nearby session to \(peer.displayName.uppercased())...")
+      session.sendResource(at: fileURL, withName: filename, toPeer: peer) { [weak self] error in
+        guard let self else { return }
+        let identifier = peer.displayName.uppercased()
+        let cleanupURL = self.outgoingResourceURLs.removeValue(forKey: identifier)
+        if let cleanupURL {
+          try? FileManager.default.removeItem(at: cleanupURL)
+        }
+
+        if let error {
+          self.emit("payloadSendFailed", arguments: [
+            "identifier": identifier,
+            "error": error.localizedDescription,
+          ])
+          self.emitStatus("Nearby send failed for \(identifier).")
+          return
+        }
+
+        self.pendingTargetIdentifier = nil
+        self.emit("payloadSent", arguments: ["identifier": identifier])
+        self.emitStatus("Nearby session delivered to \(identifier).")
+      }
     } catch {
       emit("payloadSendFailed", arguments: [
         "identifier": peer.displayName.uppercased(),
         "error": error.localizedDescription,
       ])
+      emitStatus("Nearby send failed for \(peer.displayName.uppercased()).")
     }
   }
 
@@ -353,13 +379,42 @@ private final class NearbyShareManager: NSObject, MCNearbyServiceAdvertiserDeleg
   func session(_ session: MCSession,
                didStartReceivingResourceWithName resourceName: String,
                fromPeer peerID: MCPeerID,
-               with progress: Progress) {}
+               with progress: Progress) {
+    emitStatus("Receiving nearby session from \(peerID.displayName.uppercased())...")
+  }
 
   func session(_ session: MCSession,
                didFinishReceivingResourceWithName resourceName: String,
                fromPeer peerID: MCPeerID,
                at localURL: URL?,
-               withError error: Error?) {}
+               withError error: Error?) {
+    let identifier = peerID.displayName.uppercased()
+    if let error {
+      emit("payloadSendFailed", arguments: [
+        "identifier": identifier,
+        "error": error.localizedDescription,
+      ])
+      emitStatus("Nearby receive failed from \(identifier).")
+      return
+    }
+
+    guard let localURL,
+          let data = try? Data(contentsOf: localURL),
+          let jsonText = String(data: data, encoding: .utf8) else {
+      emit("payloadSendFailed", arguments: [
+        "identifier": identifier,
+        "error": "Received nearby session could not be read.",
+      ])
+      emitStatus("Nearby receive failed from \(identifier).")
+      return
+    }
+
+    emit("payloadReceived", arguments: [
+      "jsonText": jsonText,
+      "senderIdentifier": identifier,
+    ])
+    emitStatus("Nearby session received from \(identifier).")
+  }
 
   func session(_ session: MCSession,
                didReceiveCertificate certificate: [Any]?,
