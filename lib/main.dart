@@ -1137,16 +1137,26 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
   }
 
   Future<void> _loadState() async {
-    await _state.loadPersistedState();
-    _setupNearbyShareEvents();
-    await _attachCloudIdentityIfNeeded();
-    await _refreshNearbyPresence(force: true);
-    await _attemptAutoICloudRestoreIfEligible();
-    await _prepareFirstLaunchTutorialFlag();
-    await _consumePendingIncomingShareFromPlatform();
-    await SubscriptionService().initialize();
-    _state.addListener(_onStateChanged);
-    _autoICloudBackupArmed = true;
+    try {
+      await _state.loadPersistedState();
+      _setupNearbyShareEvents();
+      await _attachCloudIdentityIfNeeded();
+      await _refreshNearbyPresence(force: true);
+      await _attemptAutoICloudRestoreIfEligible();
+      await _prepareFirstLaunchTutorialFlag();
+      await _consumePendingIncomingShareFromPlatform();
+      await SubscriptionService().initialize();
+      _state.addListener(_onStateChanged);
+      _autoICloudBackupArmed = true;
+    } catch (e, st) {
+      debugPrint('App startup initialization failed: $e\n$st');
+      try {
+        _state.removeListener(_onStateChanged);
+      } catch (_) {}
+      _state.addListener(_onStateChanged);
+      _autoICloudBackupArmed = true;
+    }
+
     if (!mounted) return;
     setState(() => _ready = true);
   }
@@ -1299,18 +1309,26 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
     if (!force && _lastNearbyPresenceIdentifier == identifier) return;
 
     final displayName = _displayUserName(_state.activeUser!);
-    await _nearbyShareChannel.invokeMethod('startPresence', {
-      'identifier': identifier,
-      'displayName': displayName,
-    });
-    _lastNearbyPresenceIdentifier = identifier;
+    try {
+      await _nearbyShareChannel.invokeMethod('startPresence', {
+        'identifier': identifier,
+        'displayName': displayName,
+      });
+      _lastNearbyPresenceIdentifier = identifier;
+    } catch (e, st) {
+      debugPrint('Nearby presence start failed: $e\n$st');
+    }
   }
 
   Future<void> _stopNearbyPresence() async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
     _lastNearbyPresenceIdentifier = null;
     _state.setNearbyPeers(const <NearbyPeer>[]);
-    await _nearbyShareChannel.invokeMethod('stopPresence');
+    try {
+      await _nearbyShareChannel.invokeMethod('stopPresence');
+    } catch (e, st) {
+      debugPrint('Nearby presence stop failed: $e\n$st');
+    }
   }
 
   bool get _canAutoBackupToICloud =>
