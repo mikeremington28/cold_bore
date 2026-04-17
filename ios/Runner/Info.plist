@@ -86,6 +86,15 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Allow microphone access for optional shot timer audio detection.</string>
 
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Cold Bore uses your local network to discover nearby partners and share sessions directly between iPhones.</string>
+
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_coldboremesh._tcp</string>
+		<string>_coldboremesh._udp</string>
+	</array>
+
 	<!-- Location (THIS FIXES THE APPLE WARNING) -->
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>We use your location to save session GPS data and fetch weather when you choose to use GPS.</string>
