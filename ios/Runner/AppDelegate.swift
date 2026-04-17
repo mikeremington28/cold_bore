@@ -208,6 +208,7 @@ private final class NearbyShareManager: NSObject, MCNearbyServiceAdvertiserDeleg
     browser.startBrowsingForPeers()
     self.browser = browser
 
+    emitStatus("Nearby discovery running as \(normalizedIdentifier). Waiting for other Cold Bore users...")
     emitPeersUpdated()
   }
 
@@ -222,6 +223,7 @@ private final class NearbyShareManager: NSObject, MCNearbyServiceAdvertiserDeleg
     nearbyPeers.removeAll()
     nearbyNames.removeAll()
     pendingTargetIdentifier = nil
+    emitStatus("Nearby discovery stopped.")
     emitPeersUpdated()
   }
 
@@ -253,6 +255,15 @@ private final class NearbyShareManager: NSObject, MCNearbyServiceAdvertiserDeleg
       ]
     }
     emit("peersUpdated", arguments: payload)
+    if nearbyPeers.isEmpty {
+      emitStatus("Nearby discovery running. No Cold Bore users found yet.")
+    } else {
+      emitStatus("Found \(nearbyPeers.count) nearby Cold Bore user(s).")
+    }
+  }
+
+  private func emitStatus(_ message: String) {
+    emit("presenceState", arguments: ["message": message])
   }
 
   private func sendPayloadIfReady(to peer: MCPeerID) {
@@ -289,6 +300,7 @@ private final class NearbyShareManager: NSObject, MCNearbyServiceAdvertiserDeleg
   }
 
   func advertiser(_ advertiser: MCNearbyServiceAdvertiser, didNotStartAdvertisingPeer error: Error) {
+    emitStatus("Nearby advertising failed to start. Check Local Network permission.")
     emit("payloadSendFailed", arguments: [
       "identifier": "",
       "error": error.localizedDescription,
@@ -312,6 +324,7 @@ private final class NearbyShareManager: NSObject, MCNearbyServiceAdvertiserDeleg
   }
 
   func browser(_ browser: MCNearbyServiceBrowser, didNotStartBrowsingForPeers error: Error) {
+    emitStatus("Nearby browsing failed to start. Check Local Network permission.")
     emit("payloadSendFailed", arguments: [
       "identifier": "",
       "error": error.localizedDescription,

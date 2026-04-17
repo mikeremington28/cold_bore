@@ -1252,6 +1252,11 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
           }).toList();
           _state.setNearbyPeers(peers);
           break;
+        case 'presenceState':
+          final args = Map<String, dynamic>.from((call.arguments as Map?) ?? {});
+          final message = (args['message'] ?? '').toString();
+          _state.setNearbyStatusMessage(message);
+          break;
         case 'payloadReceived':
           final args = Map<String, dynamic>.from((call.arguments as Map?) ?? {});
           final jsonText = (args['jsonText'] ?? '').toString();
@@ -1299,10 +1304,16 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
     final identifier = _state.activeUserIdentifier?.trim().toUpperCase();
     if (identifier == null || identifier.isEmpty) {
+      _state.setNearbyStatusMessage(
+        'Nearby discovery is unavailable until a user identifier is set.',
+      );
       await _stopNearbyPresence();
       return;
     }
     if (_isSeedUserIdentifier(identifier)) {
+      _state.setNearbyStatusMessage(
+        'Set a unique user identifier to discover nearby Cold Bore users.',
+      );
       await _stopNearbyPresence();
       return;
     }
@@ -1315,8 +1326,14 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
         'displayName': displayName,
       });
       _lastNearbyPresenceIdentifier = identifier;
+      _state.setNearbyStatusMessage(
+        'Nearby discovery running as $identifier. Waiting for other Cold Bore users...',
+      );
     } catch (e, st) {
       debugPrint('Nearby presence start failed: $e\n$st');
+      _state.setNearbyStatusMessage(
+        'Nearby discovery failed to start. Check Local Network permission and try again.',
+      );
     }
   }
 
@@ -1324,6 +1341,7 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
     _lastNearbyPresenceIdentifier = null;
     _state.setNearbyPeers(const <NearbyPeer>[]);
+    _state.setNearbyStatusMessage('Nearby discovery stopped.');
     try {
       await _nearbyShareChannel.invokeMethod('stopPresence');
     } catch (e, st) {
@@ -1773,6 +1791,8 @@ class AppState extends ChangeNotifier {
   final List<String> _pendingIncomingSharedJsonTexts = <String>[];
   final List<String> _trustedPartnerIdentifiers = <String>[];
   List<NearbyPeer> _nearbyPeers = const <NearbyPeer>[];
+  String _nearbyStatusMessage =
+      'Nearby discovery is idle until a unique identifier is set.';
   final Map<String, int> _cloudSessionUpdatedAtMs = {};
   Timer? _persistTimer;
   bool _didHydrate = false;
@@ -1918,6 +1938,7 @@ class AppState extends ChangeNotifier {
     List<String> get trustedPartnerIdentifiers =>
       List.unmodifiable(_trustedPartnerIdentifiers);
     List<NearbyPeer> get nearbyPeers => List.unmodifiable(_nearbyPeers);
+    String get nearbyStatusMessage => _nearbyStatusMessage;
 
   void setShotTimerBeepFrequencyHz(double value) {
     _shotTimerBeepFrequencyHz = value.clamp(400.0, 3000.0);
@@ -2628,6 +2649,16 @@ class AppState extends ChangeNotifier {
     if (unchanged) return;
 
     _nearbyPeers = normalized;
+    notifyListeners();
+  }
+
+  void setNearbyStatusMessage(String message) {
+    final trimmed = message.trim();
+    final next = trimmed.isEmpty
+        ? 'Nearby discovery is idle until a unique identifier is set.'
+        : trimmed;
+    if (_nearbyStatusMessage == next) return;
+    _nearbyStatusMessage = next;
     notifyListeners();
   }
 
@@ -11168,6 +11199,7 @@ class SessionDetailScreen extends StatelessWidget {
       ownerIdentifier: ownerIdentifier,
     );
 
+    await _refreshNearbyPresence(force: true);
     await _nearbyShareChannel.invokeMethod('setSharePayload', {
       'jsonText': json,
     });
@@ -11177,6 +11209,7 @@ class SessionDetailScreen extends StatelessWidget {
       context: context,
       builder: (_) => _NearbySessionShareDialog(
         state: state,
+        onRefresh: () => _refreshNearbyPresence(force: true),
         onSelectPeer: (peer) async {
           selectedPeerIdentifier = peer.identifier;
           await _nearbyShareChannel.invokeMethod('invitePeer', {
@@ -18459,10 +18492,12 @@ class _ShareSessionDialog extends StatefulWidget {
 class _NearbySessionShareDialog extends StatelessWidget {
   final AppState state;
   final Future<void> Function(NearbyPeer peer) onSelectPeer;
+  final Future<void> Function() onRefresh;
 
   const _NearbySessionShareDialog({
     required this.state,
     required this.onSelectPeer,
+    required this.onRefresh,
   });
 
   @override
@@ -18471,36 +18506,59 @@ class _NearbySessionShareDialog extends StatelessWidget {
       animation: state,
       builder: (context, _) {
         final peers = state.nearbyPeers;
+        final status = state.nearbyStatusMessage;
         return AlertDialog(
           title: const Text('Nearby Cold Bore users'),
           content: SizedBox(
             width: 420,
-            child: peers.isEmpty
-                ? const Text(
-                    'No nearby Cold Bore users found yet. Keep both iPhones unlocked, nearby, and open in the app.',
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(status),
+                const SizedBox(height: 8),
+                Text(
+                  'Your identifier: ${state.activeUserIdentifier ?? 'not set'}',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: 12),
+                if (peers.isEmpty)
+                  const Text(
+                    'No nearby Cold Bore users found yet. Keep both iPhones unlocked, nearby, with Cold Bore open, and Local Network allowed.',
                   )
-                : ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: peers.length,
-                    separatorBuilder: (_, _) => const Divider(height: 1),
-                    itemBuilder: (context, index) {
-                      final peer = peers[index];
-                      return ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.phone_iphone_outlined),
-                        title: Text(peer.displayName),
-                        subtitle: Text(peer.identifier),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () async {
-                          await onSelectPeer(peer);
-                          if (!context.mounted) return;
-                          Navigator.of(context).pop();
-                        },
-                      );
-                    },
+                else
+                  Flexible(
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: peers.length,
+                      separatorBuilder: (_, _) => const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final peer = peers[index];
+                        return ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.phone_iphone_outlined),
+                          title: Text(peer.displayName),
+                          subtitle: Text(peer.identifier),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () async {
+                            await onSelectPeer(peer);
+                            if (!context.mounted) return;
+                            Navigator.of(context).pop();
+                          },
+                        );
+                      },
+                    ),
                   ),
+              ],
+            ),
           ),
           actions: [
+            TextButton(
+              onPressed: () async {
+                await onRefresh();
+              },
+              child: const Text('Refresh'),
+            ),
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
               child: const Text('Cancel'),
