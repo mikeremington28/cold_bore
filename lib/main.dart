@@ -462,6 +462,30 @@ bool _isSeedUserIdentifier(String identifier) {
   return normalized == 'DEMO' || normalized == 'OWNER';
 }
 
+String _normalizeUserIdentifier(String identifier) =>
+    identifier.trim().toUpperCase();
+
+bool _isValidUserIdentifierFormat(String identifier) => RegExp(
+  r'^[A-Z0-9_-]{3,24}$',
+).hasMatch(_normalizeUserIdentifier(identifier));
+
+String? _userIdentifierValidationMessage(
+  String identifier, {
+  bool allowSeed = false,
+}) {
+  final normalized = _normalizeUserIdentifier(identifier);
+  if (normalized.isEmpty) {
+    return 'Enter a unique identifier.';
+  }
+  if (!_isValidUserIdentifierFormat(normalized)) {
+    return 'Use 3-24 characters: letters, numbers, dash, or underscore.';
+  }
+  if (!allowSeed && _isSeedUserIdentifier(normalized)) {
+    return 'Choose something unique, not OWNER or DEMO.';
+  }
+  return null;
+}
+
 String _displayUserIdentifier(String identifier) {
   if (_isSeedUserIdentifier(identifier)) return 'Owner';
   return identifier;
@@ -1176,7 +1200,9 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
 
   bool _shouldPromptForUniqueIdentifier() {
     final user = _state.activeUser;
-    return user != null && _isSeedUserIdentifier(user.identifier);
+    return user != null &&
+        (_isSeedUserIdentifier(user.identifier) ||
+            !_isValidUserIdentifierFormat(user.identifier));
   }
 
   bool _looksLikeFreshLocalInstall() {
@@ -1329,6 +1355,13 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
       await _stopNearbyPresence();
       return;
     }
+    if (!_isValidUserIdentifierFormat(identifier)) {
+      _state.setNearbyStatusMessage(
+        'Current user identifier is invalid for nearby sharing. Use 3-24 letters, numbers, dashes, or underscores.',
+      );
+      await _stopNearbyPresence();
+      return;
+    }
     if (!force && _lastNearbyPresenceIdentifier == identifier) return;
 
     final displayName = _displayUserName(_state.activeUser!);
@@ -1386,7 +1419,8 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
     final identifier = _state.activeUserIdentifier?.trim();
     if (identifier == null ||
         identifier.isEmpty ||
-        _isSeedUserIdentifier(identifier)) {
+        _isSeedUserIdentifier(identifier) ||
+        !_isValidUserIdentifierFormat(identifier)) {
       _lastCloudIdentifier = null;
       await _cloud.detachIdentity();
       return;
@@ -2202,10 +2236,11 @@ class AppState extends ChangeNotifier {
   }
 
   void addUser({required String name, required String identifier}) {
+    final normalizedIdentifier = _normalizeUserIdentifier(identifier);
     final u = UserProfile(
       id: _newId(),
       name: name.trim(),
-      identifier: identifier.trim(),
+      identifier: normalizedIdentifier,
     );
     _users.add(u);
     _activeUser ??= u;
@@ -2220,10 +2255,12 @@ class AppState extends ChangeNotifier {
     final idx = _users.indexWhere((u) => u.id == userId);
     if (idx < 0) return;
 
+    final normalizedIdentifier = _normalizeUserIdentifier(identifier);
+
     final updated = UserProfile(
       id: _users[idx].id,
       name: name.trim().isEmpty ? null : name.trim(),
-      identifier: identifier.trim(),
+      identifier: normalizedIdentifier,
     );
     _users[idx] = updated;
     if (_activeUser?.id == userId) {
@@ -17548,21 +17585,10 @@ class _UniqueIdentifierPromptDialogState
   }
 
   void _submit() {
-    final rawIdentifier = _identifier.text.trim().toUpperCase();
-    if (rawIdentifier.isEmpty) {
-      setState(() => _error = 'Enter a unique identifier.');
-      return;
-    }
-    final valid = RegExp(r'^[A-Z0-9_-]{3,24}$').hasMatch(rawIdentifier);
-    if (!valid) {
-      setState(
-        () => _error =
-            'Use 3-24 characters: letters, numbers, dash, or underscore.',
-      );
-      return;
-    }
-    if (_isSeedUserIdentifier(rawIdentifier)) {
-      setState(() => _error = 'Choose something unique, not OWNER or DEMO.');
+    final rawIdentifier = _normalizeUserIdentifier(_identifier.text);
+    final error = _userIdentifierValidationMessage(rawIdentifier);
+    if (error != null) {
+      setState(() => _error = error);
       return;
     }
 
@@ -17652,6 +17678,7 @@ class _NewUserDialog extends StatefulWidget {
 class _NewUserDialogState extends State<_NewUserDialog> {
   final _name = TextEditingController();
   final _id = TextEditingController();
+  String? _error;
 
   @override
   void dispose() {
@@ -17668,9 +17695,12 @@ class _NewUserDialogState extends State<_NewUserDialog> {
         mainAxisSize: MainAxisSize.min,
         children: [
           TextField(
-            textCapitalization: TextCapitalization.none,
+            textCapitalization: TextCapitalization.characters,
             controller: _id,
-            decoration: const InputDecoration(labelText: 'Identifier *'),
+            decoration: const InputDecoration(
+              labelText: 'Identifier *',
+              hintText: 'e.g. RANGER1',
+            ),
             textInputAction: TextInputAction.next,
           ),
           const SizedBox(height: 8),
@@ -17702,6 +17732,16 @@ class _NewUserDialogState extends State<_NewUserDialog> {
             controller: _name,
             decoration: const InputDecoration(labelText: 'Name (optional)'),
           ),
+          if (_error != null) ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                _error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
+          ],
         ],
       ),
       actions: [
@@ -17713,8 +17753,15 @@ class _NewUserDialogState extends State<_NewUserDialog> {
           onPressed: () {
             final nameRaw = _name.text.trim();
             final name = nameRaw.isEmpty ? null : nameRaw;
-            final identifier = _id.text.trim();
-            if (identifier.isEmpty) return;
+            final identifier = _normalizeUserIdentifier(_id.text);
+            final error = _userIdentifierValidationMessage(
+              identifier,
+              allowSeed: true,
+            );
+            if (error != null) {
+              setState(() => _error = error);
+              return;
+            }
             Navigator.of(context).pop(
               _NewUserResult(
                 ((name ?? '').trim().isEmpty)
