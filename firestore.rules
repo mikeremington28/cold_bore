@@ -5,8 +5,18 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function currentIdentifier() {
+      return isSignedIn() &&
+          exists(/databases/$(database)/documents/user_profiles/$(request.auth.uid))
+          ? get(/databases/$(database)/documents/user_profiles/$(request.auth.uid)).data.identifierUpper
+          : null;
+    }
+
     function isSessionMember(data) {
-      return data.memberUids is list && request.auth.uid in data.memberUids;
+      return (data.memberUids is list && request.auth.uid in data.memberUids) ||
+        (currentIdentifier() != null &&
+          data.memberIdentifiers is list &&
+          currentIdentifier() in data.memberIdentifiers);
     }
 
     match /shared_sessions/{sessionId} {

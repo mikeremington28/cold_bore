@@ -98,6 +98,8 @@
 	<!-- Location (THIS FIXES THE APPLE WARNING) -->
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>We use your location to save session GPS data and fetch weather when you choose to use GPS.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Cold Bore only uses location while you are actively using the app to save session GPS data and fetch weather for your current shooting conditions.</string>
 
 	<!-- Encryption (THIS STOPS THE TESTFLIGHT PROMPT) -->
 	<key>ITSAppUsesNonExemptEncryption</key>

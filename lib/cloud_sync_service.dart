@@ -33,10 +33,10 @@ class CloudSyncService extends ChangeNotifier {
   bool _ready = false;
   String? _userId;
   String? _lastError;
-    DateTime? _lastSyncAt;
+  DateTime? _lastSyncAt;
   String? _activeIdentifier;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _sharedSessionSub;
-    final Map<String, _MembershipState> _ownedSessionMembers =
+  final Map<String, _MembershipState> _ownedSessionMembers =
       <String, _MembershipState>{};
 
   bool get isReady => _ready;
@@ -51,6 +51,14 @@ class CloudSyncService extends ChangeNotifier {
   void _setSyncedNow() {
     _lastSyncAt = DateTime.now();
     _lastError = null;
+    notifyListeners();
+  }
+
+  Future<void> detachIdentity() async {
+    _activeIdentifier = null;
+    _ownedSessionMembers.clear();
+    await _sharedSessionSub?.cancel();
+    _sharedSessionSub = null;
     notifyListeners();
   }
 
@@ -76,8 +84,9 @@ class CloudSyncService extends ChangeNotifier {
 
       if (_ready) {
         // Touch Firestore to ensure plugin is initialized for later sync work.
-        FirebaseFirestore.instance.settings =
-            const Settings(persistenceEnabled: true);
+        FirebaseFirestore.instance.settings = const Settings(
+          persistenceEnabled: true,
+        );
       }
     } on FirebaseAuthException catch (e) {
       _ready = false;
@@ -106,14 +115,14 @@ class CloudSyncService extends ChangeNotifier {
     final normalized = _normalizeIdentifier(identifier);
     if (normalized.isEmpty) return;
 
-    await FirebaseFirestore.instance.collection('user_profiles').doc(_userId).set(
-      {
-        'uid': _userId,
-        'identifierUpper': normalized,
-        'updatedAt': FieldValue.serverTimestamp(),
-      },
-      SetOptions(merge: true),
-    );
+    await FirebaseFirestore.instance
+        .collection('user_profiles')
+        .doc(_userId)
+        .set({
+          'uid': _userId,
+          'identifierUpper': normalized,
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
   }
 
   Future<Map<String, String>> _resolveIdentifiersToUids(
@@ -140,7 +149,9 @@ class CloudSyncService extends ChangeNotifier {
           .get();
       for (final doc in query.docs) {
         final data = doc.data();
-        final key = _normalizeIdentifier((data['identifierUpper'] ?? '').toString());
+        final key = _normalizeIdentifier(
+          (data['identifierUpper'] ?? '').toString(),
+        );
         final uid = (data['uid'] ?? doc.id).toString().trim();
         if (key.isNotEmpty && uid.isNotEmpty) {
           out[key] = uid;
@@ -173,28 +184,30 @@ class CloudSyncService extends ChangeNotifier {
     _ownedSessionMembers.clear();
 
     final owned = await FirebaseFirestore.instance
-      .collection('shared_sessions')
-      .where('ownerUid', isEqualTo: uid)
-      .get();
+        .collection('shared_sessions')
+        .where('ownerUid', isEqualTo: uid)
+        .get();
     for (final doc in owned.docs) {
       final data = doc.data();
       final identifiers = ((data['memberIdentifiers'] as List?) ?? const [])
-        .map((e) => _normalizeIdentifier(e.toString()))
-        .where((e) => e.isNotEmpty)
-        .toSet()
-        .toList();
+          .map((e) => _normalizeIdentifier(e.toString()))
+          .where((e) => e.isNotEmpty)
+          .toSet()
+          .toList();
       final uids = ((data['memberUids'] as List?) ?? const [])
-        .map((e) => e.toString().trim())
-        .where((e) => e.isNotEmpty)
-        .toSet()
-        .toList();
-      _ownedSessionMembers[doc.id] =
-        _MembershipState(identifiers: identifiers, uids: uids);
+          .map((e) => e.toString().trim())
+          .where((e) => e.isNotEmpty)
+          .toSet()
+          .toList();
+      _ownedSessionMembers[doc.id] = _MembershipState(
+        identifiers: identifiers,
+        uids: uids,
+      );
     }
 
     _sharedSessionSub = FirebaseFirestore.instance
         .collection('shared_sessions')
-      .where('memberUids', arrayContains: uid)
+        .where('memberIdentifiers', arrayContains: normalized)
         .snapshots()
         .listen(
           (snapshot) {
@@ -249,10 +262,7 @@ class CloudSyncService extends ChangeNotifier {
     }.where((id) => id.isNotEmpty).toList();
 
     final resolved = await _resolveIdentifiersToUids(identifiers);
-    final memberUids = <String>{
-      _userId!,
-      ...resolved.values,
-    }.toList();
+    final memberUids = <String>{_userId!, ...resolved.values}.toList();
 
     await FirebaseFirestore.instance
         .collection('shared_sessions')
@@ -267,8 +277,10 @@ class CloudSyncService extends ChangeNotifier {
           'session': sessionMap,
         }, SetOptions(merge: true));
 
-    _ownedSessionMembers[sessionId] =
-        _MembershipState(identifiers: identifiers, uids: memberUids);
+    _ownedSessionMembers[sessionId] = _MembershipState(
+      identifiers: identifiers,
+      uids: memberUids,
+    );
     _setSyncedNow();
 
     final unresolved = identifiers
@@ -276,7 +288,9 @@ class CloudSyncService extends ChangeNotifier {
         .toList();
 
     return CloudShareResult(
-      resolvedIdentifiers: identifiers.where((id) => resolved.containsKey(id)).toList(),
+      resolvedIdentifiers: identifiers
+          .where((id) => resolved.containsKey(id))
+          .toList(),
       unresolvedIdentifiers: unresolved,
     );
   }
@@ -295,10 +309,7 @@ class CloudSyncService extends ChangeNotifier {
 
       final identifiers = entry.value.identifiers;
       final resolved = await _resolveIdentifiersToUids(identifiers);
-      final memberUids = <String>{
-        _userId!,
-        ...resolved.values,
-      }.toList();
+      final memberUids = <String>{_userId!, ...resolved.values}.toList();
 
       await FirebaseFirestore.instance
           .collection('shared_sessions')
@@ -313,8 +324,10 @@ class CloudSyncService extends ChangeNotifier {
             'session': sessionMap,
           }, SetOptions(merge: true));
 
-      _ownedSessionMembers[entry.key] =
-          _MembershipState(identifiers: identifiers, uids: memberUids);
+      _ownedSessionMembers[entry.key] = _MembershipState(
+        identifiers: identifiers,
+        uids: memberUids,
+      );
     }
 
     if (_ownedSessionMembers.isNotEmpty) {

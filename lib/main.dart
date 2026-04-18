@@ -612,8 +612,8 @@ String _buildSessionReportText(
   }
   if (includeTimerData &&
       ((s.shotTimerElapsedMs ?? 0) > 0 ||
-      (s.shotTimerFirstShotMs ?? 0) > 0 ||
-      s.shotTimerSplitMs.isNotEmpty)) {
+          (s.shotTimerFirstShotMs ?? 0) > 0 ||
+          s.shotTimerSplitMs.isNotEmpty)) {
     b.writeln('• Shot timer total (ms): ${s.shotTimerElapsedMs ?? 0}');
     b.writeln('• First shot (ms): ${s.shotTimerFirstShotMs ?? 0}');
     b.writeln(
@@ -1144,6 +1144,8 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
       await _refreshNearbyPresence(force: true);
       await _attemptAutoICloudRestoreIfEligible();
       await _prepareFirstLaunchTutorialFlag();
+      _promptUniqueIdentifierOnHome =
+          _promptUniqueIdentifierOnHome || _shouldPromptForUniqueIdentifier();
       await _consumePendingIncomingShareFromPlatform();
       await SubscriptionService().initialize();
       _state.addListener(_onStateChanged);
@@ -1170,6 +1172,11 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
     await prefs.setBool(_tutorialShownPrefsKey, true);
     _startGuidedTourOnHome = true;
     _promptUniqueIdentifierOnHome = true;
+  }
+
+  bool _shouldPromptForUniqueIdentifier() {
+    final user = _state.activeUser;
+    return user != null && _isSeedUserIdentifier(user.identifier);
   }
 
   bool _looksLikeFreshLocalInstall() {
@@ -1245,20 +1252,21 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
             final map = Map<String, dynamic>.from(entry as Map);
             final identifier = (map['identifier'] ?? '').toString();
             final displayName = (map['displayName'] ?? '').toString();
-            return NearbyPeer(
-              identifier: identifier,
-              displayName: displayName,
-            );
+            return NearbyPeer(identifier: identifier, displayName: displayName);
           }).toList();
           _state.setNearbyPeers(peers);
           break;
         case 'presenceState':
-          final args = Map<String, dynamic>.from((call.arguments as Map?) ?? {});
+          final args = Map<String, dynamic>.from(
+            (call.arguments as Map?) ?? {},
+          );
           final message = (args['message'] ?? '').toString();
           _state.setNearbyStatusMessage(message);
           break;
         case 'payloadReceived':
-          final args = Map<String, dynamic>.from((call.arguments as Map?) ?? {});
+          final args = Map<String, dynamic>.from(
+            (call.arguments as Map?) ?? {},
+          );
           final jsonText = (args['jsonText'] ?? '').toString();
           final senderIdentifier = (args['senderIdentifier'] ?? '').toString();
           if (senderIdentifier.trim().isNotEmpty) {
@@ -1269,7 +1277,9 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
           }
           break;
         case 'payloadSent':
-          final args = Map<String, dynamic>.from((call.arguments as Map?) ?? {});
+          final args = Map<String, dynamic>.from(
+            (call.arguments as Map?) ?? {},
+          );
           final peerIdentifier = (args['identifier'] ?? '').toString();
           if (peerIdentifier.trim().isNotEmpty) {
             _state.rememberTrustedPartnerIdentifier(peerIdentifier);
@@ -1287,12 +1297,14 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
           }
           break;
         case 'payloadSendFailed':
-          final args = Map<String, dynamic>.from((call.arguments as Map?) ?? {});
+          final args = Map<String, dynamic>.from(
+            (call.arguments as Map?) ?? {},
+          );
           final error = (args['error'] ?? 'Nearby sharing failed.').toString();
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(error)),
-            );
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text(error)));
           }
           break;
       }
@@ -1362,6 +1374,7 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
     _cloudSyncDebounce = Timer(const Duration(milliseconds: 900), () async {
       final ownerIdentifier = _state.activeUserIdentifier;
       if (ownerIdentifier == null || ownerIdentifier.trim().isEmpty) return;
+      if (_isSeedUserIdentifier(ownerIdentifier)) return;
       await _cloud.syncOwnedSessions(
         ownerIdentifier: ownerIdentifier,
         sessionsById: _state.exportOwnedSessionMapsById(),
@@ -1371,8 +1384,14 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
 
   Future<void> _attachCloudIdentityIfNeeded() async {
     final identifier = _state.activeUserIdentifier?.trim();
-    if (identifier == null || identifier.isEmpty) return;
-    if (_lastCloudIdentifier == identifier) return;
+    if (identifier == null ||
+        identifier.isEmpty ||
+        _isSeedUserIdentifier(identifier)) {
+      _lastCloudIdentifier = null;
+      await _cloud.detachIdentity();
+      return;
+    }
+    if (_lastCloudIdentifier == identifier && _cloud.canSync) return;
 
     await _cloud.attachIdentity(
       identifier: identifier,
@@ -1429,7 +1448,6 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
     } catch (e, st) {
       debugPrint('Auto iCloud backup failed: $e\n$st');
     } finally {
-
       _iCloudBackupInFlight = false;
       if (_iCloudBackupQueuedDuringInFlight) {
         _iCloudBackupQueuedDuringInFlight = false;
@@ -1664,10 +1682,10 @@ class _PaywallScreenState extends State<_PaywallScreen> {
               Text(
                 inTrial
                     ? 'Subscribe now to keep all features after your trial ends. '
-                        'Your data is always yours to view and export.'
+                          'Your data is always yours to view and export.'
                     : 'Your existing data is always available to view and export. '
-                        'A Cold Bore Pro subscription lets you continue logging sessions, '
-                        'shots, gear, and maintenance records.',
+                          'A Cold Bore Pro subscription lets you continue logging sessions, '
+                          'shots, gear, and maintenance records.',
                 textAlign: TextAlign.center,
               ),
               if (!inTrial && isIos) ...[
@@ -1935,10 +1953,10 @@ class AppState extends ChangeNotifier {
       _workingDopeRifleOnly;
   Map<String, Map<DistanceKey, DopeEntry>> get workingDopeRifleAmmo =>
       _workingDopeRifleAmmo;
-    List<String> get trustedPartnerIdentifiers =>
+  List<String> get trustedPartnerIdentifiers =>
       List.unmodifiable(_trustedPartnerIdentifiers);
-    List<NearbyPeer> get nearbyPeers => List.unmodifiable(_nearbyPeers);
-    String get nearbyStatusMessage => _nearbyStatusMessage;
+  List<NearbyPeer> get nearbyPeers => List.unmodifiable(_nearbyPeers);
+  String get nearbyStatusMessage => _nearbyStatusMessage;
 
   void setShotTimerBeepFrequencyHz(double value) {
     _shotTimerBeepFrequencyHz = value.clamp(400.0, 3000.0);
@@ -2010,10 +2028,8 @@ class AppState extends ChangeNotifier {
       ),
       'trustedPartnerIdentifiers': _trustedPartnerIdentifiers,
       'acceptedSharedFieldsBySession': _acceptedSharedFieldsBySession.map(
-        (sessionId, acceptedFields) => MapEntry(
-          sessionId,
-          Map<String, dynamic>.from(acceptedFields),
-        ),
+        (sessionId, acceptedFields) =>
+            MapEntry(sessionId, Map<String, dynamic>.from(acceptedFields)),
       ),
     };
   }
@@ -2625,18 +2641,19 @@ class AppState extends ChangeNotifier {
   }
 
   void setNearbyPeers(List<NearbyPeer> peers) {
-    final normalized = peers
-        .where((peer) => peer.identifier.trim().isNotEmpty)
-        .map(
-          (peer) => NearbyPeer(
-            identifier: peer.identifier.trim().toUpperCase(),
-            displayName: peer.displayName.trim().isEmpty
-                ? peer.identifier.trim().toUpperCase()
-                : peer.displayName.trim(),
-          ),
-        )
-        .toList()
-      ..sort((a, b) => a.displayName.compareTo(b.displayName));
+    final normalized =
+        peers
+            .where((peer) => peer.identifier.trim().isNotEmpty)
+            .map(
+              (peer) => NearbyPeer(
+                identifier: peer.identifier.trim().toUpperCase(),
+                displayName: peer.displayName.trim().isEmpty
+                    ? peer.identifier.trim().toUpperCase()
+                    : peer.displayName.trim(),
+              ),
+            )
+            .toList()
+          ..sort((a, b) => a.displayName.compareTo(b.displayName));
 
     final isSameLength = normalized.length == _nearbyPeers.length;
     final unchanged =
@@ -2710,7 +2727,11 @@ class AppState extends ChangeNotifier {
         return u;
       }
     }
-    final created = UserProfile(id: _newId(), name: null, identifier: normalized);
+    final created = UserProfile(
+      id: _newId(),
+      name: null,
+      identifier: normalized,
+    );
     _users.add(created);
     return created;
   }
@@ -2730,10 +2751,12 @@ class AppState extends ChangeNotifier {
       throw StateError('Session not found.');
     }
 
-    final rifle =
-        session.rifleId == null ? null : findRifleById(session.rifleId!);
-    final ammo =
-        session.ammoLotId == null ? null : findAmmoLotById(session.ammoLotId!);
+    final rifle = session.rifleId == null
+        ? null
+        : findRifleById(session.rifleId!);
+    final ammo = session.ammoLotId == null
+        ? null
+        : findAmmoLotById(session.ammoLotId!);
 
     final payload = <String, dynamic>{
       'schema': kBackupSchemaVersion,
@@ -3031,7 +3054,9 @@ class AppState extends ChangeNotifier {
     if (idx < 0) return;
     _sessions.removeAt(idx);
     _acceptedSharedFieldsBySession.remove(sessionId);
-    _pendingSharedAcceptancePromptSessionIds.removeWhere((id) => id == sessionId);
+    _pendingSharedAcceptancePromptSessionIds.removeWhere(
+      (id) => id == sessionId,
+    );
     notifyListeners();
   }
 
@@ -4149,7 +4174,9 @@ class AppState extends ChangeNotifier {
     mergeBackupJson(jsonText, overwriteScope: false);
 
     final ownerIdentifier = (map['ownerIdentifier'] ?? '').toString().trim();
-    final incoming = _trainingSessionFromMap(Map<String, dynamic>.from(sessionRaw));
+    final incoming = _trainingSessionFromMap(
+      Map<String, dynamic>.from(sessionRaw),
+    );
     rememberTrustedPartnerIdentifier(ownerIdentifier);
 
     if (_users.isEmpty) {
@@ -4183,19 +4210,23 @@ class AppState extends ChangeNotifier {
 
     if (hasExplicitAcceptance) {
       _acceptedSharedFieldsBySession[normalized.id] = <String, bool>{
-      sharedFieldNotes: normalized.shareNotesWithMembers ? acceptNotes : false,
+        sharedFieldNotes: normalized.shareNotesWithMembers
+            ? acceptNotes
+            : false,
         sharedFieldTrainingDope: normalized.shareTrainingDopeWithMembers
-        ? acceptTrainingDope
+            ? acceptTrainingDope
             : false,
         sharedFieldLocation: normalized.shareLocationWithMembers
-        ? acceptLocation
+            ? acceptLocation
             : false,
-      sharedFieldPhotos: normalized.sharePhotosWithMembers ? acceptPhotos : false,
+        sharedFieldPhotos: normalized.sharePhotosWithMembers
+            ? acceptPhotos
+            : false,
         sharedFieldShotResults: normalized.shareShotResultsWithMembers
-        ? acceptShotResults
+            ? acceptShotResults
             : false,
         sharedFieldTimerData: normalized.shareTimerDataWithMembers
-        ? acceptTimerData
+            ? acceptTimerData
             : false,
       };
     } else if (viewer.id != owner.id) {
@@ -6227,7 +6258,9 @@ class _HomeShellState extends State<HomeShell> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Received file is not a valid shared session.')),
+          const SnackBar(
+            content: Text('Received file is not a valid shared session.'),
+          ),
         );
       });
       return;
@@ -6289,7 +6322,9 @@ class _HomeShellState extends State<HomeShell> {
                         subtitle: preview.session.shareNotesWithMembers
                             ? null
                             : const Text('Sender did not share this field.'),
-                        value: preview.session.shareNotesWithMembers && acceptNotes,
+                        value:
+                            preview.session.shareNotesWithMembers &&
+                            acceptNotes,
                         onChanged: preview.session.shareNotesWithMembers
                             ? (v) => setState(() => acceptNotes = v)
                             : null,
@@ -6300,7 +6335,8 @@ class _HomeShellState extends State<HomeShell> {
                         subtitle: preview.session.shareTrainingDopeWithMembers
                             ? null
                             : const Text('Sender did not share this field.'),
-                        value: preview.session.shareTrainingDopeWithMembers &&
+                        value:
+                            preview.session.shareTrainingDopeWithMembers &&
                             acceptTrainingDope,
                         onChanged: preview.session.shareTrainingDopeWithMembers
                             ? (v) => setState(() => acceptTrainingDope = v)
@@ -6312,7 +6348,8 @@ class _HomeShellState extends State<HomeShell> {
                         subtitle: preview.session.shareLocationWithMembers
                             ? null
                             : const Text('Sender did not share this field.'),
-                        value: preview.session.shareLocationWithMembers &&
+                        value:
+                            preview.session.shareLocationWithMembers &&
                             acceptLocation,
                         onChanged: preview.session.shareLocationWithMembers
                             ? (v) => setState(() => acceptLocation = v)
@@ -6324,7 +6361,9 @@ class _HomeShellState extends State<HomeShell> {
                         subtitle: preview.session.sharePhotosWithMembers
                             ? null
                             : const Text('Sender did not share this field.'),
-                        value: preview.session.sharePhotosWithMembers && acceptPhotos,
+                        value:
+                            preview.session.sharePhotosWithMembers &&
+                            acceptPhotos,
                         onChanged: preview.session.sharePhotosWithMembers
                             ? (v) => setState(() => acceptPhotos = v)
                             : null,
@@ -6335,7 +6374,8 @@ class _HomeShellState extends State<HomeShell> {
                         subtitle: preview.session.shareShotResultsWithMembers
                             ? null
                             : const Text('Sender did not share this field.'),
-                        value: preview.session.shareShotResultsWithMembers &&
+                        value:
+                            preview.session.shareShotResultsWithMembers &&
                             acceptShotResults,
                         onChanged: preview.session.shareShotResultsWithMembers
                             ? (v) => setState(() => acceptShotResults = v)
@@ -6347,7 +6387,8 @@ class _HomeShellState extends State<HomeShell> {
                         subtitle: preview.session.shareTimerDataWithMembers
                             ? null
                             : const Text('Sender did not share this field.'),
-                        value: preview.session.shareTimerDataWithMembers &&
+                        value:
+                            preview.session.shareTimerDataWithMembers &&
                             acceptTimerData,
                         onChanged: preview.session.shareTimerDataWithMembers
                             ? (v) => setState(() => acceptTimerData = v)
@@ -6443,7 +6484,9 @@ class _HomeShellState extends State<HomeShell> {
 
     final session = widget.state.getSessionById(nextSessionId);
     final activeUser = widget.state.activeUser;
-    if (session == null || activeUser == null || session.userId == activeUser.id) {
+    if (session == null ||
+        activeUser == null ||
+        session.userId == activeUser.id) {
       WidgetsBinding.instance.addPostFrameCallback(
         (_) => _maybePromptForNewSharedSession(),
       );
@@ -6534,7 +6577,8 @@ class _HomeShellState extends State<HomeShell> {
                         subtitle: session.shareLocationWithMembers
                             ? null
                             : const Text('Owner did not share this field.'),
-                        value: session.shareLocationWithMembers && acceptLocation,
+                        value:
+                            session.shareLocationWithMembers && acceptLocation,
                         onChanged: session.shareLocationWithMembers
                             ? (v) => setState(() => acceptLocation = v)
                             : null,
@@ -6569,7 +6613,9 @@ class _HomeShellState extends State<HomeShell> {
                         subtitle: session.shareTimerDataWithMembers
                             ? null
                             : const Text('Owner did not share this field.'),
-                        value: session.shareTimerDataWithMembers && acceptTimerData,
+                        value:
+                            session.shareTimerDataWithMembers &&
+                            acceptTimerData,
                         onChanged: session.shareTimerDataWithMembers
                             ? (v) => setState(() => acceptTimerData = v)
                             : null,
@@ -6733,7 +6779,8 @@ class _HomeShellState extends State<HomeShell> {
                   Padding(
                     padding: const EdgeInsets.only(right: 4),
                     child: Tooltip(
-                      message: cloudError != null && cloudError.trim().isNotEmpty
+                      message:
+                          cloudError != null && cloudError.trim().isNotEmpty
                           ? 'Sync error: $cloudError'
                           : (cloudReady
                                 ? 'Cloud sync connected'
@@ -6744,7 +6791,8 @@ class _HomeShellState extends State<HomeShell> {
                             : (cloudReady
                                   ? Icons.cloud_done_outlined
                                   : Icons.cloud_queue_outlined),
-                        color: cloudError != null && cloudError.trim().isNotEmpty
+                        color:
+                            cloudError != null && cloudError.trim().isNotEmpty
                             ? Theme.of(context).colorScheme.error
                             : null,
                       ),
@@ -11021,7 +11069,10 @@ class SessionDetailScreen extends StatelessWidget {
     return origin & box.size;
   }
 
-  Future<void> _shareSessionFile(BuildContext context, TrainingSession s) async {
+  Future<void> _shareSessionFile(
+    BuildContext context,
+    TrainingSession s,
+  ) async {
     try {
       final ownerIdentifier = state.activeUserIdentifier;
       final json = state.exportSharedSessionJson(
@@ -11138,23 +11189,25 @@ class SessionDetailScreen extends StatelessWidget {
         state.rememberTrustedPartnerIdentifier(recipient);
       }
 
-      await CloudSyncService().shareSession(
-        sessionId: s.id,
-        ownerIdentifier: ownerIdentifier,
-        memberIdentifiers: allRecipients,
-        sessionMap: sessionMap,
-      ).then((result) {
-        if (!context.mounted) return;
-        if (result.unresolvedIdentifiers.isNotEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Cloud sync pending for: ${result.unresolvedIdentifiers.join(', ')}',
-              ),
-            ),
-          );
-        }
-      });
+      await CloudSyncService()
+          .shareSession(
+            sessionId: s.id,
+            ownerIdentifier: ownerIdentifier,
+            memberIdentifiers: allRecipients,
+            sessionMap: sessionMap,
+          )
+          .then((result) {
+            if (!context.mounted) return;
+            if (result.unresolvedIdentifiers.isNotEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Cloud sync pending for: ${result.unresolvedIdentifiers.join(', ')}',
+                  ),
+                ),
+              );
+            }
+          });
     }
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -11166,11 +11219,16 @@ class SessionDetailScreen extends StatelessWidget {
     );
   }
 
-  Future<void> _shareSessionNearby(BuildContext context, TrainingSession s) async {
+  Future<void> _shareSessionNearby(
+    BuildContext context,
+    TrainingSession s,
+  ) async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Nearby in-app sharing is currently available on iPhone.'),
+          content: Text(
+            'Nearby in-app sharing is currently available on iPhone.',
+          ),
         ),
       );
       return;
@@ -11179,7 +11237,9 @@ class SessionDetailScreen extends StatelessWidget {
     final ownerIdentifier = state.activeUserIdentifier?.trim().toUpperCase();
     if (ownerIdentifier == null || ownerIdentifier.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Create or select a user identifier first.')),
+        const SnackBar(
+          content: Text('Create or select a user identifier first.'),
+        ),
       );
       return;
     }
@@ -11224,7 +11284,9 @@ class SessionDetailScreen extends StatelessWidget {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Nearby sharing cancelled. Both phones need Cold Bore open nearby.'),
+          content: Text(
+            'Nearby sharing cancelled. Both phones need Cold Bore open nearby.',
+          ),
         ),
       );
       return;
@@ -11338,7 +11400,6 @@ class SessionDetailScreen extends StatelessWidget {
       await _shareSessionWithColdBoreUsers(context, s);
     }
   }
-
 
   Future<void> _addColdBore(BuildContext context, TrainingSession s) async {
     if (!await _guardWrite(context)) return;
@@ -11601,28 +11662,29 @@ class SessionDetailScreen extends StatelessWidget {
     final isSessionOwner = activeUserId != null && activeUserId == s.userId;
     final accepted = state.sharedFieldAcceptanceForSession(s.id);
     final canShareNotes =
-      isSessionOwner ||
-      (s.shareNotesWithMembers && accepted[AppState.sharedFieldNotes] == true);
+        isSessionOwner ||
+        (s.shareNotesWithMembers &&
+            accepted[AppState.sharedFieldNotes] == true);
     final canShareTrainingDope =
-      isSessionOwner ||
-      (s.shareTrainingDopeWithMembers &&
-        accepted[AppState.sharedFieldTrainingDope] == true);
+        isSessionOwner ||
+        (s.shareTrainingDopeWithMembers &&
+            accepted[AppState.sharedFieldTrainingDope] == true);
     final canShareLocation =
-      isSessionOwner ||
-      (s.shareLocationWithMembers &&
-        accepted[AppState.sharedFieldLocation] == true);
+        isSessionOwner ||
+        (s.shareLocationWithMembers &&
+            accepted[AppState.sharedFieldLocation] == true);
     final canSharePhotos =
-      isSessionOwner ||
-      (s.sharePhotosWithMembers &&
-        accepted[AppState.sharedFieldPhotos] == true);
+        isSessionOwner ||
+        (s.sharePhotosWithMembers &&
+            accepted[AppState.sharedFieldPhotos] == true);
     final canShareShotResults =
-      isSessionOwner ||
-      (s.shareShotResultsWithMembers &&
-        accepted[AppState.sharedFieldShotResults] == true);
+        isSessionOwner ||
+        (s.shareShotResultsWithMembers &&
+            accepted[AppState.sharedFieldShotResults] == true);
     final canShareTimerData =
-      isSessionOwner ||
-      (s.shareTimerDataWithMembers &&
-        accepted[AppState.sharedFieldTimerData] == true);
+        isSessionOwner ||
+        (s.shareTimerDataWithMembers &&
+            accepted[AppState.sharedFieldTimerData] == true);
 
     await showDialog<void>(
       context: context,
@@ -11743,7 +11805,8 @@ class SessionDetailScreen extends StatelessWidget {
                       subtitle: s.shareTrainingDopeWithMembers
                           ? null
                           : const Text('Owner did not share this field.'),
-                      value: s.shareTrainingDopeWithMembers && acceptTrainingDope,
+                      value:
+                          s.shareTrainingDopeWithMembers && acceptTrainingDope,
                       onChanged: s.shareTrainingDopeWithMembers
                           ? (v) => setState(() => acceptTrainingDope = v)
                           : null,
@@ -11804,14 +11867,18 @@ class SessionDetailScreen extends StatelessWidget {
                   onPressed: () {
                     state.setSessionAcceptedSharedFields(
                       sessionId: s.id,
-                      acceptNotes: s.shareNotesWithMembers ? acceptNotes : false,
+                      acceptNotes: s.shareNotesWithMembers
+                          ? acceptNotes
+                          : false,
                       acceptTrainingDope: s.shareTrainingDopeWithMembers
                           ? acceptTrainingDope
                           : false,
                       acceptLocation: s.shareLocationWithMembers
                           ? acceptLocation
                           : false,
-                      acceptPhotos: s.sharePhotosWithMembers ? acceptPhotos : false,
+                      acceptPhotos: s.sharePhotosWithMembers
+                          ? acceptPhotos
+                          : false,
                       acceptShotResults: s.shareShotResultsWithMembers
                           ? acceptShotResults
                           : false,
@@ -12047,28 +12114,29 @@ class SessionDetailScreen extends StatelessWidget {
         })();
         final accepted = state.sharedFieldAcceptanceForSession(s.id);
         final canViewNotes =
-          isSessionOwner ||
-          (s.shareNotesWithMembers && accepted[AppState.sharedFieldNotes] == true);
+            isSessionOwner ||
+            (s.shareNotesWithMembers &&
+                accepted[AppState.sharedFieldNotes] == true);
         final canViewTrainingDope =
-          isSessionOwner ||
-          (s.shareTrainingDopeWithMembers &&
-            accepted[AppState.sharedFieldTrainingDope] == true);
+            isSessionOwner ||
+            (s.shareTrainingDopeWithMembers &&
+                accepted[AppState.sharedFieldTrainingDope] == true);
         final canViewLocation =
-          isSessionOwner ||
-          (s.shareLocationWithMembers &&
-            accepted[AppState.sharedFieldLocation] == true);
+            isSessionOwner ||
+            (s.shareLocationWithMembers &&
+                accepted[AppState.sharedFieldLocation] == true);
         final canViewPhotos =
-          isSessionOwner ||
-          (s.sharePhotosWithMembers &&
-            accepted[AppState.sharedFieldPhotos] == true);
+            isSessionOwner ||
+            (s.sharePhotosWithMembers &&
+                accepted[AppState.sharedFieldPhotos] == true);
         final canViewShotResults =
-          isSessionOwner ||
-          (s.shareShotResultsWithMembers &&
-            accepted[AppState.sharedFieldShotResults] == true);
+            isSessionOwner ||
+            (s.shareShotResultsWithMembers &&
+                accepted[AppState.sharedFieldShotResults] == true);
         final canViewTimerData =
-          isSessionOwner ||
-          (s.shareTimerDataWithMembers &&
-            accepted[AppState.sharedFieldTimerData] == true);
+            isSessionOwner ||
+            (s.shareTimerDataWithMembers &&
+                accepted[AppState.sharedFieldTimerData] == true);
 
         String rifleLoadoutLabel(Rifle? r, {String? deletedId}) {
           if (r == null) {
@@ -17455,10 +17523,7 @@ class _UniqueIdentifierResult {
   final String name;
   final String identifier;
 
-  const _UniqueIdentifierResult({
-    required this.name,
-    required this.identifier,
-  });
+  const _UniqueIdentifierResult({required this.name, required this.identifier});
 }
 
 class _UniqueIdentifierPromptDialog extends StatefulWidget {
@@ -17559,9 +17624,7 @@ class _UniqueIdentifierPromptDialogState
                 alignment: Alignment.centerLeft,
                 child: Text(
                   _error!,
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.error,
-                  ),
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
               ),
             ],
@@ -17573,10 +17636,7 @@ class _UniqueIdentifierPromptDialogState
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Set up later'),
         ),
-        FilledButton(
-          onPressed: _submit,
-          child: const Text('Save'),
-        ),
+        FilledButton(onPressed: _submit, child: const Text('Save')),
       ],
     );
   }
@@ -18781,13 +18841,14 @@ class _ShareSessionDialogState extends State<_ShareSessionDialog> {
           onPressed: () => Navigator.of(context).pop(
             _ShareSessionResult(
               userIds: _selected,
-              externalIdentifiers: _externalIdentifiersController.text
-                  .split(',')
-                  .map((e) => e.trim())
-                  .where((e) => e.isNotEmpty)
-                  .map((e) => e.toUpperCase())
-                  .toSet()
-                ..addAll(_selectedTrustedPartners),
+              externalIdentifiers:
+                  _externalIdentifiersController.text
+                      .split(',')
+                      .map((e) => e.trim())
+                      .where((e) => e.isNotEmpty)
+                      .map((e) => e.toUpperCase())
+                      .toSet()
+                    ..addAll(_selectedTrustedPartners),
               shareNotesWithMembers: _shareNotesWithMembers,
               shareTrainingDopeWithMembers: _shareTrainingDopeWithMembers,
               shareLocationWithMembers: _shareLocationWithMembers,
