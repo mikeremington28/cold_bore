@@ -41,7 +41,17 @@ workflows:
           BUILD_NAME=${APP_VERSION%%+*}
           BUILD_NUMBER=${APP_VERSION##*+}
           echo "Building iOS with version ${BUILD_NAME}+${BUILD_NUMBER}"
-          flutter build ipa --release --build-name="$BUILD_NAME" --build-number="$BUILD_NUMBER"
+          for attempt in 1 2 3; do
+            echo "iOS build attempt ${attempt}/3"
+            if flutter build ipa --release --build-name="$BUILD_NAME" --build-number="$BUILD_NUMBER"; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "iOS build failed after 3 attempts"
+              exit 1
+            fi
+            echo "Transient iOS build failure, retrying..."
+          done
 
 
     artifacts:
