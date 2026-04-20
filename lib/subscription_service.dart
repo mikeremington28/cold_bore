@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -29,12 +30,16 @@ class SubscriptionService extends ChangeNotifier {
   bool _available = false;
   ProductDetails? _product;
   String? _lastError;
+  bool _testerOverride = false;
+  String? _currentIdentifier;
 
   /// True while initial availability check / purchase is in progress.
   bool get loading => _loading;
 
   /// True when the user has an active subscription or is in their free trial.
-  bool get isEntitled => _entitled || _isTrialActive;
+  bool get isEntitled => _entitled || _isTrialActive || _testerOverride;
+
+  bool get hasTesterAccess => _testerOverride;
 
   bool get _isTrialActive =>
       _trialEndsAt != null && DateTime.now().isBefore(_trialEndsAt!);
@@ -75,6 +80,17 @@ class SubscriptionService extends ChangeNotifier {
 
     await _loadProduct();
     await restorePurchases(silent: true);
+  }
+
+  Future<void> setCurrentUserIdentifier(String? identifier) async {
+    final normalized = identifier?.trim().toUpperCase();
+    final nextIdentifier = (normalized == null || normalized.isEmpty)
+        ? null
+        : normalized;
+    if (_currentIdentifier == nextIdentifier) return;
+
+    _currentIdentifier = nextIdentifier;
+    await _refreshTesterOverride();
   }
 
   @override
@@ -226,10 +242,40 @@ class SubscriptionService extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> _refreshTesterOverride() async {
+    final identifier = _currentIdentifier;
+    if (identifier == null) {
+      if (_testerOverride) {
+        _testerOverride = false;
+        notifyListeners();
+      }
+      return;
+    }
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('tester_access')
+          .doc(identifier)
+          .get();
+      final enabled = doc.exists && doc.data()?['enabled'] == true;
+      if (_testerOverride != enabled) {
+        _testerOverride = enabled;
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('SubscriptionService tester access lookup failed: $e');
+      if (_testerOverride) {
+        _testerOverride = false;
+        notifyListeners();
+      }
+    }
+  }
+
   /// Call on iOS foreground resume to re-verify via restore (silent).
   Future<void> refreshOnResume() async {
     if (!kIsWeb && Platform.isIOS) {
       await restorePurchases(silent: true);
     }
+    await _refreshTesterOverride();
   }
 }

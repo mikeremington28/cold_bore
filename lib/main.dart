@@ -1163,6 +1163,9 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
   Future<void> _loadState() async {
     try {
       await _state.loadPersistedState();
+      await SubscriptionService().setCurrentUserIdentifier(
+        _state.activeUserIdentifier,
+      );
       _setupNearbyShareEvents();
       await _attachCloudIdentityIfNeeded();
       await _refreshNearbyPresence(force: true);
@@ -1398,6 +1401,11 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
       !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
 
   void _onStateChanged() {
+    unawaited(
+      SubscriptionService().setCurrentUserIdentifier(
+        _state.activeUserIdentifier,
+      ),
+    );
     if (!_autoICloudBackupArmed || !_canAutoBackupToICloud || !_ready) return;
     _scheduleAutoICloudBackup();
 
@@ -7182,9 +7190,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final entitlementText = _sub.isEntitled
-        ? 'Active - full access enabled.'
-        : 'Read-only mode - upgrade to add new data.';
+    final entitlementText = _sub.hasTesterAccess
+        ? 'Tester access enabled - full access unlocked.'
+        : (_sub.isEntitled
+              ? 'Active - full access enabled.'
+              : 'Read-only mode - upgrade to add new data.');
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),

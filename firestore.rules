@@ -35,5 +35,10 @@ service cloud.firestore {
       allow create, update: if isSignedIn() && request.auth.uid == uid;
       allow delete: if false;
     }
+
+    match /tester_access/{identifier} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
   }
 }
