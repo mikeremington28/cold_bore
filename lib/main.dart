@@ -1417,6 +1417,10 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
       );
       unawaited(_attachCloudIdentityIfNeeded());
       unawaited(_refreshNearbyPresence());
+    } else if (activeIdentifier != null &&
+        activeIdentifier.isNotEmpty &&
+        !_cloud.canSync) {
+      unawaited(_attachCloudIdentityIfNeeded());
     }
 
     final durableRevision = _state.durableRevision;
@@ -1461,7 +1465,7 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
         );
       },
     );
-    _lastCloudIdentifier = identifier;
+    _lastCloudIdentifier = _cloud.canSync ? identifier : null;
   }
 
   void _scheduleAutoICloudBackup() {
@@ -1587,6 +1591,7 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
       unawaited(SubscriptionService().refreshOnResume());
       unawaited(_attemptAutoICloudRestoreIfEligible());
       unawaited(_consumePendingIncomingShareFromPlatform());
+      unawaited(_attachCloudIdentityIfNeeded());
       unawaited(_refreshNearbyPresence(force: true));
     }
     if (state == AppLifecycleState.paused ||
