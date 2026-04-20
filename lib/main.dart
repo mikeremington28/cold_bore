@@ -1154,12 +1154,46 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
   String? _lastNearbyPresenceIdentifier;
   String? _lastObservedActiveIdentifier;
   Timer? _cloudSyncDebounce;
+  Timer? _connectivitySelfHealTimer;
+  bool _appInForeground = true;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _startConnectivitySelfHealLoop();
     unawaited(_loadState());
+  }
+
+  void _startConnectivitySelfHealLoop() {
+    _connectivitySelfHealTimer?.cancel();
+    _connectivitySelfHealTimer = Timer.periodic(
+      const Duration(seconds: 12),
+      (_) {
+        if (!mounted || !_ready || !_appInForeground) return;
+        unawaited(_runConnectivitySelfHeal());
+      },
+    );
+  }
+
+  Future<void> _runConnectivitySelfHeal() async {
+    final identifier = _state.activeUserIdentifier?.trim();
+    final canUseIdentifier =
+        identifier != null &&
+        identifier.isNotEmpty &&
+        !_isSeedUserIdentifier(identifier) &&
+        _isValidUserIdentifierFormat(identifier);
+
+    if (canUseIdentifier && !_cloud.canSync) {
+      await _attachCloudIdentityIfNeeded();
+    }
+
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
+    if (!canUseIdentifier) return;
+
+    if (_lastNearbyPresenceIdentifier == null || _state.nearbyPeers.isEmpty) {
+      await _refreshNearbyPresence(force: true);
+    }
   }
 
   Future<void> _loadState() async {
@@ -1409,6 +1443,9 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
   void _onStateChanged() {
     final activeIdentifier = _state.activeUserIdentifier?.trim();
     if (_lastObservedActiveIdentifier != activeIdentifier) {
+      debugPrint(
+        'Active user identifier changed from ${_lastObservedActiveIdentifier ?? 'none'} to ${activeIdentifier ?? 'none'}.',
+      );
       _lastObservedActiveIdentifier = activeIdentifier;
       unawaited(
         SubscriptionService().setCurrentUserIdentifier(
@@ -1420,6 +1457,9 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
     } else if (activeIdentifier != null &&
         activeIdentifier.isNotEmpty &&
         !_cloud.canSync) {
+      debugPrint(
+        'Cloud sync is inactive for $activeIdentifier. Retrying cloud identity attachment.',
+      );
       unawaited(_attachCloudIdentityIfNeeded());
     }
 
@@ -1449,11 +1489,16 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
         identifier.isEmpty ||
         _isSeedUserIdentifier(identifier) ||
         !_isValidUserIdentifierFormat(identifier)) {
+      debugPrint(
+        'Skipping cloud attach because the active identifier is unavailable or invalid.',
+      );
       _lastCloudIdentifier = null;
       await _cloud.detachIdentity();
       return;
     }
     if (_lastCloudIdentifier == identifier && _cloud.canSync) return;
+
+    debugPrint('Attaching cloud identity for $identifier.');
 
     await _cloud.attachIdentity(
       identifier: identifier,
@@ -1466,6 +1511,11 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
       },
     );
     _lastCloudIdentifier = _cloud.canSync ? identifier : null;
+    debugPrint(
+      _cloud.canSync
+          ? 'Cloud identity attached for $identifier.'
+          : 'Cloud identity attach did not become active for $identifier.',
+    );
   }
 
   void _scheduleAutoICloudBackup() {
@@ -1588,6 +1638,7 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      _appInForeground = true;
       unawaited(SubscriptionService().refreshOnResume());
       unawaited(_attemptAutoICloudRestoreIfEligible());
       unawaited(_consumePendingIncomingShareFromPlatform());
@@ -1596,6 +1647,7 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
     }
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
+      _appInForeground = false;
       unawaited(_stopNearbyPresence());
     }
     if (!_canAutoBackupToICloud) return;
@@ -1613,6 +1665,7 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
     _state.removeListener(_onStateChanged);
     _iCloudBackupDebounceTimer?.cancel();
     _cloudSyncDebounce?.cancel();
+    _connectivitySelfHealTimer?.cancel();
     unawaited(_stopNearbyPresence());
     _state.dispose();
     super.dispose();
@@ -2710,6 +2763,9 @@ class AppState extends ChangeNotifier {
     final trimmed = jsonText.trim();
     if (trimmed.isEmpty) return;
     _pendingIncomingSharedJsonTexts.add(trimmed);
+    debugPrint(
+      'Queued incoming shared session payload. Pending imports: ${_pendingIncomingSharedJsonTexts.length}.',
+    );
     notifyEphemeralListeners();
   }
 
@@ -2764,13 +2820,20 @@ class AppState extends ChangeNotifier {
 
   String? takeNextPendingIncomingSharedJson() {
     if (_pendingIncomingSharedJsonTexts.isEmpty) return null;
-    return _pendingIncomingSharedJsonTexts.removeAt(0);
+    final next = _pendingIncomingSharedJsonTexts.removeAt(0);
+    debugPrint(
+      'Dequeued incoming shared session payload. Remaining imports: ${_pendingIncomingSharedJsonTexts.length}.',
+    );
+    return next;
   }
 
   void _enqueueSharedAcceptancePrompt(String sessionId) {
     if (_acceptedSharedFieldsBySession.containsKey(sessionId)) return;
     if (_pendingSharedAcceptancePromptSessionIds.contains(sessionId)) return;
     _pendingSharedAcceptancePromptSessionIds.add(sessionId);
+    debugPrint(
+      'Queued shared-session acceptance prompt for $sessionId. Pending prompts: ${_pendingSharedAcceptancePromptSessionIds.length}.',
+    );
   }
 
   void setSessionAcceptedSharedFields({
@@ -2812,7 +2875,65 @@ class AppState extends ChangeNotifier {
   Map<String, dynamic>? exportSessionMapById(String sessionId) {
     final s = getSessionById(sessionId);
     if (s == null) return null;
-    return _trainingSessionToMap(s);
+    return _sharedSessionPayloadForSession(
+      s,
+      ownerIdentifier: activeUserIdentifier,
+    );
+  }
+
+  Map<String, dynamic> _sharedSessionPayloadForSession(
+    TrainingSession session, {
+    String? ownerIdentifier,
+  }) {
+    final rifleIds = <String>{
+      if (session.rifleId != null && session.rifleId!.trim().isNotEmpty)
+        session.rifleId!,
+      for (final string in session.strings)
+        if (string.rifleId != null && string.rifleId!.trim().isNotEmpty)
+          string.rifleId!,
+      for (final entry in session.trainingDope)
+        if (entry.rifleId != null && entry.rifleId!.trim().isNotEmpty)
+          entry.rifleId!,
+      for (final entries in session.trainingDopeByString.values)
+        for (final entry in entries)
+          if (entry.rifleId != null && entry.rifleId!.trim().isNotEmpty)
+            entry.rifleId!,
+    };
+    final ammoLotIds = <String>{
+      if (session.ammoLotId != null && session.ammoLotId!.trim().isNotEmpty)
+        session.ammoLotId!,
+      for (final string in session.strings)
+        if (string.ammoLotId != null && string.ammoLotId!.trim().isNotEmpty)
+          string.ammoLotId!,
+      for (final entry in session.trainingDope)
+        if (entry.ammoLotId != null && entry.ammoLotId!.trim().isNotEmpty)
+          entry.ammoLotId!,
+      for (final entries in session.trainingDopeByString.values)
+        for (final entry in entries)
+          if (entry.ammoLotId != null && entry.ammoLotId!.trim().isNotEmpty)
+            entry.ammoLotId!,
+    };
+
+    final rifles = rifleIds
+        .map(findRifleById)
+        .whereType<Rifle>()
+        .map(_rifleToMap)
+        .toList();
+    final ammoLots = ammoLotIds
+        .map(findAmmoLotById)
+        .whereType<AmmoLot>()
+        .map(_ammoLotToMap)
+        .toList();
+
+    return <String, dynamic>{
+      'schema': kBackupSchemaVersion,
+      'exportType': 'sharedSession',
+      'generatedAt': DateTime.now().toIso8601String(),
+      'ownerIdentifier': ownerIdentifier?.trim(),
+      'session': _trainingSessionToMap(session),
+      'rifles': rifles,
+      'ammoLots': ammoLots,
+    };
   }
 
   String exportSharedSessionJson({
@@ -2824,22 +2945,10 @@ class AppState extends ChangeNotifier {
       throw StateError('Session not found.');
     }
 
-    final rifle = session.rifleId == null
-        ? null
-        : findRifleById(session.rifleId!);
-    final ammo = session.ammoLotId == null
-        ? null
-        : findAmmoLotById(session.ammoLotId!);
-
-    final payload = <String, dynamic>{
-      'schema': kBackupSchemaVersion,
-      'exportType': 'sharedSession',
-      'generatedAt': DateTime.now().toIso8601String(),
-      'ownerIdentifier': ownerIdentifier?.trim(),
-      'session': _trainingSessionToMap(session),
-      'rifles': [if (rifle != null) _rifleToMap(rifle)],
-      'ammoLots': [if (ammo != null) _ammoLotToMap(ammo)],
-    };
+    final payload = _sharedSessionPayloadForSession(
+      session,
+      ownerIdentifier: ownerIdentifier,
+    );
 
     return const JsonEncoder.withIndent('  ').convert(payload);
   }
@@ -2847,10 +2956,14 @@ class AppState extends ChangeNotifier {
   Map<String, Map<String, dynamic>> exportOwnedSessionMapsById() {
     final active = _activeUser;
     if (active == null) return const <String, Map<String, dynamic>>{};
+    final ownerIdentifier = activeUserIdentifier;
     final out = <String, Map<String, dynamic>>{};
     for (final s in _sessions) {
       if (s.userId != active.id) continue;
-      out[s.id] = _trainingSessionToMap(s);
+      out[s.id] = _sharedSessionPayloadForSession(
+        s,
+        ownerIdentifier: ownerIdentifier,
+      );
     }
     return out;
   }
@@ -2860,8 +2973,30 @@ class AppState extends ChangeNotifier {
     required String ownerIdentifier,
     required int updatedAtMs,
   }) {
-    final incoming = _trainingSessionFromMap(sessionMap);
-    final owner = _ensureUserByIdentifier(ownerIdentifier);
+    final payload = sessionMap['session'] is Map
+      ? Map<String, dynamic>.from(sessionMap)
+      : <String, dynamic>{
+        'schema': kBackupSchemaVersion,
+        'exportType': 'sharedSession',
+        'ownerIdentifier': ownerIdentifier,
+        'session': sessionMap,
+        };
+    final sessionRaw = payload['session'];
+    if (sessionRaw is! Map) return;
+
+    final sessionId = (sessionRaw['id'] ?? '').toString();
+    debugPrint(
+      'Cloud shared session received for ${sessionId.isEmpty ? 'unknown-session' : sessionId} from ${ownerIdentifier.trim().isEmpty ? 'UNKNOWN' : ownerIdentifier.trim()} at $updatedAtMs.',
+    );
+
+    mergeBackupJson(jsonEncode(payload), overwriteScope: false);
+
+    final effectiveOwnerIdentifier =
+      (payload['ownerIdentifier'] ?? ownerIdentifier).toString().trim();
+    rememberTrustedPartnerIdentifier(effectiveOwnerIdentifier);
+
+    final incoming = _trainingSessionFromMap(Map<String, dynamic>.from(sessionRaw));
+    final owner = _ensureUserByIdentifier(effectiveOwnerIdentifier);
     final viewer = _activeUser ?? owner;
 
     final normalized = incoming.copyWith(
@@ -2873,11 +3008,15 @@ class AppState extends ChangeNotifier {
     final idx = _sessions.indexWhere((s) => s.id == normalized.id);
     final knownMs = _cloudSessionUpdatedAtMs[normalized.id] ?? 0;
     if (updatedAtMs <= knownMs) {
+      debugPrint(
+        'Ignored shared session ${normalized.id} because updatedAtMs=$updatedAtMs is not newer than known=$knownMs.',
+      );
       return;
     }
 
     if (idx < 0) {
       _sessions.add(normalized);
+      debugPrint('Inserted shared session ${normalized.id} from cloud.');
       if (shouldPromptRecipientAcceptance) {
         _enqueueSharedAcceptancePrompt(normalized.id);
       }
@@ -2889,11 +3028,13 @@ class AppState extends ChangeNotifier {
     final existingMap = _trainingSessionToMap(_sessions[idx]);
     final incomingMap = _trainingSessionToMap(normalized);
     if (jsonEncode(existingMap) == jsonEncode(incomingMap)) {
+      debugPrint('Shared session ${normalized.id} already matches local data.');
       _cloudSessionUpdatedAtMs[normalized.id] = updatedAtMs;
       return;
     }
 
     _sessions[idx] = normalized;
+    debugPrint('Updated shared session ${normalized.id} from cloud.');
     if (shouldPromptRecipientAcceptance) {
       _enqueueSharedAcceptancePrompt(normalized.id);
     }
@@ -6343,6 +6484,7 @@ class _HomeShellState extends State<HomeShell> {
 
     final preview = _IncomingSharedSessionPayload.tryParse(jsonText);
     if (preview == null) {
+      debugPrint('Incoming shared session payload could not be parsed for import preview.');
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -6353,6 +6495,10 @@ class _HomeShellState extends State<HomeShell> {
       });
       return;
     }
+
+    debugPrint(
+      'Showing incoming shared-session import prompt for ${preview.session.id} from ${preview.ownerIdentifier.isEmpty ? 'UNKNOWN' : preview.ownerIdentifier}.',
+    );
 
     _incomingSharedImportPromptInFlight = true;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -6505,6 +6651,7 @@ class _HomeShellState extends State<HomeShell> {
       );
 
       if (approved) {
+        debugPrint('Incoming shared-session import accepted for ${preview.session.id}.');
         widget.state.importSharedSessionJson(
           jsonText,
           acceptNotes: acceptNotes,
@@ -6520,6 +6667,7 @@ class _HomeShellState extends State<HomeShell> {
           );
         }
       } else if (mounted) {
+        debugPrint('Incoming shared-session import declined for ${preview.session.id}.');
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Shared session declined.')),
         );
@@ -6582,6 +6730,7 @@ class _HomeShellState extends State<HomeShell> {
     }
 
     _sharedAcceptancePromptInFlight = true;
+    debugPrint('Showing shared-session acceptance preferences for $nextSessionId.');
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) {
         _sharedAcceptancePromptInFlight = false;
@@ -6745,6 +6894,8 @@ class _HomeShellState extends State<HomeShell> {
           );
         },
       );
+
+      debugPrint('Saved shared-session acceptance preferences for $nextSessionId.');
 
       _sharedAcceptancePromptInFlight = false;
       if (!mounted) return;

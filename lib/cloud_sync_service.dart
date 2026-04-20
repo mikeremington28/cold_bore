@@ -76,22 +76,62 @@ class CloudSyncService extends ChangeNotifier {
     )
     onRemoteSession,
   ) {
+    debugPrint(
+      'Cloud shared_sessions snapshot received with ${snapshot.docs.length} document(s) for ${_activeIdentifier ?? 'no-active-identifier'}.',
+    );
     for (final doc in snapshot.docs) {
       final data = doc.data();
-      final sessionRaw = data['session'];
-      if (sessionRaw is! Map) continue;
+      Map<String, dynamic>? payload;
+      final payloadRaw = data['payload'];
+      if (payloadRaw is Map) {
+        payload = Map<String, dynamic>.from(payloadRaw);
+      } else {
+        final sessionRaw = data['session'];
+        if (sessionRaw is! Map) continue;
+        payload = <String, dynamic>{
+          'schema': data['schema'],
+          'exportType': 'sharedSession',
+          'ownerIdentifier': data['ownerIdentifier'],
+          'session': Map<String, dynamic>.from(sessionRaw),
+        };
+      }
       final ownerId = (data['ownerIdentifier'] ?? '').toString();
       final ts = data['updatedAt'];
       final updatedAtMs = ts is Timestamp
           ? ts.millisecondsSinceEpoch
           : DateTime.now().millisecondsSinceEpoch;
+      final payloadSession = payload['session'];
+      final sessionId = payloadSession is Map
+          ? (payloadSession['id'] ?? doc.id).toString()
+          : doc.id;
+      debugPrint(
+        'Dispatching shared session $sessionId from $ownerId with updatedAtMs=$updatedAtMs.',
+      );
       onRemoteSession(
-        Map<String, dynamic>.from(sessionRaw),
+        payload,
         ownerId,
         updatedAtMs,
       );
       _setSyncedNow();
     }
+  }
+
+  Map<String, dynamic> _normalizeSharedPayload(
+    Map<String, dynamic> sessionMap,
+    String ownerIdentifier,
+  ) {
+    final payload = sessionMap['session'] is Map
+        ? Map<String, dynamic>.from(sessionMap)
+        : <String, dynamic>{
+            'schema': 1,
+            'exportType': 'sharedSession',
+            'ownerIdentifier': ownerIdentifier,
+            'session': sessionMap,
+          };
+    payload['ownerIdentifier'] =
+        (payload['ownerIdentifier'] ?? ownerIdentifier).toString().trim();
+    payload['exportType'] = 'sharedSession';
+    return payload;
   }
 
   Future<void> initialize() async {
@@ -204,16 +244,29 @@ class CloudSyncService extends ChangeNotifier {
     onRemoteSession,
   }) async {
     final normalized = _normalizeIdentifier(identifier);
-    if (!_ready || normalized.isEmpty) return;
+    if (!_ready || normalized.isEmpty) {
+      debugPrint(
+        'Cloud attach skipped because service is not ready or identifier is empty.',
+      );
+      return;
+    }
     if (_activeIdentifier == normalized &&
         _sharedSessionSub != null &&
         _sharedSessionUidSub != null) {
+      debugPrint('Cloud attach reused existing subscriptions for $normalized.');
       return;
     }
 
+    debugPrint('Cloud attach starting for $normalized.');
+
     await _registerProfile(normalized);
     final uid = _userId;
-    if (uid == null) return;
+    if (uid == null) {
+      debugPrint(
+        'Cloud attach failed for $normalized because no Firebase uid is available.',
+      );
+      return;
+    }
 
     _activeIdentifier = normalized;
     await _sharedSessionSub?.cancel();
@@ -224,6 +277,9 @@ class CloudSyncService extends ChangeNotifier {
         .collection('shared_sessions')
         .where('ownerUid', isEqualTo: uid)
         .get();
+    debugPrint(
+      'Cloud attach loaded ${owned.docs.length} owned shared-session membership record(s) for $normalized.',
+    );
     for (final doc in owned.docs) {
       final data = doc.data();
       final identifiers = ((data['memberIdentifiers'] as List?) ?? const [])
@@ -265,6 +321,9 @@ class CloudSyncService extends ChangeNotifier {
             notifyListeners();
           },
         );
+    debugPrint(
+      'Cloud attach completed for $normalized with identifier and uid listeners active.',
+    );
   }
 
   Future<CloudShareResult> shareSession({
@@ -296,6 +355,15 @@ class CloudSyncService extends ChangeNotifier {
       owner,
       ...memberIdentifiers.map(_normalizeIdentifier),
     }.where((id) => id.isNotEmpty).toList();
+    final payload = _normalizeSharedPayload(sessionMap, owner);
+    final payloadSession = payload['session'];
+    if (payloadSession is! Map) {
+      return const CloudShareResult(
+        resolvedIdentifiers: <String>[],
+        unresolvedIdentifiers: <String>[],
+        failureMessage: 'Shared session payload is missing its session body.',
+      );
+    }
 
     final resolved = await _resolveIdentifiersToUids(identifiers);
     final memberUids = <String>{_userId!, ...resolved.values}.toList();
@@ -310,7 +378,8 @@ class CloudSyncService extends ChangeNotifier {
           'memberIdentifiers': identifiers,
           'memberUids': memberUids,
           'updatedAt': FieldValue.serverTimestamp(),
-          'session': sessionMap,
+          'session': Map<String, dynamic>.from(payloadSession),
+          'payload': payload,
         }, SetOptions(merge: true));
 
     _ownedSessionMembers[sessionId] = _MembershipState(
@@ -342,6 +411,9 @@ class CloudSyncService extends ChangeNotifier {
     for (final entry in _ownedSessionMembers.entries) {
       final sessionMap = sessionsById[entry.key];
       if (sessionMap == null) continue;
+      final payload = _normalizeSharedPayload(sessionMap, owner);
+      final payloadSession = payload['session'];
+      if (payloadSession is! Map) continue;
 
       final identifiers = entry.value.identifiers;
       final resolved = await _resolveIdentifiersToUids(identifiers);
@@ -357,7 +429,8 @@ class CloudSyncService extends ChangeNotifier {
             'memberIdentifiers': identifiers,
             'memberUids': memberUids,
             'updatedAt': FieldValue.serverTimestamp(),
-            'session': sessionMap,
+            'session': Map<String, dynamic>.from(payloadSession),
+            'payload': payload,
           }, SetOptions(merge: true));
 
       _ownedSessionMembers[entry.key] = _MembershipState(

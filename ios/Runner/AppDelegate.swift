@@ -190,10 +190,6 @@ private final class NearbyShareManager: NSObject, MCNearbyServiceAdvertiserDeleg
     let normalizedIdentifier = identifier.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
     guard !normalizedIdentifier.isEmpty else { return }
 
-    if normalizedIdentifier == localIdentifier, advertiser != nil, browser != nil {
-      return
-    }
-
     stopPresence()
     localIdentifier = normalizedIdentifier
     localDisplayName = displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -402,6 +398,14 @@ private final class NearbyShareManager: NSObject, MCNearbyServiceAdvertiserDeleg
       emitStatus("Connected to \(peerID.displayName.uppercased()).")
       sendPayloadIfReady(to: peerID)
     case .notConnected:
+      if pendingTargetIdentifier == peerID.displayName.uppercased() {
+        emit("payloadSendFailed", arguments: [
+          "identifier": peerID.displayName.uppercased(),
+          "error": "Nearby connection ended before the session finished sending.",
+        ])
+        pendingTargetIdentifier = nil
+        resetSessionForNextTransfer()
+      }
       emitStatus("Nearby peer \(peerID.displayName.uppercased()) disconnected.")
     @unknown default:
       break
