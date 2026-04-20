@@ -7,10 +7,12 @@ import 'dart:async';
 class CloudShareResult {
   final List<String> resolvedIdentifiers;
   final List<String> unresolvedIdentifiers;
+  final String? failureMessage;
 
   const CloudShareResult({
     required this.resolvedIdentifiers,
     required this.unresolvedIdentifiers,
+    this.failureMessage,
   });
 }
 
@@ -36,6 +38,7 @@ class CloudSyncService extends ChangeNotifier {
   DateTime? _lastSyncAt;
   String? _activeIdentifier;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _sharedSessionSub;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _sharedSessionUidSub;
   final Map<String, _MembershipState> _ownedSessionMembers =
       <String, _MembershipState>{};
 
@@ -59,7 +62,36 @@ class CloudSyncService extends ChangeNotifier {
     _ownedSessionMembers.clear();
     await _sharedSessionSub?.cancel();
     _sharedSessionSub = null;
+    await _sharedSessionUidSub?.cancel();
+    _sharedSessionUidSub = null;
     notifyListeners();
+  }
+
+  void _handleSharedSessionSnapshot(
+    QuerySnapshot<Map<String, dynamic>> snapshot,
+    void Function(
+      Map<String, dynamic> sessionMap,
+      String ownerId,
+      int updatedAtMs,
+    )
+    onRemoteSession,
+  ) {
+    for (final doc in snapshot.docs) {
+      final data = doc.data();
+      final sessionRaw = data['session'];
+      if (sessionRaw is! Map) continue;
+      final ownerId = (data['ownerIdentifier'] ?? '').toString();
+      final ts = data['updatedAt'];
+      final updatedAtMs = ts is Timestamp
+          ? ts.millisecondsSinceEpoch
+          : DateTime.now().millisecondsSinceEpoch;
+      onRemoteSession(
+        Map<String, dynamic>.from(sessionRaw),
+        ownerId,
+        updatedAtMs,
+      );
+      _setSyncedNow();
+    }
   }
 
   Future<void> initialize() async {
@@ -173,7 +205,11 @@ class CloudSyncService extends ChangeNotifier {
   }) async {
     final normalized = _normalizeIdentifier(identifier);
     if (!_ready || normalized.isEmpty) return;
-    if (_activeIdentifier == normalized && _sharedSessionSub != null) return;
+    if (_activeIdentifier == normalized &&
+        _sharedSessionSub != null &&
+        _sharedSessionUidSub != null) {
+      return;
+    }
 
     await _registerProfile(normalized);
     final uid = _userId;
@@ -181,6 +217,7 @@ class CloudSyncService extends ChangeNotifier {
 
     _activeIdentifier = normalized;
     await _sharedSessionSub?.cancel();
+    await _sharedSessionUidSub?.cancel();
     _ownedSessionMembers.clear();
 
     final owned = await FirebaseFirestore.instance
@@ -210,24 +247,19 @@ class CloudSyncService extends ChangeNotifier {
         .where('memberIdentifiers', arrayContains: normalized)
         .snapshots()
         .listen(
-          (snapshot) {
-            for (final doc in snapshot.docs) {
-              final data = doc.data();
-              final sessionRaw = data['session'];
-              if (sessionRaw is! Map) continue;
-              final ownerId = (data['ownerIdentifier'] ?? '').toString();
-              final ts = data['updatedAt'];
-              final updatedAtMs = ts is Timestamp
-                  ? ts.millisecondsSinceEpoch
-                  : DateTime.now().millisecondsSinceEpoch;
-              onRemoteSession(
-                Map<String, dynamic>.from(sessionRaw),
-                ownerId,
-                updatedAtMs,
-              );
-              _setSyncedNow();
-            }
+          (snapshot) => _handleSharedSessionSnapshot(snapshot, onRemoteSession),
+          onError: (Object e) {
+            _lastError = e.toString();
+            notifyListeners();
           },
+        );
+
+    _sharedSessionUidSub = FirebaseFirestore.instance
+        .collection('shared_sessions')
+        .where('memberUids', arrayContains: uid)
+        .snapshots()
+        .listen(
+          (snapshot) => _handleSharedSessionSnapshot(snapshot, onRemoteSession),
           onError: (Object e) {
             _lastError = e.toString();
             notifyListeners();
@@ -242,9 +274,12 @@ class CloudSyncService extends ChangeNotifier {
     required Map<String, dynamic> sessionMap,
   }) async {
     if (!_ready || _userId == null) {
-      return const CloudShareResult(
+      return CloudShareResult(
         resolvedIdentifiers: <String>[],
         unresolvedIdentifiers: <String>[],
+        failureMessage:
+            _lastError ??
+            'Cloud sync is not ready on this device. Open the app again and wait a moment before sharing.',
       );
     }
 
@@ -253,6 +288,7 @@ class CloudSyncService extends ChangeNotifier {
       return const CloudShareResult(
         resolvedIdentifiers: <String>[],
         unresolvedIdentifiers: <String>[],
+        failureMessage: 'Missing owner identifier for cloud sharing.',
       );
     }
 
@@ -338,6 +374,7 @@ class CloudSyncService extends ChangeNotifier {
   @override
   void dispose() {
     _sharedSessionSub?.cancel();
+    _sharedSessionUidSub?.cancel();
     super.dispose();
   }
 }

@@ -2900,6 +2900,7 @@ class AppState extends ChangeNotifier {
   void shareSessionWithUsers({
     required String sessionId,
     required List<String> userIds,
+    List<String>? externalIdentifiers,
     bool? shareNotesWithMembers,
     bool? shareTrainingDopeWithMembers,
     bool? shareLocationWithMembers,
@@ -2915,6 +2916,8 @@ class AppState extends ChangeNotifier {
 
     _sessions[idx] = existing.copyWith(
       memberUserIds: merged,
+      externalMemberIdentifiers:
+          externalIdentifiers ?? existing.externalMemberIdentifiers,
       shareNotesWithMembers: shareNotesWithMembers,
       shareTrainingDopeWithMembers: shareTrainingDopeWithMembers,
       shareLocationWithMembers: shareLocationWithMembers,
@@ -4877,6 +4880,7 @@ Map<String, dynamic> _trainingSessionToMap(TrainingSession session) =>
       'id': session.id,
       'userId': session.userId,
       'memberUserIds': session.memberUserIds,
+  'externalMemberIdentifiers': session.externalMemberIdentifiers,
       'dateTime': session.dateTime.toIso8601String(),
       'locationName': session.locationName,
       'folderName': session.folderName,
@@ -4931,6 +4935,12 @@ TrainingSession _trainingSessionFromMap(
     if (ownerId.isNotEmpty) return [ownerId];
     return const <String>[];
   })(),
+  externalMemberIdentifiers: ((map['externalMemberIdentifiers'] as List?) ??
+          const [])
+      .map((e) => e.toString().trim().toUpperCase())
+      .where((id) => id.isNotEmpty)
+      .toSet()
+      .toList(),
   dateTime: _parseDateTime(map['dateTime']),
   locationName: (map['locationName'] ?? '').toString(),
   folderName: (map['folderName'] ?? '').toString(),
@@ -5494,6 +5504,7 @@ class TrainingSession {
   final String id;
   final String userId;
   final List<String> memberUserIds;
+  final List<String> externalMemberIdentifiers;
   final DateTime dateTime;
   final String locationName;
   final String folderName;
@@ -5543,6 +5554,7 @@ class TrainingSession {
     required this.id,
     required this.userId,
     required this.memberUserIds,
+    this.externalMemberIdentifiers = const [],
     required this.dateTime,
     required this.locationName,
     this.folderName = '',
@@ -5581,6 +5593,7 @@ class TrainingSession {
   TrainingSession copyWith({
     String? userId,
     List<String>? memberUserIds,
+    List<String>? externalMemberIdentifiers,
     DateTime? dateTime,
     String? locationName,
     String? folderName,
@@ -5619,6 +5632,8 @@ class TrainingSession {
       id: id,
       userId: userId ?? this.userId,
       memberUserIds: memberUserIds ?? this.memberUserIds,
+      externalMemberIdentifiers:
+          externalMemberIdentifiers ?? this.externalMemberIdentifiers,
       dateTime: dateTime ?? this.dateTime,
       locationName: locationName ?? this.locationName,
       folderName: folderName ?? this.folderName,
@@ -11218,6 +11233,7 @@ class SessionDetailScreen extends StatelessWidget {
         users: others,
         trustedPartnerIdentifiers: state.trustedPartnerIdentifiers,
         initiallySelected: s.memberUserIds.where((id) => id != me.id).toSet(),
+        initialExternalIdentifiers: s.externalMemberIdentifiers.toSet(),
         initialShareNotesWithMembers: s.shareNotesWithMembers,
         initialShareTrainingDopeWithMembers: s.shareTrainingDopeWithMembers,
         initialShareLocationWithMembers: s.shareLocationWithMembers,
@@ -11228,9 +11244,19 @@ class SessionDetailScreen extends StatelessWidget {
     );
 
     if (shareResult == null) return;
+    final selectedCount =
+        shareResult.userIds.length + shareResult.externalIdentifiers.length;
+    if (selectedCount == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No recipients selected.')),
+      );
+      return;
+    }
+
     state.shareSessionWithUsers(
       sessionId: s.id,
       userIds: shareResult.userIds.toList(),
+      externalIdentifiers: shareResult.externalIdentifiers.toList(),
       shareNotesWithMembers: shareResult.shareNotesWithMembers,
       shareTrainingDopeWithMembers: shareResult.shareTrainingDopeWithMembers,
       shareLocationWithMembers: shareResult.shareLocationWithMembers,
@@ -11241,7 +11267,30 @@ class SessionDetailScreen extends StatelessWidget {
 
     final ownerIdentifier = state.activeUserIdentifier;
     final sessionMap = state.exportSessionMapById(s.id);
-    if (ownerIdentifier != null && sessionMap != null) {
+    if (ownerIdentifier == null || ownerIdentifier.trim().isEmpty) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Share settings saved, but cloud delivery is unavailable until this device has a valid Cold Bore user identifier.',
+          ),
+        ),
+      );
+      return;
+    }
+    if (sessionMap == null) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Share settings saved, but the session could not be prepared for cloud delivery.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    {
       final localRecipients = shareResult.userIds
           .map((id) {
             try {
@@ -11260,34 +11309,59 @@ class SessionDetailScreen extends StatelessWidget {
         state.rememberTrustedPartnerIdentifier(recipient);
       }
 
-      await CloudSyncService()
-          .shareSession(
-            sessionId: s.id,
-            ownerIdentifier: ownerIdentifier,
-            memberIdentifiers: allRecipients,
-            sessionMap: sessionMap,
-          )
-          .then((result) {
-            if (!context.mounted) return;
-            if (result.unresolvedIdentifiers.isNotEmpty) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    'Cloud sync pending for: ${result.unresolvedIdentifiers.join(', ')}',
-                  ),
-                ),
-              );
-            }
-          });
-    }
+      final result = await CloudSyncService().shareSession(
+        sessionId: s.id,
+        ownerIdentifier: ownerIdentifier,
+        memberIdentifiers: allRecipients,
+        sessionMap: sessionMap,
+      );
+      if (!context.mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Session shared with ${shareResult.userIds.length} user(s).',
-        ),
-      ),
-    );
+      if (result.failureMessage != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Share settings saved, but cloud delivery is unavailable: ${result.failureMessage}',
+            ),
+          ),
+        );
+        return;
+      }
+
+      final normalizedOwner = ownerIdentifier.trim().toUpperCase();
+      final deliveredRecipients = result.resolvedIdentifiers
+          .where((id) => id != normalizedOwner)
+          .toList();
+      final pendingRecipients = result.unresolvedIdentifiers
+          .where((id) => id != normalizedOwner)
+          .toList();
+
+      if (pendingRecipients.isNotEmpty && deliveredRecipients.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Share saved, but cloud delivery is still pending for: ${pendingRecipients.join(', ')}. The other phone must have Cold Bore open with that exact user identifier.',
+            ),
+          ),
+        );
+      } else if (pendingRecipients.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Delivered to ${deliveredRecipients.join(', ')}. Still pending for: ${pendingRecipients.join(', ')}.',
+            ),
+          ),
+        );
+      } else if (deliveredRecipients.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Session delivered to ${deliveredRecipients.join(', ')}.',
+            ),
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _shareSessionNearby(
@@ -18773,7 +18847,9 @@ class _ShareSessionDialogState extends State<_ShareSessionDialog> {
   void initState() {
     super.initState();
     _selected = {...widget.initiallySelected};
-    _selectedTrustedPartners = <String>{};
+    _selectedTrustedPartners = widget.initialExternalIdentifiers
+        .where(widget.trustedPartnerIdentifiers.contains)
+        .toSet();
     _shareNotesWithMembers = widget.initialShareNotesWithMembers;
     _shareTrainingDopeWithMembers = widget.initialShareTrainingDopeWithMembers;
     _shareLocationWithMembers = widget.initialShareLocationWithMembers;
@@ -18781,7 +18857,9 @@ class _ShareSessionDialogState extends State<_ShareSessionDialog> {
     _shareShotResultsWithMembers = widget.initialShareShotResultsWithMembers;
     _shareTimerDataWithMembers = widget.initialShareTimerDataWithMembers;
     _externalIdentifiersController = TextEditingController(
-      text: widget.initialExternalIdentifiers.join(', '),
+      text: widget.initialExternalIdentifiers
+          .where((id) => !widget.trustedPartnerIdentifiers.contains(id))
+          .join(', '),
     );
   }
 
