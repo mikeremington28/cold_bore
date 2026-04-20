@@ -1149,8 +1149,10 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
   bool _startGuidedTourOnHome = false;
   bool _promptUniqueIdentifierOnHome = false;
   bool _ready = false;
+  int _lastHandledDurableRevision = -1;
   String? _lastCloudIdentifier;
   String? _lastNearbyPresenceIdentifier;
+  String? _lastObservedActiveIdentifier;
   Timer? _cloudSyncDebounce;
 
   @override
@@ -1176,6 +1178,8 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
       await _consumePendingIncomingShareFromPlatform();
       await SubscriptionService().initialize();
       _state.addListener(_onStateChanged);
+      _lastHandledDurableRevision = _state.durableRevision;
+      _lastObservedActiveIdentifier = _state.activeUserIdentifier?.trim();
       _autoICloudBackupArmed = true;
     } catch (e, st) {
       debugPrint('App startup initialization failed: $e\n$st');
@@ -1183,6 +1187,8 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
         _state.removeListener(_onStateChanged);
       } catch (_) {}
       _state.addListener(_onStateChanged);
+      _lastHandledDurableRevision = _state.durableRevision;
+      _lastObservedActiveIdentifier = _state.activeUserIdentifier?.trim();
       _autoICloudBackupArmed = true;
     }
 
@@ -1401,16 +1407,26 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
       !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
 
   void _onStateChanged() {
-    unawaited(
-      SubscriptionService().setCurrentUserIdentifier(
-        _state.activeUserIdentifier,
-      ),
-    );
-    if (!_autoICloudBackupArmed || !_canAutoBackupToICloud || !_ready) return;
-    _scheduleAutoICloudBackup();
+    final activeIdentifier = _state.activeUserIdentifier?.trim();
+    if (_lastObservedActiveIdentifier != activeIdentifier) {
+      _lastObservedActiveIdentifier = activeIdentifier;
+      unawaited(
+        SubscriptionService().setCurrentUserIdentifier(
+          _state.activeUserIdentifier,
+        ),
+      );
+      unawaited(_attachCloudIdentityIfNeeded());
+      unawaited(_refreshNearbyPresence());
+    }
 
-    unawaited(_attachCloudIdentityIfNeeded());
-    unawaited(_refreshNearbyPresence());
+    final durableRevision = _state.durableRevision;
+    if (durableRevision == _lastHandledDurableRevision) return;
+    _lastHandledDurableRevision = durableRevision;
+
+    if (_autoICloudBackupArmed && _canAutoBackupToICloud && _ready) {
+      _scheduleAutoICloudBackup();
+    }
+
     _cloudSyncDebounce?.cancel();
     _cloudSyncDebounce = Timer(const Duration(milliseconds: 900), () async {
       final ownerIdentifier = _state.activeUserIdentifier;
@@ -1857,6 +1873,7 @@ class AppState extends ChangeNotifier {
   Timer? _persistTimer;
   bool _didHydrate = false;
   bool _isRestoring = false;
+  int _durableRevision = 0;
 
   UserProfile? _activeUser;
 
@@ -1886,10 +1903,17 @@ class AppState extends ChangeNotifier {
 
   @override
   void notifyListeners() {
+    _durableRevision++;
     super.notifyListeners();
     if (_didHydrate && !_isRestoring) {
       _schedulePersist();
     }
+  }
+
+  int get durableRevision => _durableRevision;
+
+  void notifyEphemeralListeners() {
+    super.notifyListeners();
   }
 
   Future<void> loadPersistedState() async {
@@ -2682,7 +2706,7 @@ class AppState extends ChangeNotifier {
     final trimmed = jsonText.trim();
     if (trimmed.isEmpty) return;
     _pendingIncomingSharedJsonTexts.add(trimmed);
-    notifyListeners();
+    notifyEphemeralListeners();
   }
 
   void setNearbyPeers(List<NearbyPeer> peers) {
@@ -2711,7 +2735,7 @@ class AppState extends ChangeNotifier {
     if (unchanged) return;
 
     _nearbyPeers = normalized;
-    notifyListeners();
+    notifyEphemeralListeners();
   }
 
   void setNearbyStatusMessage(String message) {
@@ -2721,7 +2745,7 @@ class AppState extends ChangeNotifier {
         : trimmed;
     if (_nearbyStatusMessage == next) return;
     _nearbyStatusMessage = next;
-    notifyListeners();
+    notifyEphemeralListeners();
   }
 
   void rememberTrustedPartnerIdentifier(String? identifier) {
