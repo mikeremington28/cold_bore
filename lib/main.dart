@@ -1589,8 +1589,7 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
       unawaited(_consumePendingIncomingShareFromPlatform());
       unawaited(_refreshNearbyPresence(force: true));
     }
-    if (state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.paused ||
+    if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
       unawaited(_stopNearbyPresence());
     }
@@ -11340,7 +11339,7 @@ class SessionDetailScreen extends StatelessWidget {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Share saved, but cloud delivery is still pending for: ${pendingRecipients.join(', ')}. The other phone must have Cold Bore open with that exact user identifier.',
+              'Share saved, but Cold Bore has not resolved these identifiers yet: ${pendingRecipients.join(', ')}. The other phone must use that exact user identifier.',
             ),
           ),
         );
@@ -11348,7 +11347,7 @@ class SessionDetailScreen extends StatelessWidget {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Delivered to ${deliveredRecipients.join(', ')}. Still pending for: ${pendingRecipients.join(', ')}.',
+              'Share saved for ${deliveredRecipients.join(', ')}. Still unresolved: ${pendingRecipients.join(', ')}.',
             ),
           ),
         );
@@ -11356,7 +11355,7 @@ class SessionDetailScreen extends StatelessWidget {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Session delivered to ${deliveredRecipients.join(', ')}.',
+              'Share saved for ${deliveredRecipients.join(', ')}. Cold Bore should pull it on that device when the same identifier is active.',
             ),
           ),
         );
