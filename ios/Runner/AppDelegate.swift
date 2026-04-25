@@ -173,6 +173,7 @@ private final class NearbyShareManager: NSObject, MCNearbyServiceAdvertiserDeleg
   private var payloadText: String?
   private var pendingTargetIdentifier: String?
   private var outgoingResourceURLs: [String: URL] = [:]
+  private var advertiserKeepaliveTimer: Timer?
 
   private func buildFreshSessionIfPossible() {
     guard let peerID = peerIDForSession() else { return }
@@ -190,7 +191,25 @@ private final class NearbyShareManager: NSObject, MCNearbyServiceAdvertiserDeleg
     let normalizedIdentifier = identifier.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
     guard !normalizedIdentifier.isEmpty else { return }
 
-    stopPresence()
+    let isSameIdentifier = normalizedIdentifier == localIdentifier
+
+    // Stop old MC services but preserve peer list when restarting with same identifier
+    // so the UI doesn't flicker empty on periodic keepalive calls.
+    advertiserKeepaliveTimer?.invalidate()
+    advertiserKeepaliveTimer = nil
+    advertiser?.stopAdvertisingPeer()
+    browser?.stopBrowsingForPeers()
+    session?.disconnect()
+    advertiser = nil
+    browser = nil
+    session = nil
+    peerID = nil
+    pendingTargetIdentifier = nil
+    if !isSameIdentifier {
+      nearbyPeers.removeAll()
+      nearbyNames.removeAll()
+    }
+
     localIdentifier = normalizedIdentifier
     localDisplayName = displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
       ? normalizedIdentifier
@@ -218,10 +237,33 @@ private final class NearbyShareManager: NSObject, MCNearbyServiceAdvertiserDeleg
     self.browser = browser
 
     emitStatus("Nearby discovery running as \(normalizedIdentifier). Waiting for other Cold Bore users...")
-    emitPeersUpdated()
+    if !isSameIdentifier {
+      emitPeersUpdated()
+    }
+
+    // Periodically refresh the Bonjour advertisement so senders can always find
+    // this device even if it has been in the background of another screen.
+    advertiserKeepaliveTimer = Timer.scheduledTimer(withTimeInterval: 45, repeats: true) { [weak self] _ in
+      self?.refreshAdvertiser()
+    }
+  }
+
+  private func refreshAdvertiser() {
+    guard let peerID else { return }
+    advertiser?.stopAdvertisingPeer()
+    let newAdvertiser = MCNearbyServiceAdvertiser(
+      peer: peerID,
+      discoveryInfo: ["name": localDisplayName],
+      serviceType: serviceType
+    )
+    newAdvertiser.delegate = self
+    newAdvertiser.startAdvertisingPeer()
+    advertiser = newAdvertiser
   }
 
   func stopPresence() {
+    advertiserKeepaliveTimer?.invalidate()
+    advertiserKeepaliveTimer = nil
     advertiser?.stopAdvertisingPeer()
     browser?.stopBrowsingForPeers()
     session?.disconnect()
