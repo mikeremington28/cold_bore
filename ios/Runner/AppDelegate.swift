@@ -172,6 +172,7 @@ private final class NearbyShareManager: NSObject, MCNearbyServiceAdvertiserDeleg
   private var nearbyNames: [String: String] = [:]
   private var payloadText: String?
   private var pendingTargetIdentifier: String?
+  private var sendingTargetIdentifier: String?
   private var outgoingResourceURLs: [String: URL] = [:]
   private var advertiserKeepaliveTimer: Timer?
 
@@ -274,6 +275,7 @@ private final class NearbyShareManager: NSObject, MCNearbyServiceAdvertiserDeleg
     nearbyPeers.removeAll()
     nearbyNames.removeAll()
     pendingTargetIdentifier = nil
+    sendingTargetIdentifier = nil
     emitStatus("Nearby discovery stopped.")
     emitPeersUpdated()
   }
@@ -353,14 +355,19 @@ private final class NearbyShareManager: NSObject, MCNearbyServiceAdvertiserDeleg
       let filename = "cold_bore_share_\(UUID().uuidString).json"
       let fileURL = tempDirectory.appendingPathComponent(filename)
       try data.write(to: fileURL, options: .atomic)
-      outgoingResourceURLs[peer.displayName.uppercased()] = fileURL
-      emitStatus("Sending nearby session to \(peer.displayName.uppercased())...")
+      let identifier = peer.displayName.uppercased()
+      outgoingResourceURLs[identifier] = fileURL
+      sendingTargetIdentifier = identifier
+      emitStatus("Sending nearby session to \(identifier)...")
       session.sendResource(at: fileURL, withName: filename, toPeer: peer) { [weak self] error in
         guard let self else { return }
         let identifier = peer.displayName.uppercased()
         let cleanupURL = self.outgoingResourceURLs.removeValue(forKey: identifier)
         if let cleanupURL {
           try? FileManager.default.removeItem(at: cleanupURL)
+        }
+        if self.sendingTargetIdentifier == identifier {
+          self.sendingTargetIdentifier = nil
         }
 
         if let error {
@@ -384,6 +391,7 @@ private final class NearbyShareManager: NSObject, MCNearbyServiceAdvertiserDeleg
         "error": error.localizedDescription,
       ])
       emitStatus("Nearby send failed for \(peer.displayName.uppercased()).")
+      sendingTargetIdentifier = nil
       resetSessionForNextTransfer()
     }
   }
@@ -433,6 +441,7 @@ private final class NearbyShareManager: NSObject, MCNearbyServiceAdvertiserDeleg
   }
 
   func session(_ session: MCSession, peer peerID: MCPeerID, didChange state: MCSessionState) {
+    guard session === self.session else { return }
     switch state {
     case .connecting:
       emitStatus("Connecting to \(peerID.displayName.uppercased())...")
@@ -440,15 +449,17 @@ private final class NearbyShareManager: NSObject, MCNearbyServiceAdvertiserDeleg
       emitStatus("Connected to \(peerID.displayName.uppercased()).")
       sendPayloadIfReady(to: peerID)
     case .notConnected:
-      if pendingTargetIdentifier == peerID.displayName.uppercased() {
+      let identifier = peerID.displayName.uppercased()
+      if pendingTargetIdentifier == identifier && sendingTargetIdentifier == identifier {
         emit("payloadSendFailed", arguments: [
-          "identifier": peerID.displayName.uppercased(),
+          "identifier": identifier,
           "error": "Nearby connection ended before the session finished sending.",
         ])
         pendingTargetIdentifier = nil
+        sendingTargetIdentifier = nil
         resetSessionForNextTransfer()
       }
-      emitStatus("Nearby peer \(peerID.displayName.uppercased()) disconnected.")
+      emitStatus("Nearby peer \(identifier) disconnected.")
     @unknown default:
       break
     }
