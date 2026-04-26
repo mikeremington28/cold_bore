@@ -243,7 +243,7 @@ private final class NearbyShareManager: NSObject, MCNearbyServiceAdvertiserDeleg
 
     // Periodically refresh the Bonjour advertisement so senders can always find
     // this device even if it has been in the background of another screen.
-    advertiserKeepaliveTimer = Timer.scheduledTimer(withTimeInterval: 45, repeats: true) { [weak self] _ in
+    advertiserKeepaliveTimer = Timer.scheduledTimer(withTimeInterval: 8, repeats: true) { [weak self] _ in
       self?.refreshAdvertiser()
     }
   }
