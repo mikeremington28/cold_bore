@@ -1,6 +1,7 @@
 // ignore_for_file: avoid_types_as_parameter_names, curly_braces_in_flow_control_structures, dead_code, dead_null_aware_expression, deprecated_member_use, library_private_types_in_public_api, unnecessary_underscores, unused_element, unused_element_parameter, unused_local_variable, use_build_context_synchronously
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -1167,13 +1168,12 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
 
   void _startConnectivitySelfHealLoop() {
     _connectivitySelfHealTimer?.cancel();
-    _connectivitySelfHealTimer = Timer.periodic(
-      const Duration(seconds: 12),
-      (_) {
-        if (!mounted || !_ready || !_appInForeground) return;
-        unawaited(_runConnectivitySelfHeal());
-      },
-    );
+    _connectivitySelfHealTimer = Timer.periodic(const Duration(seconds: 12), (
+      _,
+    ) {
+      if (!mounted || !_ready || !_appInForeground) return;
+      unawaited(_runConnectivitySelfHeal());
+    });
   }
 
   Future<void> _runConnectivitySelfHeal() async {
@@ -2974,13 +2974,13 @@ class AppState extends ChangeNotifier {
     required int updatedAtMs,
   }) {
     final payload = sessionMap['session'] is Map
-      ? Map<String, dynamic>.from(sessionMap)
-      : <String, dynamic>{
-        'schema': kBackupSchemaVersion,
-        'exportType': 'sharedSession',
-        'ownerIdentifier': ownerIdentifier,
-        'session': sessionMap,
-        };
+        ? Map<String, dynamic>.from(sessionMap)
+        : <String, dynamic>{
+            'schema': kBackupSchemaVersion,
+            'exportType': 'sharedSession',
+            'ownerIdentifier': ownerIdentifier,
+            'session': sessionMap,
+          };
     final sessionRaw = payload['session'];
     if (sessionRaw is! Map) return;
 
@@ -2992,10 +2992,12 @@ class AppState extends ChangeNotifier {
     mergeBackupJson(jsonEncode(payload), overwriteScope: false);
 
     final effectiveOwnerIdentifier =
-      (payload['ownerIdentifier'] ?? ownerIdentifier).toString().trim();
+        (payload['ownerIdentifier'] ?? ownerIdentifier).toString().trim();
     rememberTrustedPartnerIdentifier(effectiveOwnerIdentifier);
 
-    final incoming = _trainingSessionFromMap(Map<String, dynamic>.from(sessionRaw));
+    final incoming = _trainingSessionFromMap(
+      Map<String, dynamic>.from(sessionRaw),
+    );
     final owner = _ensureUserByIdentifier(effectiveOwnerIdentifier);
     final viewer = _activeUser ?? owner;
 
@@ -4302,6 +4304,35 @@ class AppState extends ChangeNotifier {
         ),
         notes: (m['notes'] as String?) ?? '',
         dope: (m['dope'] as String?) ?? '',
+        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            TextButton(
+              onPressed: () async {
+                final url = Uri.parse(
+                  'https://mikeremington28.github.io/ranch-hand-privacy/',
+                );
+                if (await canLaunchUrl(url)) {
+                  await launchUrl(url, mode: LaunchMode.externalApplication);
+                }
+              },
+              child: const Text('Privacy Policy'),
+            ),
+            const SizedBox(width: 12),
+            TextButton(
+              onPressed: () async {
+                final url = Uri.parse(
+                  'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/',
+                );
+                if (await canLaunchUrl(url)) {
+                  await launchUrl(url, mode: LaunchMode.externalApplication);
+                }
+              },
+              child: const Text('Terms of Use'),
+            ),
+          ],
+        ),
         manualRoundCount: (m['manualRoundCount'] as num?)?.round() ?? 0,
         purchaseDate: (m['purchaseDate'] as String?) == null
             ? null
@@ -5025,7 +5056,7 @@ Map<String, dynamic> _trainingSessionToMap(TrainingSession session) =>
       'id': session.id,
       'userId': session.userId,
       'memberUserIds': session.memberUserIds,
-  'externalMemberIdentifiers': session.externalMemberIdentifiers,
+      'externalMemberIdentifiers': session.externalMemberIdentifiers,
       'dateTime': session.dateTime.toIso8601String(),
       'locationName': session.locationName,
       'folderName': session.folderName,
@@ -5080,12 +5111,12 @@ TrainingSession _trainingSessionFromMap(
     if (ownerId.isNotEmpty) return [ownerId];
     return const <String>[];
   })(),
-  externalMemberIdentifiers: ((map['externalMemberIdentifiers'] as List?) ??
-          const [])
-      .map((e) => e.toString().trim().toUpperCase())
-      .where((id) => id.isNotEmpty)
-      .toSet()
-      .toList(),
+  externalMemberIdentifiers:
+      ((map['externalMemberIdentifiers'] as List?) ?? const [])
+          .map((e) => e.toString().trim().toUpperCase())
+          .where((id) => id.isNotEmpty)
+          .toSet()
+          .toList(),
   dateTime: _parseDateTime(map['dateTime']),
   locationName: (map['locationName'] ?? '').toString(),
   folderName: (map['folderName'] ?? '').toString(),
@@ -6484,7 +6515,9 @@ class _HomeShellState extends State<HomeShell> {
 
     final preview = _IncomingSharedSessionPayload.tryParse(jsonText);
     if (preview == null) {
-      debugPrint('Incoming shared session payload could not be parsed for import preview.');
+      debugPrint(
+        'Incoming shared session payload could not be parsed for import preview.',
+      );
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -6651,7 +6684,9 @@ class _HomeShellState extends State<HomeShell> {
       );
 
       if (approved) {
-        debugPrint('Incoming shared-session import accepted for ${preview.session.id}.');
+        debugPrint(
+          'Incoming shared-session import accepted for ${preview.session.id}.',
+        );
         widget.state.importSharedSessionJson(
           jsonText,
           acceptNotes: acceptNotes,
@@ -6667,7 +6702,9 @@ class _HomeShellState extends State<HomeShell> {
           );
         }
       } else if (mounted) {
-        debugPrint('Incoming shared-session import declined for ${preview.session.id}.');
+        debugPrint(
+          'Incoming shared-session import declined for ${preview.session.id}.',
+        );
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Shared session declined.')),
         );
@@ -6730,7 +6767,9 @@ class _HomeShellState extends State<HomeShell> {
     }
 
     _sharedAcceptancePromptInFlight = true;
-    debugPrint('Showing shared-session acceptance preferences for $nextSessionId.');
+    debugPrint(
+      'Showing shared-session acceptance preferences for $nextSessionId.',
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) {
         _sharedAcceptancePromptInFlight = false;
@@ -6895,7 +6934,9 @@ class _HomeShellState extends State<HomeShell> {
         },
       );
 
-      debugPrint('Saved shared-session acceptance preferences for $nextSessionId.');
+      debugPrint(
+        'Saved shared-session acceptance preferences for $nextSessionId.',
+      );
 
       _sharedAcceptancePromptInFlight = false;
       if (!mounted) return;
