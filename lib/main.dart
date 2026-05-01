@@ -1870,6 +1870,31 @@ class _PaywallScreenState extends State<_PaywallScreen> {
                 style: Theme.of(context).textTheme.bodySmall,
                 textAlign: TextAlign.center,
               ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  TextButton(
+                    onPressed: () async {
+                      final url = Uri.parse('https://mikeremington28.github.io/ranch-hand-privacy/');
+                      if (await canLaunchUrl(url)) {
+                        await launchUrl(url, mode: LaunchMode.externalApplication);
+                      }
+                    },
+                    child: const Text('Privacy Policy'),
+                  ),
+                  const SizedBox(width: 12),
+                  TextButton(
+                    onPressed: () async {
+                      final url = Uri.parse('https://www.apple.com/legal/internet-services/itunes/dev/stdeula/');
+                      if (await canLaunchUrl(url)) {
+                        await launchUrl(url, mode: LaunchMode.externalApplication);
+                      }
+                    },
+                    child: const Text('Terms of Use'),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
