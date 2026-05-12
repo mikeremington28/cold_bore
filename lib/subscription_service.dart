@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// Product ID must match App Store Connect exactly (case-sensitive)
 const String kSubscriptionProductId = 'Coldbore_Pro_Yearly';
 const String _entitlementPrefsKey = 'cold_bore.subscription.entitled.v1';
 const String _entitlementExpiryPrefsKey = 'cold_bore.subscription.expiry_ms.v1';
@@ -127,7 +128,8 @@ class SubscriptionService extends ChangeNotifier {
 
     try {
       final param = PurchaseParam(productDetails: _product!);
-      // Subscriptions always use buyNonConsumable on iOS.
+      // Use buyNonConsumable ONLY for non-consumables. For subscriptions, use buyNonConsumable on Android only if required by plugin, but for subscriptions, use buyNonConsumable if that's what in_app_purchase expects for subscriptions.
+      // The correct method for subscriptions is buyNonConsumable for both iOS and Android as of in_app_purchase 3.x+.
       await _iap.buyNonConsumable(purchaseParam: param);
     } catch (e) {
       _lastError = 'Purchase failed. Please try again.';
