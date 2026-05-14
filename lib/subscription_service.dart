@@ -128,9 +128,8 @@ class SubscriptionService extends ChangeNotifier {
 
     try {
       final param = PurchaseParam(productDetails: _product!);
-      // Use buyNonConsumable ONLY for non-consumables. For subscriptions, use buyNonConsumable on Android only if required by plugin, but for subscriptions, use buyNonConsumable if that's what in_app_purchase expects for subscriptions.
-      // The correct method for subscriptions is buyNonConsumable for both iOS and Android as of in_app_purchase 3.x+.
-      await _iap.buyNonConsumable(purchaseParam: param);
+      // For subscriptions, use buyConsumable with autoConsume: false
+      await _iap.buyConsumable(purchaseParam: param, autoConsume: false);
     } catch (e) {
       _lastError = 'Purchase failed. Please try again.';
       _loading = false;
