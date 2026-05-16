@@ -300,7 +300,7 @@ class SubscriptionService extends ChangeNotifier {
     _loggedMetaEventKeys.add(key);
     await _saveLoggedMetaEventKeys();
 
-    final amount = _product?.price;
+    final amount = _product?.rawPrice;
     final currency = _product?.currencyCode;
     if (amount == null || currency == null || currency.trim().isEmpty) {
       return;
