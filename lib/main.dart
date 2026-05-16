@@ -22,6 +22,7 @@ import 'package:printing/printing.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import 'package:file_picker/file_picker.dart';
+import 'meta_app_events_service.dart';
 import 'cloud_sync_service.dart';
 import 'subscription_service.dart';
 
@@ -1128,6 +1129,7 @@ class _AppRoot extends StatefulWidget {
 class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
   final AppState _state = AppState();
   final CloudSyncService _cloud = CloudSyncService();
+  final MetaAppEventsService _metaAppEvents = MetaAppEventsService.instance;
   static const MethodChannel _iCloudChannel = MethodChannel(
     'com.remington.coldbore/icloud',
   );
@@ -1163,6 +1165,9 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _startConnectivitySelfHealLoop();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_metaAppEvents.bootstrap());
+    });
     unawaited(_loadState());
   }
 
@@ -1640,6 +1645,7 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       _appInForeground = true;
       unawaited(SubscriptionService().refreshOnResume());
+      unawaited(_metaAppEvents.onAppForegrounded());
       unawaited(_attemptAutoICloudRestoreIfEligible());
       unawaited(_consumePendingIncomingShareFromPlatform());
       unawaited(_attachCloudIdentityIfNeeded());
@@ -1648,7 +1654,11 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
       _appInForeground = false;
+      _metaAppEvents.onAppBackgrounded();
       unawaited(_stopNearbyPresence());
+    }
+    if (state == AppLifecycleState.inactive) {
+      _metaAppEvents.onAppBackgrounded();
     }
     if (!_canAutoBackupToICloud) return;
     if (state == AppLifecycleState.inactive ||

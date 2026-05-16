@@ -18,6 +18,36 @@
 	<key>CFBundleName</key>
 	<string>Cold Bore</string>
 
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>fb4044322892531995</string>
+			</array>
+		</dict>
+	</array>
+
+	<key>FacebookAppID</key>
+	<string>4044322892531995</string>
+	<key>FacebookClientToken</key>
+	<string>2cbf0d2a236993258a7adffeb0eda069</string>
+	<key>FacebookDisplayName</key>
+	<string>Cold Bore</string>
+	<key>FacebookAutoLogAppEventsEnabled</key>
+	<true/>
+	<key>FacebookAdvertiserIDCollectionEnabled</key>
+	<true/>
+	<key>NSUserTrackingUsageDescription</key>
+	<string>We use device tracking permission to measure app installs, subscription conversions, and ad performance on Facebook and Instagram.</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>fbapi</string>
+		<string>fb-messenger-share-api</string>
+		<string>fbauth2</string>
+		<string>fbshareextension</string>
+	</array>
+
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 

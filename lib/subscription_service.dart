@@ -5,11 +5,15 @@ import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'meta_app_events_service.dart';
+
 /// Product ID must match App Store Connect exactly (case-sensitive)
 const String kSubscriptionProductId = 'Coldbore_Pro_Yearly';
 const String _entitlementPrefsKey = 'cold_bore.subscription.entitled.v1';
 const String _entitlementExpiryPrefsKey = 'cold_bore.subscription.expiry_ms.v1';
 const String _trialStartPrefsKey = 'cold_bore.subscription.trial_start_ms.v1';
+const String _metaLoggedEventKeysPrefsKey =
+  'cold_bore.subscription.meta_event_keys.v1';
 const int _trialDays = 30;
 
 /// Lightweight subscription service.
@@ -33,6 +37,7 @@ class SubscriptionService extends ChangeNotifier {
   String? _lastError;
   bool _testerOverride = false;
   String? _currentIdentifier;
+  final Set<String> _loggedMetaEventKeys = <String>{};
 
   /// True while initial availability check / purchase is in progress.
   bool get loading => _loading;
@@ -65,6 +70,7 @@ class SubscriptionService extends ChangeNotifier {
     // Restore cached entitlement quickly so UI doesn't flash locked state.
     await _loadCachedEntitlement();
     await _loadOrStartTrial();
+    await _loadLoggedMetaEventKeys();
 
     if (kIsWeb) return; // IAP not available on web.
 
@@ -175,7 +181,7 @@ class SubscriptionService extends ChangeNotifier {
 
       if (purchase.status == PurchaseStatus.purchased ||
           purchase.status == PurchaseStatus.restored) {
-        await _grantEntitlement();
+        await _grantEntitlement(purchase: purchase);
       }
 
       if (purchase.pendingCompletePurchase) {
@@ -189,7 +195,7 @@ class SubscriptionService extends ChangeNotifier {
 
   // ── entitlement persistence ───────────────────────────────────────────────
 
-  Future<void> _grantEntitlement() async {
+  Future<void> _grantEntitlement({PurchaseDetails? purchase}) async {
     _entitled = true;
     _lastError = null;
     final prefs = await SharedPreferences.getInstance();
@@ -199,6 +205,9 @@ class SubscriptionService extends ChangeNotifier {
         .add(const Duration(days: 400))
         .millisecondsSinceEpoch;
     await prefs.setInt(_entitlementExpiryPrefsKey, farFuture);
+    if (purchase != null && purchase.status == PurchaseStatus.purchased) {
+      await _logMetaSubscriptionPurchase(purchase);
+    }
     notifyListeners();
   }
 
@@ -234,6 +243,13 @@ class SubscriptionService extends ChangeNotifier {
       if (startMs == null) {
         startMs = DateTime.now().millisecondsSinceEpoch;
         await prefs.setInt(_trialStartPrefsKey, startMs);
+        await MetaAppEventsService.instance.logTrialStarted(
+          orderId: 'trial-$startMs',
+          parameters: <String, dynamic>{
+            'product_id': kSubscriptionProductId,
+            'trial_days': _trialDays,
+          },
+        );
       }
       final start = DateTime.fromMillisecondsSinceEpoch(startMs);
       _trialEndsAt = start.add(const Duration(days: _trialDays));
@@ -241,6 +257,67 @@ class SubscriptionService extends ChangeNotifier {
       _trialEndsAt = null;
     }
     notifyListeners();
+  }
+
+  Future<void> _loadLoggedMetaEventKeys() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _loggedMetaEventKeys
+        ..clear()
+        ..addAll(prefs.getStringList(_metaLoggedEventKeysPrefsKey) ?? const []);
+    } catch (_) {
+      _loggedMetaEventKeys.clear();
+    }
+  }
+
+  Future<void> _saveLoggedMetaEventKeys() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      _metaLoggedEventKeysPrefsKey,
+      _loggedMetaEventKeys.toList(),
+    );
+  }
+
+  String _purchaseEventKey(PurchaseDetails purchase) {
+    final purchaseId = purchase.purchaseID?.trim();
+    if (purchaseId != null && purchaseId.isNotEmpty) return purchaseId;
+
+    final serverVerificationData =
+        purchase.verificationData.serverVerificationData.trim();
+    if (serverVerificationData.isNotEmpty) return serverVerificationData;
+
+    final localVerificationData =
+        purchase.verificationData.localVerificationData.trim();
+    if (localVerificationData.isNotEmpty) return localVerificationData;
+
+    return '${purchase.productID}:${purchase.status.name}';
+  }
+
+  Future<void> _logMetaSubscriptionPurchase(PurchaseDetails purchase) async {
+    final key = _purchaseEventKey(purchase);
+    if (_loggedMetaEventKeys.contains(key)) return;
+
+    _loggedMetaEventKeys.add(key);
+    await _saveLoggedMetaEventKeys();
+
+    final amount = _product?.price;
+    final currency = _product?.currencyCode;
+    if (amount == null || currency == null || currency.trim().isEmpty) {
+      return;
+    }
+
+    final parameters = <String, dynamic>{
+      'product_id': purchase.productID,
+      if (purchase.purchaseID != null && purchase.purchaseID!.trim().isNotEmpty)
+        'purchase_id': purchase.purchaseID!.trim(),
+    };
+
+    await MetaAppEventsService.instance.logSubscribe(
+      orderId: key,
+      price: amount,
+      currency: currency,
+      parameters: parameters,
+    );
   }
 
   Future<void> _refreshTesterOverride() async {
