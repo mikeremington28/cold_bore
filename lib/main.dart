@@ -13184,6 +13184,21 @@ class SessionDetailScreen extends StatelessWidget {
                           );
                           if (cap != null) caption = cap;
 
+                          final coldBoreShots =
+                              s.shots.where((shot) => shot.isColdBore).toList()
+                                ..sort((a, b) => b.time.compareTo(a.time));
+
+                          if (coldBoreShots.isNotEmpty) {
+                            final latestColdBore = coldBoreShots.first;
+                            state.addColdBorePhoto(
+                              sessionId: s.id,
+                              shotId: latestColdBore.id,
+                              bytes: bytes,
+                              caption: caption,
+                            );
+                            return;
+                          }
+
                           state.addSessionPhoto(
                             sessionId: s.id,
                             bytes: bytes,
@@ -13778,6 +13793,61 @@ class _ColdBoreTargetCard extends StatelessWidget {
           ..sort((a, b) => a.shot.time.compareTo(b.shot.time));
     final hiddenCount = rows.length - plottedRows.length;
 
+    String comboKey(_ColdBoreRow row) {
+      final rifleId = row.rifle?.id ?? row.session.rifleId ?? 'none-rifle';
+      final ammoId = row.ammo?.id ?? row.session.ammoLotId ?? 'none-ammo';
+      return '$rifleId|$ammoId';
+    }
+
+    String comboLabel(_ColdBoreRow row) {
+      final rifle = row.rifle;
+      final ammo = row.ammo;
+
+      final rifleLabel = (() {
+        if (rifle != null && (rifle.name ?? '').trim().isNotEmpty) {
+          return (rifle.name ?? '').trim();
+        }
+        if (rifle != null && rifle.caliber.trim().isNotEmpty) {
+          return rifle.caliber.trim();
+        }
+        return 'Unknown rifle';
+      })();
+
+      final ammoLabel = (() {
+        if (ammo != null && (ammo.name ?? '').trim().isNotEmpty) {
+          return (ammo.name ?? '').trim();
+        }
+        if (ammo != null && ammo.caliber.trim().isNotEmpty) {
+          return ammo.caliber.trim();
+        }
+        return 'Unknown ammo';
+      })();
+
+      return '$rifleLabel • $ammoLabel';
+    }
+
+    final combosByKey = <String, _ColdBoreRow>{};
+    for (final row in plottedRows) {
+      combosByKey.putIfAbsent(comboKey(row), () => row);
+    }
+
+    final sortedComboKeys = combosByKey.keys.toList()..sort();
+    final palette = <Color>[
+      Theme.of(context).colorScheme.primary,
+      Theme.of(context).colorScheme.secondary,
+      Theme.of(context).colorScheme.tertiary,
+      const Color(0xFF2A9D8F),
+      const Color(0xFF1D3557),
+      const Color(0xFFE76F51),
+      const Color(0xFF8D5A97),
+      const Color(0xFF6B8E23),
+    ];
+    final comboColors = <String, Color>{
+      for (var i = 0; i < sortedComboKeys.length; i++)
+        sortedComboKeys[i]: palette[i % palette.length],
+    };
+    final showComboLegend = sortedComboKeys.length > 1;
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -13845,6 +13915,9 @@ class _ColdBoreTargetCard extends StatelessWidget {
                           ...plottedRows.map((row) {
                             final offset = pointOffset(row);
                             final isBaseline = row.shot.isBaseline;
+                            final pointColor =
+                                comboColors[comboKey(row)] ??
+                                Theme.of(context).colorScheme.primary;
                             return Positioned(
                               left: offset.dx - pointSize / 2,
                               top: offset.dy - pointSize / 2,
@@ -13852,7 +13925,7 @@ class _ColdBoreTargetCard extends StatelessWidget {
                               height: pointSize,
                               child: Tooltip(
                                 message:
-                                    '${_fmtDateTime(row.shot.time)}\n${row.shot.distance} • ${row.shot.result}',
+                                    '${comboLabel(row)}\n${_fmtDateTime(row.shot.time)}\n${row.shot.distance} • ${row.shot.result}',
                                 child: Material(
                                   color: Colors.transparent,
                                   child: InkWell(
@@ -13874,16 +13947,10 @@ class _ColdBoreTargetCard extends StatelessWidget {
                                     child: DecoratedBox(
                                       decoration: BoxDecoration(
                                         borderRadius: BorderRadius.circular(4),
-                                        color: isBaseline
-                                            ? Theme.of(
-                                                context,
-                                              ).colorScheme.tertiary
-                                            : Theme.of(
-                                                context,
-                                              ).colorScheme.primary,
+                                        color: pointColor,
                                         border: Border.all(
                                           color: Colors.white,
-                                          width: 2,
+                                          width: isBaseline ? 2.4 : 2,
                                         ),
                                       ),
                                       child: isBaseline
@@ -13905,9 +13972,53 @@ class _ColdBoreTargetCard extends StatelessWidget {
                   );
                 },
               ),
+            if (showComboLegend) ...[
+              const SizedBox(height: 10),
+              Text(
+                'Colors by Rifle + Ammo',
+                style: TextStyle(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.8),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 10,
+                runSpacing: 6,
+                children: [
+                  for (final key in sortedComboKeys)
+                    Builder(
+                      builder: (_) {
+                        final row = combosByKey[key]!;
+                        return Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 12,
+                              height: 12,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: comboColors[key],
+                                border: Border.all(
+                                  color: Colors.white,
+                                  width: 1.2,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(comboLabel(row)),
+                          ],
+                        );
+                      },
+                    ),
+                ],
+              ),
+            ],
             const SizedBox(height: 12),
             Text(
-              'Grid spacing is 1 inch. Tap any plotted point to open that cold bore entry.',
+              'Grid spacing is 1 inch. Tap any plotted point to open that cold bore entry. Star icon marks baseline shots.',
               style: TextStyle(
                 color: Theme.of(
                   context,
