@@ -319,6 +319,278 @@ ThemeData _buildTacticalDarkTheme() {
   );
 }
 
+enum ColdBoreStatusTone { neutral, verified, calculated, warning, danger }
+
+ColdBoreStatusTone _maintenanceStatusTone(MaintenanceDueStatus status) {
+  switch (status) {
+    case MaintenanceDueStatus.good:
+      return ColdBoreStatusTone.verified;
+    case MaintenanceDueStatus.dueSoon:
+      return ColdBoreStatusTone.warning;
+    case MaintenanceDueStatus.overdue:
+      return ColdBoreStatusTone.danger;
+  }
+}
+
+class ColdBoreScaffold extends StatelessWidget {
+  final PreferredSizeWidget? appBar;
+  final Widget body;
+  final Widget? floatingActionButton;
+  final Widget? bottomNavigationBar;
+
+  const ColdBoreScaffold({
+    super.key,
+    this.appBar,
+    required this.body,
+    this.floatingActionButton,
+    this.bottomNavigationBar,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: appBar,
+      body: SafeArea(child: body),
+      floatingActionButton: floatingActionButton,
+      bottomNavigationBar: bottomNavigationBar,
+    );
+  }
+}
+
+class ColdBoreCard extends StatelessWidget {
+  final Widget child;
+  final EdgeInsetsGeometry? padding;
+  final EdgeInsetsGeometry margin;
+  final Color? color;
+
+  const ColdBoreCard({
+    super.key,
+    required this.child,
+    this.padding,
+    this.margin = const EdgeInsets.symmetric(vertical: 6),
+    this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: margin,
+      color: color,
+      child: padding == null ? child : Padding(padding: padding!, child: child),
+    );
+  }
+}
+
+class ColdBoreSectionHeader extends StatelessWidget {
+  final String title;
+  final String? subtitle;
+  final Widget? trailing;
+
+  const ColdBoreSectionHeader({
+    super.key,
+    required this.title,
+    this.subtitle,
+    this.trailing,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title.toUpperCase(),
+                style: TextStyle(
+                  fontSize: 11,
+                  letterSpacing: 0.8,
+                  fontWeight: FontWeight.w700,
+                  color: onSurface.withValues(alpha: 0.74),
+                ),
+              ),
+              if (subtitle != null && subtitle!.trim().isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  subtitle!,
+                  style: TextStyle(color: onSurface.withValues(alpha: 0.7)),
+                ),
+              ],
+            ],
+          ),
+        ),
+        if (trailing != null) trailing!,
+      ],
+    );
+  }
+}
+
+class ColdBorePrimaryButton extends StatelessWidget {
+  final String label;
+  final VoidCallback? onPressed;
+  final IconData? icon;
+
+  const ColdBorePrimaryButton({
+    super.key,
+    required this.label,
+    this.onPressed,
+    this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final style = FilledButton.styleFrom(
+      minimumSize: const Size(180, 46),
+      backgroundColor: const Color(0xFF285FA9),
+      foregroundColor: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    );
+    if (icon == null) {
+      return FilledButton(style: style, onPressed: onPressed, child: Text(label));
+    }
+    return FilledButton.icon(
+      style: style,
+      onPressed: onPressed,
+      icon: Icon(icon),
+      label: Text(label),
+    );
+  }
+}
+
+class ColdBoreStatusPill extends StatelessWidget {
+  final String label;
+  final ColdBoreStatusTone tone;
+
+  const ColdBoreStatusPill({
+    super.key,
+    required this.label,
+    this.tone = ColdBoreStatusTone.neutral,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = switch (tone) {
+      ColdBoreStatusTone.verified => const (Color(0xFF1E7D4A), Color(0xFFDCF6E7)),
+      ColdBoreStatusTone.calculated => const (Color(0xFF8A6B12), Color(0xFFFFF0C2)),
+      ColdBoreStatusTone.warning => const (Color(0xFFB26A00), Color(0xFFFFE7C2)),
+      ColdBoreStatusTone.danger => const (Color(0xFFA33A3A), Color(0xFFFFDBDB)),
+      ColdBoreStatusTone.neutral => const (Color(0xFF4E5864), Color(0xFFE4E8ED)),
+    };
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: colors.$1.withValues(alpha: 0.24),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: colors.$1.withValues(alpha: 0.45)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.2,
+          color: Theme.of(context).brightness == Brightness.dark
+              ? colors.$2
+              : colors.$1,
+        ),
+      ),
+    );
+  }
+}
+
+class ColdBoreMetricTile extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData? icon;
+
+  const ColdBoreMetricTile({
+    super.key,
+    required this.label,
+    required this.value,
+    this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.35),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: 14, color: onSurface.withValues(alpha: 0.7)),
+                const SizedBox(width: 6),
+              ],
+              Expanded(
+                child: Text(
+                  label.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 10,
+                    letterSpacing: 0.6,
+                    color: onSurface.withValues(alpha: 0.7),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+        ],
+      ),
+    );
+  }
+}
+
+class ColdBoreBottomNav extends StatelessWidget {
+  final int selectedIndex;
+  final ValueChanged<int> onDestinationSelected;
+  final List<NavigationDestination> destinations;
+
+  const ColdBoreBottomNav({
+    super.key,
+    required this.selectedIndex,
+    required this.onDestinationSelected,
+    required this.destinations,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return NavigationBar(
+      selectedIndex: selectedIndex,
+      onDestinationSelected: onDestinationSelected,
+      labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+      destinations: destinations,
+    );
+  }
+}
+
+InputDecoration coldBoreTextFieldStyle({
+  required String label,
+  String? helper,
+}) {
+  return InputDecoration(labelText: label, helperText: helper);
+}
+
+InputDecoration coldBoreDropdownStyle({
+  required String label,
+}) {
+  return InputDecoration(labelText: label);
+}
+
 class AppThemeController extends ChangeNotifier {
   static final AppThemeController _instance = AppThemeController._();
   factory AppThemeController() => _instance;
@@ -1977,7 +2249,7 @@ class _PaywallScreenState extends State<_PaywallScreen> {
     final inTrial = trialDays > 0;
     final isIos = defaultTargetPlatform == TargetPlatform.iOS;
 
-    return Scaffold(
+    return ColdBoreScaffold(
       appBar: AppBar(title: const Text('Cold Bore Pro')),
       body: SafeArea(
         child: Padding(
@@ -6598,7 +6870,7 @@ class _AudioCounterScreenState extends State<AudioCounterScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return ColdBoreScaffold(
       appBar: AppBar(title: const Text('Audio Shot Counter')),
       body: AnimatedBuilder(
         animation: widget.state,
@@ -6606,7 +6878,7 @@ class _AudioCounterScreenState extends State<AudioCounterScreen> {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              Card(
+              ColdBoreCard(
                 child: Padding(
                   padding: const EdgeInsets.all(12),
                   child: Column(
@@ -6741,7 +7013,7 @@ class _AudioCounterScreenState extends State<AudioCounterScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              Card(
+              ColdBoreCard(
                 child: Padding(
                   padding: const EdgeInsets.all(12),
                   child: Column(
@@ -7510,7 +7782,7 @@ class _HomeShellState extends State<HomeShell> {
 
         return Stack(
           children: [
-            Scaffold(
+            ColdBoreScaffold(
               appBar: AppBar(
                 title: const Text('Cold Bore'),
                 actions: [
@@ -7559,10 +7831,9 @@ class _HomeShellState extends State<HomeShell> {
                 ],
               ),
               body: pages[_tab],
-              bottomNavigationBar: NavigationBar(
+              bottomNavigationBar: ColdBoreBottomNav(
                 selectedIndex: _tab,
                 onDestinationSelected: (i) => setState(() => _tab = i),
-                labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
                 destinations: const [
                   NavigationDestination(
                     icon: Icon(Icons.event_note_outlined),
@@ -7889,12 +8160,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ? 'Active - full access enabled.'
               : 'Read-only mode - upgrade to add new data.');
 
-    return Scaffold(
+    return ColdBoreScaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Card(
+          const ColdBoreSectionHeader(title: 'Preferences'),
+          const SizedBox(height: 8),
+          ColdBoreCard(
             child: ListTile(
               leading: const Icon(Icons.cloud_done_outlined),
               title: const Text('Cloud Backup & Restore'),
@@ -7909,7 +8182,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           if (widget.cloudRecoverySupported && _isBackupOverdue)
-            Card(
+            ColdBoreCard(
               child: ListTile(
                 leading: const Icon(Icons.warning_amber_rounded),
                 title: const Text('Backup health warning'),
@@ -7921,7 +8194,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           if (widget.cloudRecoverySupported && !_isBackupOverdue)
-            Card(
+            ColdBoreCard(
               child: ListTile(
                 leading: const Icon(Icons.verified_outlined),
                 title: const Text('Backup health'),
@@ -7929,7 +8202,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           if (widget.cloudRecoverySupported)
-            Card(
+            ColdBoreCard(
               child: Padding(
                 padding: const EdgeInsets.all(12),
                 child: Row(
@@ -7953,7 +8226,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
             ),
-          Card(
+          ColdBoreCard(
             child: ListTile(
               leading: Icon(
                 _cloud.lastError != null && _cloud.lastError!.trim().isNotEmpty
@@ -7972,7 +8245,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
-          Card(
+          ColdBoreCard(
             child: ListTile(
               leading: const Icon(Icons.folder_zip_outlined),
               title: const Text('Backup files (JSON)'),
@@ -7988,7 +8261,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               },
             ),
           ),
-          Card(
+          ColdBoreCard(
             child: ListTile(
               leading: const Icon(Icons.brightness_6_outlined),
               title: const Text('Appearance'),
@@ -7996,7 +8269,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onTap: _pickThemeMode,
             ),
           ),
-          Card(
+          ColdBoreCard(
             child: ListTile(
               leading: const Icon(Icons.workspace_premium_outlined),
               title: const Text('Cold Bore Pro'),
@@ -8008,7 +8281,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               },
             ),
           ),
-          Card(
+          ColdBoreCard(
             child: ListTile(
               leading: const Icon(Icons.refresh_outlined),
               title: const Text('Restore purchases'),
@@ -8018,7 +8291,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onTap: _sub.loading ? null : _restorePurchases,
             ),
           ),
-          Card(
+          ColdBoreCard(
             child: ListTile(
               leading: const Icon(Icons.person_outline),
               title: const Text('Manage users'),
@@ -8034,7 +8307,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               },
             ),
           ),
-          Card(
+          ColdBoreCard(
             child: ListTile(
               leading: const Icon(Icons.info_outline),
               title: const Text('App version'),
@@ -8245,6 +8518,15 @@ class _DataScreenState extends State<DataScreen> {
               ).toLowerCase().compareTo(ammoTitle(b).toLowerCase()),
             );
 
+        final ballisticRecords = widget.state.ballisticDopeRecords;
+        final verifiedBallisticCount = ballisticRecords
+            .where((record) => record.isVerified)
+            .length;
+        final workingEntryCount = wmap.values.fold<int>(
+          0,
+          (sum, entries) => sum + entries.length,
+        );
+
         final workingSections = <Widget>[];
         if (wmap.isNotEmpty) {
           final sortedKeys = wmap.keys.toList()..sort();
@@ -8278,12 +8560,22 @@ class _DataScreenState extends State<DataScreen> {
             }
 
             workingSections.add(
-              Padding(
-                padding: const EdgeInsets.only(bottom: 16),
+              ColdBoreCard(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title, style: Theme.of(context).textTheme.titleMedium),
+                    ColdBoreSectionHeader(
+                      title: title,
+                      subtitle: '${dks.length} distance entries',
+                      trailing: ColdBoreStatusPill(
+                        label: _rifleOnly ? 'Rifle Only' : 'Rifle + Ammo',
+                        tone: _rifleOnly
+                            ? ColdBoreStatusTone.verified
+                            : ColdBoreStatusTone.calculated,
+                      ),
+                    ),
                     const SizedBox(height: 8),
                     SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
@@ -8514,12 +8806,47 @@ class _DataScreenState extends State<DataScreen> {
           padding: const EdgeInsets.all(16),
           child: ListView(
             children: [
-              Text(
-                'Data & Quick Reference',
-                style: Theme.of(context).textTheme.titleLarge,
+              const ColdBoreSectionHeader(
+                title: 'DOPE Library',
+                subtitle: 'Quick reference, working chart, and ballistic tools.',
               ),
               const SizedBox(height: 12),
-              Card(
+              ColdBoreCard(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const ColdBoreSectionHeader(
+                      title: 'Library Snapshot',
+                      subtitle: 'Live totals for quick reference and validation progress.',
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        ColdBoreMetricTile(
+                          label: 'Quick Ref',
+                          value: '${withDope.length}',
+                          icon: Icons.my_location_outlined,
+                        ),
+                        ColdBoreMetricTile(
+                          label: 'Working',
+                          value: '$workingEntryCount',
+                          icon: Icons.table_chart_outlined,
+                        ),
+                        ColdBoreMetricTile(
+                          label: 'Verified',
+                          value: '$verifiedBallisticCount',
+                          icon: Icons.verified_outlined,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              ColdBoreCard(
                 child: ListTile(
                   leading: const Icon(Icons.calculate_outlined),
                   title: const Text('Ballistic Assistant'),
@@ -8539,7 +8866,7 @@ class _DataScreenState extends State<DataScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              Card(
+              ColdBoreCard(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
@@ -8567,19 +8894,41 @@ class _DataScreenState extends State<DataScreen> {
                         )
                       else
                         ...withDope.map(
-                          (r) => Padding(
-                            padding: const EdgeInsets.only(top: 10),
+                          (r) => ColdBoreCard(
+                            margin: const EdgeInsets.only(top: 10),
+                            padding: const EdgeInsets.all(10),
+                            color: Theme.of(context).colorScheme.surface,
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        '${r.name ?? 'Rifle'} • ${r.caliber}',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    const ColdBoreStatusPill(
+                                      label: 'Quick Ref',
+                                      tone: ColdBoreStatusTone.neutral,
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
                                 Text(
-                                  '${r.name ?? 'Rifle'} • ${r.caliber}',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
+                                  r.dope,
+                                  style: TextStyle(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurface
+                                        .withValues(alpha: 0.9),
                                   ),
                                 ),
-                                const SizedBox(height: 4),
-                                Text(r.dope),
                               ],
                             ),
                           ),
@@ -8589,7 +8938,7 @@ class _DataScreenState extends State<DataScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              Card(
+              ColdBoreCard(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
@@ -8606,31 +8955,40 @@ class _DataScreenState extends State<DataScreen> {
                         ],
                       ),
                       const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 12,
-                        runSpacing: 6,
-                        children: [
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text('Rifle only'),
-                              Switch(
-                                value: _rifleOnly,
-                                onChanged: (v) =>
-                                    setState(() => _rifleOnly = v),
-                              ),
-                            ],
+                      SegmentedButton<bool>(
+                        segments: const [
+                          ButtonSegment<bool>(
+                            value: true,
+                            icon: Icon(Icons.ads_click_outlined),
+                            label: Text('Rifle Only'),
                           ),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text('All distances'),
-                              Switch(
-                                value: _allDistances,
-                                onChanged: (v) =>
-                                    setState(() => _allDistances = v),
-                              ),
-                            ],
+                          ButtonSegment<bool>(
+                            value: false,
+                            icon: Icon(Icons.layers_outlined),
+                            label: Text('Rifle + Ammo'),
+                          ),
+                        ],
+                        selected: {_rifleOnly},
+                        onSelectionChanged: (selected) {
+                          setState(() => _rifleOnly = selected.first);
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          FilterChip(
+                            selected: _allDistances,
+                            label: const Text('All distances'),
+                            onSelected: (value) =>
+                                setState(() => _allDistances = true),
+                          ),
+                          FilterChip(
+                            selected: !_allDistances,
+                            label: const Text('25-step distances'),
+                            onSelected: (value) =>
+                                setState(() => _allDistances = false),
                           ),
                         ],
                       ),
@@ -8720,7 +9078,7 @@ class _DataScreenState extends State<DataScreen> {
                             MaintenanceDueStatus.dueSoon,
                       )
                       .length;
-                  return Card(
+                  return ColdBoreCard(
                     child: ListTile(
                       leading: const Icon(Icons.notifications_none),
                       title: const Text('Maintenance reminders'),
@@ -9582,10 +9940,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
   Widget _sectionTitle(String title) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: Text(
-        title,
-        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-      ),
+      child: ColdBoreSectionHeader(title: title),
     );
   }
 
@@ -9639,12 +9994,12 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
             ? const Color(0xFF143525)
             : const Color(0xFFDDF5E6);
 
-        return Scaffold(
+        return ColdBoreScaffold(
           appBar: AppBar(title: const Text('Ballistic Assistant')),
           body: ListView(
             padding: const EdgeInsets.all(12),
             children: [
-              Card(
+              ColdBoreCard(
                 child: Padding(
                   padding: const EdgeInsets.all(12),
                   child: Column(
@@ -9904,10 +10259,10 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                         spacing: 8,
                         runSpacing: 8,
                         children: [
-                          FilledButton.icon(
+                          ColdBorePrimaryButton(
                             onPressed: _calculateDope,
-                            icon: const Icon(Icons.calculate_outlined),
-                            label: const Text('Generate Calculated DOPE'),
+                            icon: Icons.calculate_outlined,
+                            label: 'Generate Calculated DOPE',
                           ),
                           FilledButton.tonalIcon(
                             onPressed: _generateChart,
@@ -9921,7 +10276,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              Card(
+              ColdBoreCard(
                 child: Padding(
                   padding: const EdgeInsets.all(12),
                   child: Column(
@@ -10080,7 +10435,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
               ),
               if (active != null) ...[
                 const SizedBox(height: 12),
-                Card(
+                ColdBoreCard(
                   color: active.isVerified ? verifiedCardBg : unverifiedCardBg,
                   child: Padding(
                     padding: const EdgeInsets.all(12),
@@ -10093,6 +10448,13 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                               ? 'Verified DOPE${activeConfirmations > 0 ? ' - $activeConfirmations confirmation${activeConfirmations == 1 ? '' : 's'}' : ''}'
                               : 'Calculated estimate (Unverified)',
                           style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 6),
+                        ColdBoreStatusPill(
+                          label: active.isVerified ? 'Verified' : 'Calculated estimate',
+                          tone: active.isVerified
+                              ? ColdBoreStatusTone.verified
+                              : ColdBoreStatusTone.calculated,
                         ),
                         const SizedBox(height: 6),
                         Text(
@@ -10109,7 +10471,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                Card(
+                ColdBoreCard(
                   child: Padding(
                     padding: const EdgeInsets.all(12),
                     child: Column(
@@ -10217,7 +10579,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                 ),
               ],
               const SizedBox(height: 12),
-              Card(
+              ColdBoreCard(
                 child: Padding(
                   padding: const EdgeInsets.all(12),
                   child: Text(
@@ -10232,7 +10594,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              Card(
+              ColdBoreCard(
                 child: Padding(
                   padding: const EdgeInsets.all(12),
                   child: Column(
@@ -10258,19 +10620,62 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                               widget.state.verifiedBallisticConfirmationCount(record);
                           return Container(
                             margin: const EdgeInsets.only(bottom: 6),
-                            padding: const EdgeInsets.all(8),
+                            padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
                               color: record.isVerified ? verifiedCardBg : unverifiedCardBg,
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: BorderRadius.circular(10),
                             ),
-                            child: Text(
-                              'Rifle: ${recRifle?.name ?? recRifle?.caliber ?? 'Rifle'}\n'
-                              'Ammo: ${recAmmo?.name ?? recAmmo?.bullet ?? 'Ammo'}\n'
-                              'Distance: ${record.distance.toStringAsFixed(0)} ${_distanceUnitLabel(record.distanceUnit)}\n'
-                              'Date: ${_formatDate(record.createdAt)}\n'
-                              'Elevation: ${(record.isVerified ? record.verifiedElevation : record.calculatedElevation).toStringAsFixed(2)} ${_elevationUnitLabel(record.outputUnit)}\n'
-                              'Wind hold: ${(record.isVerified ? record.verifiedWind : record.calculatedWind).toStringAsFixed(2)} ${_elevationUnitLabel(record.outputUnit)}\n'
-                              'Status: ${record.isVerified ? 'Verified ($confirmations confirmation${confirmations == 1 ? '' : 's'})' : 'Calculated estimate'}',
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        '${recRifle?.name ?? recRifle?.caliber ?? 'Rifle'} • ${recAmmo?.name ?? recAmmo?.bullet ?? 'Ammo'}',
+                                        style: const TextStyle(fontWeight: FontWeight.w700),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    ColdBoreStatusPill(
+                                      label: record.isVerified
+                                          ? 'Verified'
+                                          : 'Calculated',
+                                      tone: record.isVerified
+                                          ? ColdBoreStatusTone.verified
+                                          : ColdBoreStatusTone.calculated,
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  'Distance ${record.distance.toStringAsFixed(0)} ${_distanceUnitLabel(record.distanceUnit)} • ${_formatDate(record.createdAt)}',
+                                ),
+                                const SizedBox(height: 6),
+                                Wrap(
+                                  spacing: 6,
+                                  runSpacing: 6,
+                                  children: [
+                                    ColdBoreStatusPill(
+                                      label:
+                                          'Elev ${(record.isVerified ? record.verifiedElevation : record.calculatedElevation).toStringAsFixed(2)} ${_elevationUnitLabel(record.outputUnit)}',
+                                    ),
+                                    ColdBoreStatusPill(
+                                      label:
+                                          'Wind ${(record.isVerified ? record.verifiedWind : record.calculatedWind).toStringAsFixed(2)} ${_elevationUnitLabel(record.outputUnit)}',
+                                    ),
+                                    if (record.isVerified)
+                                      ColdBoreStatusPill(
+                                        label:
+                                            '$confirmations confirmation${confirmations == 1 ? '' : 's'}',
+                                        tone: confirmations > 0
+                                            ? ColdBoreStatusTone.verified
+                                            : ColdBoreStatusTone.neutral,
+                                      ),
+                                  ],
+                                ),
+                              ],
                             ),
                           );
                         }),
@@ -10422,41 +10827,76 @@ class _UsersScreenState extends State<UsersScreen> {
     final users = widget.state.users;
     final active = widget.state.activeUser;
 
-    return Scaffold(
+    return ColdBoreScaffold(
       appBar: AppBar(title: const Text('Users')),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _addUser,
         icon: const Icon(Icons.add),
         label: const Text('Add user'),
       ),
-      body: ListView.separated(
-        itemCount: users.length,
-        separatorBuilder: (_, __) => const Divider(height: 1),
-        itemBuilder: (context, index) {
-          final u = users[index];
-          final isActive = active?.id == u.id;
-          final canDelete = users.length > 1;
-          return ListTile(
-            title: Text(_displayUserName(u)),
-            subtitle: Text(_displayUserIdentifier(u.identifier)),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
+      body: ListView(
+        padding: const EdgeInsets.all(12),
+        children: [
+          const ColdBoreSectionHeader(
+            title: 'Profiles',
+            subtitle: 'Switch active user profiles used for session ownership and sharing.',
+          ),
+          const SizedBox(height: 10),
+          ColdBoreCard(
+            padding: const EdgeInsets.all(12),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
-                if (isActive) const Icon(Icons.check_circle_outline),
-                if (canDelete)
-                  IconButton(
-                    tooltip: 'Delete user',
-                    onPressed: () => _deleteUser(u),
-                    icon: const Icon(Icons.delete_outline),
-                  ),
+                ColdBoreMetricTile(
+                  label: 'Users',
+                  value: '${users.length}',
+                  icon: Icons.group_outlined,
+                ),
+                ColdBoreMetricTile(
+                  label: 'Active',
+                  value: active == null ? 'None' : _displayUserName(active),
+                  icon: Icons.person_outline,
+                ),
               ],
             ),
-            onTap: () {
-              widget.state.switchUser(u);
-              Navigator.of(context).pop();
-            },
-          );
-        },
+          ),
+          const SizedBox(height: 8),
+          ...users.map((u) {
+            final isActive = active?.id == u.id;
+            final canDelete = users.length > 1;
+            return ColdBoreCard(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                leading: Icon(
+                  isActive ? Icons.check_circle_outline : Icons.person_outline,
+                ),
+                title: Text(_displayUserName(u)),
+                subtitle: Text(_displayUserIdentifier(u.identifier)),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (isActive)
+                      const ColdBoreStatusPill(
+                        label: 'Active',
+                        tone: ColdBoreStatusTone.verified,
+                      ),
+                    if (canDelete)
+                      IconButton(
+                        tooltip: 'Delete user',
+                        onPressed: () => _deleteUser(u),
+                        icon: const Icon(Icons.delete_outline),
+                      ),
+                  ],
+                ),
+                onTap: () {
+                  widget.state.switchUser(u);
+                  Navigator.of(context).pop();
+                },
+              ),
+            );
+          }),
+        ],
       ),
     );
   }
@@ -10871,55 +11311,123 @@ class _SessionsScreenState extends State<SessionsScreen> {
       if (s.archived) 'Archived',
     ];
 
-    return ListTile(
-      title: Text(
-        s.locationName.trim().isEmpty ? '(No location)' : s.locationName,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      subtitle: Text(
-        _cleanText(_joinNonEmpty(subtitleBits)),
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-      ),
-      leading: s.shots.any((x) => x.isColdBore)
-          ? const Icon(Icons.ac_unit_outlined)
-          : const Icon(Icons.event_note_outlined),
-      trailing: PopupMenuButton<String>(
-        onSelected: (value) async {
-          if (value == 'folder') {
-            await _editFolder(context, s);
-            return;
-          }
-          if (value == 'archive') {
-            widget.state.setSessionArchived(sessionId: s.id, archived: true);
-            return;
-          }
-          if (value == 'unarchive') {
-            widget.state.setSessionArchived(sessionId: s.id, archived: false);
-            return;
-          }
-          if (value == 'delete') {
-            await _deleteSession(context, s);
-          }
+    final weatherBits = <String>[];
+    if (s.temperatureF != null) {
+      weatherBits.add('${s.temperatureF!.toStringAsFixed(0)} F');
+    }
+    if (s.windSpeedMph != null) {
+      weatherBits.add('${s.windSpeedMph!.toStringAsFixed(0)} mph');
+    }
+    final weatherLine = weatherBits.isEmpty ? 'No weather saved' : weatherBits.join(' • ');
+    final coldBoreCount = s.shots.where((x) => x.isColdBore).length;
+
+    return ColdBoreCard(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) =>
+                  SessionDetailScreen(state: widget.state, sessionId: s.id),
+            ),
+          );
         },
-        itemBuilder: (_) => [
-          const PopupMenuItem(value: 'folder', child: Text('Set folder')),
-          PopupMenuItem(
-            value: s.archived ? 'unarchive' : 'archive',
-            child: Text(s.archived ? 'Unarchive' : 'Archive'),
-          ),
-          const PopupMenuItem(value: 'delete', child: Text('Delete session')),
-        ],
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  s.shots.any((x) => x.isColdBore)
+                      ? Icons.ac_unit_outlined
+                      : Icons.event_note_outlined,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        s.locationName.trim().isEmpty
+                            ? '(No location)'
+                            : s.locationName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _cleanText(_joinNonEmpty(subtitleBits)),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurface
+                              .withValues(alpha: 0.78),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                PopupMenuButton<String>(
+                  onSelected: (value) async {
+                    if (value == 'folder') {
+                      await _editFolder(context, s);
+                      return;
+                    }
+                    if (value == 'archive') {
+                      widget.state.setSessionArchived(sessionId: s.id, archived: true);
+                      return;
+                    }
+                    if (value == 'unarchive') {
+                      widget.state.setSessionArchived(sessionId: s.id, archived: false);
+                      return;
+                    }
+                    if (value == 'delete') {
+                      await _deleteSession(context, s);
+                    }
+                  },
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(value: 'folder', child: Text('Set folder')),
+                    PopupMenuItem(
+                      value: s.archived ? 'unarchive' : 'archive',
+                      child: Text(s.archived ? 'Unarchive' : 'Archive'),
+                    ),
+                    const PopupMenuItem(value: 'delete', child: Text('Delete session')),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                ColdBoreStatusPill(label: '${s.shots.length} shots'),
+                ColdBoreStatusPill(
+                  label: '$coldBoreCount cold bore',
+                  tone: coldBoreCount > 0
+                      ? ColdBoreStatusTone.verified
+                      : ColdBoreStatusTone.neutral,
+                ),
+                ColdBoreStatusPill(label: weatherLine),
+                if (s.archived)
+                  const ColdBoreStatusPill(
+                    label: 'Archived',
+                    tone: ColdBoreStatusTone.warning,
+                  ),
+              ],
+            ),
+          ],
+        ),
       ),
-      onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) =>
-                SessionDetailScreen(state: widget.state, sessionId: s.id),
-          ),
-        );
-      },
     );
   }
 
@@ -11014,7 +11522,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
           }
         }
 
-        return Scaffold(
+        return ColdBoreScaffold(
           floatingActionButton: FloatingActionButton.extended(
             onPressed: () => _newSession(context),
             icon: const Icon(Icons.add),
@@ -11023,13 +11531,67 @@ class _SessionsScreenState extends State<SessionsScreen> {
           body: ListView(
             padding: const EdgeInsets.all(12),
             children: [
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      ListTile(
+              ColdBoreCard(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ColdBoreSectionHeader(
+                      title: 'Home Dashboard',
+                      subtitle:
+                          'Current weather, rifle summary, quick actions, and recent sessions.',
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        ColdBoreMetricTile(
+                          label: 'Sessions',
+                          value: '${sessions.length}',
+                          icon: Icons.event_note_outlined,
+                        ),
+                        ColdBoreMetricTile(
+                          label: 'Rifles',
+                          value: '${widget.state.rifles.length}',
+                          icon: Icons.sports_martial_arts_outlined,
+                        ),
+                        ColdBoreMetricTile(
+                          label: 'Weather',
+                          value: widget.state.temperatureF == null
+                              ? 'N/A'
+                              : '${widget.state.temperatureF!.toStringAsFixed(0)} F',
+                          icon: Icons.cloud_outlined,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        ColdBorePrimaryButton(
+                          label: 'New Session',
+                          icon: Icons.add,
+                          onPressed: () => _newSession(context),
+                        ),
+                        FilledButton.tonalIcon(
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => BallisticAssistantScreen(
+                                  state: widget.state,
+                                ),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.calculate_outlined),
+                          label: const Text('Ballistics'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    ListTile(
                         contentPadding: EdgeInsets.zero,
                         leading: const Icon(Icons.tune),
                         title: const Text(
@@ -11060,9 +11622,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
                         const SizedBox(height: 8),
                         DropdownButtonFormField<String>(
                           initialValue: _groupBy,
-                          decoration: const InputDecoration(
-                            labelText: 'Group by',
-                          ),
+                          decoration: coldBoreDropdownStyle(label: 'Group by'),
                           items: const [
                             DropdownMenuItem(
                               value: 'none',
@@ -11087,9 +11647,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
                         const SizedBox(height: 8),
                         DropdownButtonFormField<int?>(
                           initialValue: _yearFilter,
-                          decoration: const InputDecoration(
-                            labelText: 'Year filter',
-                          ),
+                          decoration: coldBoreDropdownStyle(label: 'Year filter'),
                           items: [
                             const DropdownMenuItem<int?>(
                               value: null,
@@ -11182,7 +11740,6 @@ class _SessionsScreenState extends State<SessionsScreen> {
                         ),
                       ],
                     ],
-                  ),
                 ),
               ),
               const SizedBox(height: 8),
@@ -11203,7 +11760,8 @@ class _SessionsScreenState extends State<SessionsScreen> {
                         _groupStorageKey(_groupBy, entry.key),
                       );
                   children.add(
-                    Card(
+                    ColdBoreCard(
+                      padding: const EdgeInsets.all(8),
                       child: Column(
                         children: [
                           if (isCollapsible)
@@ -11227,12 +11785,8 @@ class _SessionsScreenState extends State<SessionsScreen> {
                                   _toggleGroupCollapsed(_groupBy, entry.key),
                             ),
                           if (!isCollapsible || !isCollapsed) ...[
-                            if (isCollapsible) const Divider(height: 1),
-                            for (var i = 0; i < entry.value.length; i++) ...[
+                            for (var i = 0; i < entry.value.length; i++)
                               _sessionTile(context, entry.value[i]),
-                              if (i < entry.value.length - 1)
-                                const Divider(height: 1),
-                            ],
                           ],
                         ],
                       ),
@@ -12580,11 +13134,18 @@ class ShotTimerToolScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return ColdBoreScaffold(
       appBar: AppBar(title: const Text('Shot Timer')),
       body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [_StandaloneShotTimerCard(state: state)],
+        padding: const EdgeInsets.all(12),
+        children: [
+          const ColdBoreSectionHeader(
+            title: 'Timer Tool',
+            subtitle: 'Run standalone timing drills with shot split capture and optional audio assist.',
+          ),
+          const SizedBox(height: 8),
+          _StandaloneShotTimerCard(state: state),
+        ],
       ),
     );
   }
@@ -14317,7 +14878,9 @@ class SessionDetailScreen extends StatelessWidget {
       builder: (context, _) {
         final s = state.getSessionById(sessionId);
         if (s == null) {
-          return const Scaffold(body: Center(child: Text('Session not found')));
+          return const ColdBoreScaffold(
+            body: Center(child: Text('Session not found')),
+          );
         }
 
         final rifle = state.rifleById(s.rifleId);
@@ -14436,7 +14999,7 @@ class SessionDetailScreen extends StatelessWidget {
         final currentTrainingDope =
             s.trainingDopeByString[s.activeStringId] ?? const <DopeEntry>[];
 
-        return Scaffold(
+        return ColdBoreScaffold(
           appBar: AppBar(
             title: const Text('Session'),
             actions: [
@@ -14504,26 +15067,51 @@ class SessionDetailScreen extends StatelessWidget {
           body: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              Text(
-                canViewLocation
-                    ? (s.locationName.isEmpty ? 'Session' : s.locationName)
-                    : 'Private location',
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
+              ColdBoreCard(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ColdBoreSectionHeader(
+                      title: canViewLocation
+                          ? (s.locationName.isEmpty ? 'Session' : s.locationName)
+                          : 'Private location',
+                      subtitle: _fmtDateTime(s.dateTime),
+                    ),
+                    if (!isSessionOwner) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        'Shared by: $ownerIdentifier',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        ColdBoreStatusPill(
+                          label: s.endedAt == null ? 'Active' : 'Ended',
+                          tone: s.endedAt == null
+                              ? ColdBoreStatusTone.neutral
+                              : ColdBoreStatusTone.verified,
+                        ),
+                        ColdBoreStatusPill(
+                          label:
+                              'Shot count ${s.confirmedShotCount ?? s.shots.length}',
+                        ),
+                        if (s.shotCountAppliedToRifle)
+                          const ColdBoreStatusPill(
+                            label: 'Applied to rifles',
+                            tone: ColdBoreStatusTone.verified,
+                          ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 6),
-              Text(_fmtDateTime(s.dateTime)),
-              if (!isSessionOwner) ...[
-                const SizedBox(height: 4),
-                Text(
-                  'Shared by: $ownerIdentifier',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ],
+              const SizedBox(height: 8),
               if (s.endedAt != null) ...[
-                const SizedBox(height: 8),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
@@ -14543,7 +15131,7 @@ class SessionDetailScreen extends StatelessWidget {
               ],
 
               const SizedBox(height: 8),
-              Card(
+              ColdBoreCard(
                 child: Padding(
                   padding: const EdgeInsets.all(12),
                   child: ExpansionTile(
@@ -14613,7 +15201,7 @@ class SessionDetailScreen extends StatelessWidget {
               ),
               _SectionTitle('Notes'),
               const SizedBox(height: 8),
-              Card(
+              ColdBoreCard(
                 child: Padding(
                   padding: const EdgeInsets.all(12),
                   child: Column(
@@ -14642,12 +15230,16 @@ class SessionDetailScreen extends StatelessWidget {
               ),
               _SectionTitle('String'),
               const SizedBox(height: 8),
-              _StringSummaryCard(state: state, session: s),
+              ColdBoreCard(
+                child: _StringSummaryCard(state: state, session: s),
+              ),
               const SizedBox(height: 16),
               _SectionTitle('Loadout'),
               const SizedBox(height: 8),
-              Column(
-                children: [
+              ColdBoreCard(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  children: [
                   DropdownButtonFormField<String?>(
                     initialValue: s.rifleId,
                     isExpanded: true,
@@ -14932,7 +15524,8 @@ class SessionDetailScreen extends StatelessWidget {
                             }
                           },
                   ),
-                ],
+                  ],
+                ),
               ),
               const SizedBox(height: 16),
               Row(
@@ -14975,7 +15568,7 @@ class SessionDetailScreen extends StatelessWidget {
                         : (e.windageRight > 0
                               ? 'R ${e.windageRight.toStringAsFixed(2)}'
                               : '-');
-                    return Card(
+                    return ColdBoreCard(
                       child: ListTile(
                         title: Text(
                           '${e.distance} ${e.distanceUnit.name}  •  ${e.elevation.toStringAsFixed(2)} ${e.elevationUnit.name.toUpperCase()}',
@@ -15040,7 +15633,7 @@ class SessionDetailScreen extends StatelessWidget {
                 ...s.shots
                     .where((x) => x.isColdBore)
                     .map(
-                      (shot) => Card(
+                      (shot) => ColdBoreCard(
                         child: ListTile(
                           leading: Icon(
                             shot.isBaseline
@@ -15164,7 +15757,7 @@ class SessionDetailScreen extends StatelessWidget {
                             : (e.windageRight > 0
                                   ? 'R ${e.windageRight.toStringAsFixed(2)}'
                                   : '-');
-                        return Card(
+                        return ColdBoreCard(
                           child: ListTile(
                             title: Text(
                               '${dk.value.toStringAsFixed(0)} ${dk.unit == DistanceUnit.yards ? 'yd' : 'm'}'
@@ -15313,7 +15906,7 @@ class SessionDetailScreen extends StatelessWidget {
                 if (s.sessionPhotos.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   ...s.sessionPhotos.map(
-                    (p) => Card(
+                    (p) => ColdBoreCard(
                       child: ListTile(
                         leading: ClipRRect(
                           borderRadius: BorderRadius.circular(6),
@@ -15366,7 +15959,7 @@ class SessionDetailScreen extends StatelessWidget {
                 if (s.photos.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   ...s.photos.map(
-                    (p) => Card(
+                    (p) => ColdBoreCard(
                       child: ListTile(
                         leading: const Icon(Icons.sticky_note_2_outlined),
                         title: Text(p.caption),
@@ -15613,7 +16206,7 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
                 padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
                 child: Column(
                   children: [
-                    Card(
+                    ColdBoreCard(
                       child: Padding(
                         padding: const EdgeInsets.all(12),
                         child: Column(
@@ -15760,7 +16353,7 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
                       rows: filteredRows,
                     ),
                     const SizedBox(height: 12),
-                    Card(
+                    ColdBoreCard(
                       child: Padding(
                         padding: const EdgeInsets.all(12),
                         child: Column(
@@ -15819,35 +16412,37 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
                 : r.session.strings.indexWhere((x) => x.id == r.stringId);
             return Column(
               children: [
-                ListTile(
-                  leading: Icon(
-                    r.shot.isBaseline ? Icons.star : Icons.ac_unit_outlined,
-                  ),
-                  title: Text(
-                    '${r.shot.distance} • ${r.shot.result}${r.shot.photos.isEmpty ? '' : ' • ${r.shot.photos.length} photo(s)'}',
-                  ),
-                  subtitle: Text(
-                    [
-                      _fmtDateTime(r.shot.time),
-                      r.session.locationName,
-                      if (rifle != null) rifle.name ?? '',
-                      if (ammo != null) ammo.name ?? '',
-                      if (stringIndex >= 0) 'String ${stringIndex + 1}',
-                    ].join(' • '),
-                  ),
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => ColdBoreEntryScreen(
-                          state: state,
-                          sessionId: r.session.id,
-                          shotId: r.shot.id,
+                ColdBoreCard(
+                  margin: const EdgeInsets.fromLTRB(12, 6, 12, 2),
+                  child: ListTile(
+                    leading: Icon(
+                      r.shot.isBaseline ? Icons.star : Icons.ac_unit_outlined,
+                    ),
+                    title: Text(
+                      '${r.shot.distance} • ${r.shot.result}${r.shot.photos.isEmpty ? '' : ' • ${r.shot.photos.length} photo(s)'}',
+                    ),
+                    subtitle: Text(
+                      [
+                        _fmtDateTime(r.shot.time),
+                        r.session.locationName,
+                        if (rifle != null) rifle.name ?? '',
+                        if (ammo != null) ammo.name ?? '',
+                        if (stringIndex >= 0) 'String ${stringIndex + 1}',
+                      ].join(' • '),
+                    ),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => ColdBoreEntryScreen(
+                            state: state,
+                            sessionId: r.session.id,
+                            shotId: r.shot.id,
+                          ),
                         ),
-                      ),
-                    );
-                  },
+                      );
+                    },
+                  ),
                 ),
-                const Divider(height: 1),
               ],
             );
           },
@@ -15929,7 +16524,7 @@ class _ColdBoreTargetCard extends StatelessWidget {
     };
     final showComboLegend = sortedComboKeys.length > 1;
 
-    return Card(
+    return ColdBoreCard(
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
@@ -16124,7 +16719,7 @@ class _ColdBoreTargetGalleryCard extends StatelessWidget {
     final photoRows = rows.where((row) => row.shot.photos.isNotEmpty).toList()
       ..sort((a, b) => b.shot.time.compareTo(a.shot.time));
 
-    return Card(
+    return ColdBoreCard(
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
@@ -16555,7 +17150,7 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
           return parts.isEmpty ? 'No weather saved' : parts.join(' • ');
         }
 
-        return Scaffold(
+        return ColdBoreScaffold(
           appBar: AppBar(
             title: Text(shot.isBaseline ? 'Cold Bore (Baseline)' : 'Cold Bore'),
             actions: [
@@ -16597,7 +17192,7 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
               const SizedBox(height: 16),
               _SectionTitle('Session Data'),
               const SizedBox(height: 8),
-              Card(
+              ColdBoreCard(
                 child: Padding(
                   padding: const EdgeInsets.all(12),
                   child: Column(
@@ -16663,7 +17258,7 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  ElevatedButton.icon(
+                  FilledButton.icon(
                     onPressed: () => _pick(source: ImageSource.camera),
                     icon: const Icon(Icons.photo_camera_outlined),
                     label: const Text('Take Photo'),
@@ -17043,7 +17638,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
         final rifles = widget.state.rifles;
         final ammo = widget.state.ammoLots;
 
-        return Scaffold(
+        return ColdBoreScaffold(
           floatingActionButton: FloatingActionButton.extended(
             onPressed: _seg == 0 ? _addRifle : _addAmmo,
             icon: const Icon(Icons.add),
@@ -17071,6 +17666,31 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                   onSelectionChanged: (s) => setState(() => _seg = s.first),
                 ),
                 const SizedBox(height: 12),
+                ColdBoreCard(
+                  padding: const EdgeInsets.all(12),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      ColdBoreMetricTile(
+                        label: 'Rifles',
+                        value: '${rifles.length}',
+                        icon: Icons.sports_martial_arts_outlined,
+                      ),
+                      ColdBoreMetricTile(
+                        label: 'Ammo Lots',
+                        value: '${ammo.length}',
+                        icon: Icons.inventory_2_outlined,
+                      ),
+                      ColdBoreMetricTile(
+                        label: 'Total Rounds',
+                        value: '${rifles.fold<int>(0, (sum, rifle) => sum + rifle.manualRoundCount)}',
+                        icon: Icons.exposure_plus_1,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
                 Expanded(
                   child: _seg == 0
                       ? _EquipmentList(
@@ -17079,44 +17699,90 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                               'Tap "Add Rifle" to create your first rifle.',
                           items: rifles
                               .map(
-                                (r) => ListTile(
+                                (r) {
+                                  final displayName =
+                                      (('${(r.manufacturer ?? '').trim()} ${(r.model ?? '').trim()}')
+                                              .trim()
+                                              .isNotEmpty)
+                                          ? ('${(r.manufacturer ?? '').trim()} ${(r.model ?? '').trim()}')
+                                                .trim()
+                                          : (((r.name ?? '').trim().isNotEmpty)
+                                                ? (r.name ?? '').trim()
+                                                : 'Rifle');
+                                  final rows = widget.state
+                                      .coldBoreRowsForActiveUser()
+                                      .where(
+                                        (row) =>
+                                            row.rifle?.id == r.id &&
+                                            row.shot.offsetX != null &&
+                                            row.shot.offsetY != null,
+                                      )
+                                      .toList();
+                                  final radialMoa = rows
+                                      .map(
+                                        (row) => math.sqrt(
+                                          math.pow(
+                                            _shotOffsetToMoa(
+                                              row.shot,
+                                              row.shot.offsetX!,
+                                            ),
+                                            2,
+                                          ) +
+                                              math.pow(
+                                                _shotOffsetToMoa(
+                                                  row.shot,
+                                                  row.shot.offsetY!,
+                                                ),
+                                                2,
+                                              ),
+                                        ),
+                                      )
+                                      .toList();
+                                  final coldBoreAvg = radialMoa.isEmpty
+                                      ? null
+                                      : (radialMoa.reduce((a, b) => a + b) /
+                                            radialMoa.length);
+
+                                  final verifiedCount = widget.state
+                                      .ballisticDopeRecords
+                                      .where((e) => e.rifleId == r.id && e.isVerified)
+                                      .length;
+                                  final maintenance =
+                                      widget.state.maintenanceSnapshotForRifle(r.id);
+
+                                  return ListTile(
                                   leading: const Icon(
                                     Icons.sports_martial_arts_outlined,
                                   ),
-                                  title: Text(
-                                    (('${(r.manufacturer ?? '').trim()} ${(r.model ?? '').trim()}')
-                                            .trim()
-                                            .isNotEmpty)
-                                        ? ('${(r.manufacturer ?? '').trim()} ${(r.model ?? '').trim()}')
-                                              .trim()
-                                        : (((r.name ?? '').trim().isNotEmpty)
-                                              ? (r.name ?? '').trim()
-                                              : 'Rifle'),
-                                  ),
-                                  subtitle: Text(
-                                    r.caliber +
-                                        (((r.name ?? '').trim().isEmpty)
-                                            ? ''
-                                            : ' • Nickname: ${(r.name ?? '').trim()}') +
-                                        (((r.manufacturer ?? '').trim().isEmpty)
-                                            ? ''
-                                            : ' • ${(r.manufacturer ?? '').trim()}') +
-                                        (((r.model ?? '').trim().isEmpty)
-                                            ? ''
-                                            : ' • ${(r.model ?? '').trim()}') +
-                                        ((r.serialNumber == null ||
-                                                r.serialNumber!.isEmpty)
-                                            ? ''
-                                            : ' • SN ${r.serialNumber!}') +
-                                        (r.purchaseDate == null
-                                            ? ''
-                                            : ' • ${_fmtDate(r.purchaseDate!)}') +
-                                        (r.notes.isEmpty
-                                            ? ''
-                                            : ' • ${r.notes}') +
-                                        (r.dope.trim().isEmpty
-                                            ? ''
-                                            : ' • DOPE saved'),
+                                  title: Text(displayName),
+                                  subtitle: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const SizedBox(height: 4),
+                                      Text('Caliber ${r.caliber} • ${r.manualRoundCount} rounds'),
+                                      const SizedBox(height: 6),
+                                      Wrap(
+                                        spacing: 6,
+                                        runSpacing: 6,
+                                        children: [
+                                          ColdBoreStatusPill(
+                                            label: 'Cold bore avg ${coldBoreAvg == null ? 'N/A' : '${coldBoreAvg.toStringAsFixed(2)} MOA'}',
+                                          ),
+                                          ColdBoreStatusPill(
+                                            label: 'Verified DOPE $verifiedCount',
+                                            tone: verifiedCount > 0
+                                                ? ColdBoreStatusTone.verified
+                                                : ColdBoreStatusTone.neutral,
+                                          ),
+                                          ColdBoreStatusPill(
+                                            label: _maintenanceDueLabel(maintenance.overallStatus),
+                                            tone: _maintenanceStatusTone(
+                                              maintenance.overallStatus,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
                                   ),
                                   trailing: PopupMenuButton<String>(
                                     onSelected: (v) async {
@@ -17176,7 +17842,8 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                                       ),
                                     ],
                                   ),
-                                ),
+                                );
+                                },
                               )
                               .toList(),
                         )
@@ -17269,10 +17936,12 @@ class _EquipmentList extends StatelessWidget {
       );
     }
 
-    return ListView.separated(
+    return ListView.builder(
       itemCount: items.length,
-      separatorBuilder: (_, __) => const Divider(height: 1),
-      itemBuilder: (context, i) => items[i],
+      itemBuilder: (context, i) => ColdBoreCard(
+        margin: const EdgeInsets.only(bottom: 8),
+        child: items[i],
+      ),
     );
   }
 }
@@ -19515,31 +20184,66 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
     return AnimatedBuilder(
       animation: widget.state,
       builder: (context, _) {
-        return Scaffold(
-          body: Padding(
-            padding: const EdgeInsets.all(16),
-            child: ListView(
-              children: [
-                const _SectionTitle('Export'),
-                Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.picture_as_pdf_outlined),
-                    title: const Text('PDF report (choose sections)'),
-                    subtitle: const Text(
-                      'Select what to include: charts, sessions, rifles, ammo, maintenance.',
+        final sessionCount = widget.state.allSessions.length;
+        final rifleCount = widget.state.rifles.length;
+        final ammoCount = widget.state.ammoLots.length;
+
+        return ColdBoreScaffold(
+          body: ListView(
+            padding: const EdgeInsets.all(12),
+            children: [
+              const ColdBoreSectionHeader(
+                title: 'Export',
+                subtitle: 'Create polished reports and use presets for repeat workflows.',
+              ),
+              const SizedBox(height: 10),
+              ColdBoreCard(
+                padding: const EdgeInsets.all(12),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    ColdBoreMetricTile(
+                      label: 'Sessions',
+                      value: '$sessionCount',
+                      icon: Icons.event_note_outlined,
                     ),
-                    onTap: () => _exportPdfReport(context),
-                  ),
+                    ColdBoreMetricTile(
+                      label: 'Rifles',
+                      value: '$rifleCount',
+                      icon: Icons.sports_martial_arts_outlined,
+                    ),
+                    ColdBoreMetricTile(
+                      label: 'Ammo Lots',
+                      value: '$ammoCount',
+                      icon: Icons.inventory_2_outlined,
+                    ),
+                  ],
                 ),
-                if (_builtinPdfPresets.isNotEmpty ||
-                    _savedPdfPresets.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Quick PDF presets',
-                    style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              ColdBoreCard(
+                child: ListTile(
+                  leading: const Icon(Icons.picture_as_pdf_outlined),
+                  title: const Text('PDF report (choose sections)'),
+                  subtitle: const Text(
+                    'Select what to include: charts, sessions, rifles, ammo, maintenance.',
                   ),
-                  const SizedBox(height: 8),
-                  Wrap(
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _exportPdfReport(context),
+                ),
+              ),
+              if (_builtinPdfPresets.isNotEmpty ||
+                  _savedPdfPresets.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                const ColdBoreSectionHeader(
+                  title: 'Quick Presets',
+                  subtitle: 'Run standard report formats with one tap.',
+                ),
+                const SizedBox(height: 8),
+                ColdBoreCard(
+                  padding: const EdgeInsets.all(12),
+                  child: Wrap(
                     spacing: 8,
                     runSpacing: 8,
                     children: [
@@ -19562,9 +20266,9 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                         ),
                     ],
                   ),
-                ],
+                ),
               ],
-            ),
+            ],
           ),
         );
       },
@@ -19597,22 +20301,39 @@ class _EmptyState extends StatelessWidget {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 56, color: cs.onSurface.withValues(alpha: 0.7)),
-            const SizedBox(height: 12),
-            Text(
-              title,
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 8),
-            Text(message, textAlign: TextAlign.center),
-            if (actionLabel != null && onAction != null) ...[
-              const SizedBox(height: 16),
-              ElevatedButton(onPressed: onAction, child: Text(actionLabel!)),
+        child: ColdBoreCard(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  color: cs.primary.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: cs.primary.withValues(alpha: 0.3)),
+                ),
+                alignment: Alignment.center,
+                child: Icon(icon, size: 36, color: cs.primary),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                title,
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(message, textAlign: TextAlign.center),
+              if (actionLabel != null && onAction != null) ...[
+                const SizedBox(height: 16),
+                ColdBorePrimaryButton(
+                  label: actionLabel!,
+                  onPressed: onAction,
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -19686,20 +20407,18 @@ class _StringSummaryCard extends StatelessWidget {
 
     final started = (active == null) ? '—' : _fmt(active.startedAt);
 
-    return Card(
-      child: ListTile(
-        title: Text('String $n of $total'),
-        subtitle: Text(
-          'Started: $started\nRifle: ${_rifleLabel(active?.rifleId)}\nAmmo: ${_ammoLabel(active?.ammoLotId)}',
-        ),
-        trailing: const Icon(Icons.list),
-        onTap: () {
-          showDialog(
-            context: context,
-            builder: (_) => _StringsDialog(state: state, session: session),
-          );
-        },
+    return ListTile(
+      title: Text('String $n of $total'),
+      subtitle: Text(
+        'Started: $started\nRifle: ${_rifleLabel(active?.rifleId)}\nAmmo: ${_ammoLabel(active?.ammoLotId)}',
       ),
+      trailing: const Icon(Icons.list),
+      onTap: () {
+        showDialog(
+          context: context,
+          builder: (_) => _StringsDialog(state: state, session: session),
+        );
+      },
     );
   }
 }
@@ -19810,7 +20529,7 @@ class _SectionTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(text, style: const TextStyle(fontWeight: FontWeight.w800));
+    return ColdBoreSectionHeader(title: text);
   }
 }
 
@@ -19831,38 +20550,60 @@ class _HintCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(padding: const EdgeInsets.only(top: 2), child: Icon(icon)),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(message),
-                  if (actionLabel != null && onAction != null) ...[
-                    const SizedBox(height: 10),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: OutlinedButton(
-                        onPressed: onAction,
-                        child: Text(actionLabel!),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
+    final outline = Theme.of(context).colorScheme.outline.withValues(alpha: 0.35);
+    return ColdBoreCard(
+      padding: const EdgeInsets.all(14),
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border(
+            left: BorderSide(
+              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.55),
+              width: 3,
             ),
-          ],
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.only(left: 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: outline),
+                  ),
+                  child: Icon(icon, size: 18),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(message),
+                    if (actionLabel != null && onAction != null) ...[
+                      const SizedBox(height: 10),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: OutlinedButton(
+                          onPressed: onAction,
+                          child: Text(actionLabel!),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -21745,7 +22486,7 @@ class DopeManagerScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final entries = rifle.dopeEntries;
-    return Scaffold(
+    return ColdBoreScaffold(
       appBar: AppBar(title: Text('DOPE • ${rifle.name}')),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
@@ -21774,10 +22515,9 @@ class DopeManagerScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'No DOPE entries yet.',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                  ),
+                  const ColdBoreSectionHeader(title: 'DOPE Library'),
+                  const SizedBox(height: 8),
+                  const Text('No DOPE entries yet.'),
                   const SizedBox(height: 8),
                   const Text('Tap + to add your first DOPE entry.'),
                   if (rifle.dope.trim().isNotEmpty) ...[
@@ -22041,7 +22781,7 @@ class MaintenanceHubScreen extends StatelessWidget {
             )
             .toList();
 
-        return Scaffold(
+        return ColdBoreScaffold(
           appBar: AppBar(title: const Text('Maintenance')),
           body: snapshots.isEmpty
               ? const _EmptyState(
@@ -22053,6 +22793,11 @@ class MaintenanceHubScreen extends StatelessWidget {
               : ListView(
                   padding: const EdgeInsets.all(12),
                   children: [
+                    const ColdBoreSectionHeader(
+                      title: 'Maintenance Dashboard',
+                      subtitle: 'Track rifle health, reminder status, and service activity.',
+                    ),
+                    const SizedBox(height: 10),
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
@@ -22082,7 +22827,7 @@ class MaintenanceHubScreen extends StatelessWidget {
                     ),
                     if (attention.isNotEmpty) ...[
                       const SizedBox(height: 12),
-                      Card(
+                      ColdBoreCard(
                         child: Padding(
                           padding: const EdgeInsets.all(12),
                           child: Column(
@@ -22148,7 +22893,7 @@ class MaintenanceHubScreen extends StatelessWidget {
                                 ? 'No services logged yet'
                                 : 'Last service ${_fmtDate(snapshot.lastService!.date)}')
                           : '${snapshot.overdueCount} overdue • ${snapshot.dueSoonCount} due soon';
-                      return Card(
+                      return ColdBoreCard(
                         child: ListTile(
                           leading: Icon(Icons.build_outlined, color: color),
                           title: Text(_rifleLabel(snapshot.rifle)),
@@ -22332,7 +23077,7 @@ class _RifleServiceLogScreenState extends State<RifleServiceLogScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return ColdBoreScaffold(
       appBar: AppBar(
         title: const Text('Service log'),
         actions: [
@@ -22390,7 +23135,7 @@ class _RifleServiceLogScreenState extends State<RifleServiceLogScreen> {
           return ListView(
             padding: const EdgeInsets.all(12),
             children: [
-              Card(
+              ColdBoreCard(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
@@ -22444,7 +23189,7 @@ class _RifleServiceLogScreenState extends State<RifleServiceLogScreen> {
               ),
               const SizedBox(height: 12),
               if (snapshot.statuses.isEmpty)
-                Card(
+                ColdBoreCard(
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: Column(
@@ -22478,7 +23223,7 @@ class _RifleServiceLogScreenState extends State<RifleServiceLogScreen> {
                     context,
                     status.status,
                   );
-                  return Card(
+                  return ColdBoreCard(
                     child: Padding(
                       padding: const EdgeInsets.all(12),
                       child: Column(
@@ -22571,7 +23316,7 @@ class _RifleServiceLogScreenState extends State<RifleServiceLogScreen> {
               ),
               const SizedBox(height: 12),
               if (filteredServices.isEmpty)
-                const Card(
+                const ColdBoreCard(
                   child: Padding(
                     padding: EdgeInsets.all(16),
                     child: Text('No service entries match the current filter.'),
@@ -22579,7 +23324,7 @@ class _RifleServiceLogScreenState extends State<RifleServiceLogScreen> {
                 )
               else
                 ...filteredServices.map(
-                  (service) => Card(
+                  (service) => ColdBoreCard(
                     child: ListTile(
                       leading: Icon(_maintenanceTaskIcon(service.taskType)),
                       title: Text(service.service),
@@ -22867,13 +23612,13 @@ class _RifleMaintenanceRulesScreenState
   Widget build(BuildContext context) {
     final rifle = widget.state.rifleById(widget.rifleId);
     if (rifle == null) {
-      return const Scaffold(body: Center(child: Text('Rifle not found.')));
+      return const ColdBoreScaffold(body: Center(child: Text('Rifle not found.')));
     }
     final rifleModelLabel =
         '${(rifle.manufacturer ?? '').trim()} ${(rifle.model ?? '').trim()}'
             .trim();
 
-    return Scaffold(
+    return ColdBoreScaffold(
       appBar: AppBar(
         title: const Text('Reminder rules'),
         actions: [TextButton(onPressed: _save, child: const Text('Save'))],
@@ -22881,7 +23626,7 @@ class _RifleMaintenanceRulesScreenState
       body: ListView(
         padding: const EdgeInsets.all(12),
         children: [
-          Card(
+          ColdBoreCard(
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Text(
@@ -22893,7 +23638,7 @@ class _RifleMaintenanceRulesScreenState
           ...MaintenanceTaskType.values
               .where(_isConfigurableMaintenanceTask)
               .map(
-                (type) => Card(
+                (type) => ColdBoreCard(
                   child: Padding(
                     padding: const EdgeInsets.all(12),
                     child: Column(
@@ -23180,12 +23925,17 @@ class _BackupScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return ColdBoreScaffold(
       appBar: AppBar(title: const Text('Backup & Restore')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Card(
+          const ColdBoreSectionHeader(
+            title: 'Backup And Restore',
+            subtitle: 'Create full JSON backups or restore imported session and app data files.',
+          ),
+          const SizedBox(height: 10),
+          ColdBoreCard(
             child: ListTile(
               leading: const Icon(Icons.save_alt_outlined),
               title: const Text('Create Backup File (JSON)'),
@@ -23195,7 +23945,7 @@ class _BackupScreen extends StatelessWidget {
               onTap: () => _exportBackupFile(context),
             ),
           ),
-          Card(
+          ColdBoreCard(
             child: ListTile(
               leading: const Icon(Icons.download_outlined),
               title: const Text('Import or Restore JSON File'),
