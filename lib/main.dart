@@ -923,6 +923,10 @@ enum ElevationUnit { mil, moa, inches }
 
 enum WindType { fullValue, clock }
 
+enum DragModel { g1, g7 }
+
+enum BallisticValidationOutcome { confirmedAccurate, adjustmentRequired }
+
 class DistanceKey {
   final double value;
   final DistanceUnit unit;
@@ -968,6 +972,222 @@ class DopeEntry {
     this.windageLeft = 0.0,
     this.windageRight = 0.0,
   });
+}
+
+class BallisticSolverInput {
+  final double distance;
+  final DistanceUnit distanceUnit;
+  final double windSpeedMph;
+  final String windDirectionValue;
+  final double temperatureF;
+  final double pressureInHg;
+  final double humidityPercent;
+  final double zeroDistance;
+  final DistanceUnit zeroDistanceUnit;
+  final double sightHeightInches;
+  final double muzzleVelocityFps;
+  final double ballisticCoefficient;
+  final DragModel dragModel;
+  final ScopeUnit scopeUnit;
+
+  const BallisticSolverInput({
+    required this.distance,
+    required this.distanceUnit,
+    required this.windSpeedMph,
+    required this.windDirectionValue,
+    required this.temperatureF,
+    required this.pressureInHg,
+    required this.humidityPercent,
+    required this.zeroDistance,
+    required this.zeroDistanceUnit,
+    required this.sightHeightInches,
+    required this.muzzleVelocityFps,
+    required this.ballisticCoefficient,
+    required this.dragModel,
+    required this.scopeUnit,
+  });
+}
+
+class BallisticSolution {
+  final double elevation;
+  final double windHold;
+  final ElevationUnit unit;
+  final String solverVersion;
+
+  const BallisticSolution({
+    required this.elevation,
+    required this.windHold,
+    required this.unit,
+    required this.solverVersion,
+  });
+}
+
+class BallisticCalculationService {
+  const BallisticCalculationService();
+
+  // Placeholder solver with physically reasonable behavior and explicit assumptions.
+  // It is intentionally modular so a full external solver can replace this class.
+  BallisticSolution calculate(BallisticSolverInput input) {
+    final distanceYards = input.distanceUnit == DistanceUnit.yards
+        ? input.distance
+        : input.distance * 1.09361;
+    final zeroYards = input.zeroDistanceUnit == DistanceUnit.yards
+        ? input.zeroDistance
+        : input.zeroDistance * 1.09361;
+    final effectiveYards = math.max(0.0, distanceYards - zeroYards);
+
+    // Estimated time of flight approximation using BC and drag model scaling.
+    final dragFactor = input.dragModel == DragModel.g7 ? 0.86 : 1.0;
+    final bcFactor = (1.0 / math.max(0.05, input.ballisticCoefficient)) *
+        dragFactor;
+    final densityScale =
+        (29.92 / math.max(20.0, input.pressureInHg)) *
+        ((input.temperatureF + 459.67) / (59 + 459.67));
+    final tofSeconds =
+        (effectiveYards * 3.0) / math.max(600.0, input.muzzleVelocityFps) *
+        (1.0 + (0.14 * bcFactor * densityScale));
+
+    // Drop and wind estimates in inches.
+    final dropInches = 0.5 * 386.09 * tofSeconds * tofSeconds;
+    final driftInches = input.windSpeedMph * 17.6 * tofSeconds;
+
+    final distanceInches = math.max(1.0, distanceYards * 36.0);
+    final moaPerInch = 1.0 / (distanceInches / 3437.75);
+    final milPerInch = 1.0 / (distanceInches / 3600.0);
+
+    final holdMoa = dropInches * moaPerInch;
+    final windMoa = driftInches * moaPerInch;
+    final holdMil = dropInches * milPerInch;
+    final windMil = driftInches * milPerInch;
+
+    if (input.scopeUnit == ScopeUnit.moa) {
+      return BallisticSolution(
+        elevation: holdMoa,
+        windHold: windMoa,
+        unit: ElevationUnit.moa,
+        solverVersion: 'placeholder-v1',
+      );
+    }
+
+    return BallisticSolution(
+      elevation: holdMil,
+      windHold: windMil,
+      unit: ElevationUnit.mil,
+      solverVersion: 'placeholder-v1',
+    );
+  }
+}
+
+class BallisticDopeRecord {
+  final String id;
+  final String userId;
+  final String rifleId;
+  final String ammoLotId;
+  final DateTime createdAt;
+  final double distance;
+  final DistanceUnit distanceUnit;
+  final double windSpeedMph;
+  final String windDirectionValue;
+  final double temperatureF;
+  final double pressureInHg;
+  final double humidityPercent;
+  final double zeroDistance;
+  final DistanceUnit zeroDistanceUnit;
+  final double sightHeightInches;
+  final double muzzleVelocityFps;
+  final double ballisticCoefficient;
+  final DragModel dragModel;
+  final ElevationUnit outputUnit;
+  final double calculatedElevation;
+  final double calculatedWind;
+  final String solverVersion;
+  final DateTime? validatedAt;
+  final BallisticValidationOutcome? validationOutcome;
+  final double verifiedElevationCorrection;
+  final double verifiedWindCorrection;
+  final String verifiedNotes;
+  final DateTime? verificationDate;
+  final String weatherSnapshot;
+
+  const BallisticDopeRecord({
+    required this.id,
+    required this.userId,
+    required this.rifleId,
+    required this.ammoLotId,
+    required this.createdAt,
+    required this.distance,
+    required this.distanceUnit,
+    required this.windSpeedMph,
+    required this.windDirectionValue,
+    required this.temperatureF,
+    required this.pressureInHg,
+    required this.humidityPercent,
+    required this.zeroDistance,
+    required this.zeroDistanceUnit,
+    required this.sightHeightInches,
+    required this.muzzleVelocityFps,
+    required this.ballisticCoefficient,
+    required this.dragModel,
+    required this.outputUnit,
+    required this.calculatedElevation,
+    required this.calculatedWind,
+    required this.solverVersion,
+    this.validatedAt,
+    this.validationOutcome,
+    this.verifiedElevationCorrection = 0,
+    this.verifiedWindCorrection = 0,
+    this.verifiedNotes = '',
+    this.verificationDate,
+    this.weatherSnapshot = '',
+  });
+
+  bool get isVerified => validatedAt != null;
+
+  double get verifiedElevation => calculatedElevation + verifiedElevationCorrection;
+  double get verifiedWind => calculatedWind + verifiedWindCorrection;
+
+  BallisticDopeRecord copyWith({
+    DateTime? validatedAt,
+    BallisticValidationOutcome? validationOutcome,
+    double? verifiedElevationCorrection,
+    double? verifiedWindCorrection,
+    String? verifiedNotes,
+    DateTime? verificationDate,
+    String? weatherSnapshot,
+  }) {
+    return BallisticDopeRecord(
+      id: id,
+      userId: userId,
+      rifleId: rifleId,
+      ammoLotId: ammoLotId,
+      createdAt: createdAt,
+      distance: distance,
+      distanceUnit: distanceUnit,
+      windSpeedMph: windSpeedMph,
+      windDirectionValue: windDirectionValue,
+      temperatureF: temperatureF,
+      pressureInHg: pressureInHg,
+      humidityPercent: humidityPercent,
+      zeroDistance: zeroDistance,
+      zeroDistanceUnit: zeroDistanceUnit,
+      sightHeightInches: sightHeightInches,
+      muzzleVelocityFps: muzzleVelocityFps,
+      ballisticCoefficient: ballisticCoefficient,
+      dragModel: dragModel,
+      outputUnit: outputUnit,
+      calculatedElevation: calculatedElevation,
+      calculatedWind: calculatedWind,
+      solverVersion: solverVersion,
+      validatedAt: validatedAt ?? this.validatedAt,
+      validationOutcome: validationOutcome ?? this.validationOutcome,
+      verifiedElevationCorrection:
+          verifiedElevationCorrection ?? this.verifiedElevationCorrection,
+      verifiedWindCorrection: verifiedWindCorrection ?? this.verifiedWindCorrection,
+      verifiedNotes: verifiedNotes ?? this.verifiedNotes,
+      verificationDate: verificationDate ?? this.verificationDate,
+      weatherSnapshot: weatherSnapshot ?? this.weatherSnapshot,
+    );
+  }
 }
 
 // Separate DOPE entry model for Rifle DOPE list (simple text fields).
@@ -1021,7 +1241,13 @@ class RifleDopeEntry {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+  try {
+    await Firebase.initializeApp();
+  } catch (e, st) {
+    // Web runs can fail when Firebase web config is not set.
+    // Allow local UI testing to continue without cloud services.
+    debugPrint('Firebase initialization skipped: $e\n$st');
+  }
   await AppThemeController().initialize();
   await CloudSyncService().initialize();
   runApp(const ColdBoreApp());
@@ -1952,6 +2178,7 @@ class AppState extends ChangeNotifier {
   final List<Rifle> _rifles = [];
   final List<AmmoLot> _ammoLots = [];
   final List<TrainingSession> _sessions = [];
+  final List<BallisticDopeRecord> _ballisticDopeRecords = [];
   final Map<String, Map<DistanceKey, DopeEntry>> _workingDopeRifleOnly = {};
   final Map<String, Map<DistanceKey, DopeEntry>> _workingDopeRifleAmmo = {};
   final Map<String, Map<String, bool>> _acceptedSharedFieldsBySession = {};
@@ -2081,6 +2308,14 @@ class AppState extends ChangeNotifier {
     _sessions.where((s) => s.memberUserIds.contains(_activeUser?.id)),
   );
 
+  List<BallisticDopeRecord> get ballisticDopeRecords {
+    final userId = _activeUser?.id;
+    if (userId == null) return const <BallisticDopeRecord>[];
+    final out = _ballisticDopeRecords.where((x) => x.userId == userId).toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return List.unmodifiable(out);
+  }
+
   /// Convenience lookups used by exports/session reports.
   Rifle? findRifleById(String id) {
     try {
@@ -2176,6 +2411,9 @@ class AppState extends ChangeNotifier {
       'rifles': _rifles.map(_rifleToMap).toList(),
       'ammoLots': _ammoLots.map(_ammoLotToMap).toList(),
       'sessions': _sessions.map(_trainingSessionToMap).toList(),
+        'ballisticDopeRecords': _ballisticDopeRecords
+          .map(_ballisticDopeRecordToMap)
+          .toList(),
       'workingDopeRifleOnly': _workingDopeRifleOnly.map(
         (key, value) =>
             MapEntry(key, value.values.map(_dopeEntryToMap).toList()),
@@ -2219,6 +2457,13 @@ class AppState extends ChangeNotifier {
       ..addAll(
         ((map['sessions'] as List?) ?? const []).map(
           (x) => _trainingSessionFromMap(Map<String, dynamic>.from(x as Map)),
+        ),
+      );
+    _ballisticDopeRecords
+      ..clear()
+      ..addAll(
+        ((map['ballisticDopeRecords'] as List?) ?? const []).map(
+          (x) => _ballisticDopeRecordFromMap(Map<String, dynamic>.from(x as Map)),
         ),
       );
 
@@ -3126,6 +3371,119 @@ class AppState extends ChangeNotifier {
     } catch (_) {
       return null;
     }
+  }
+
+  BallisticDopeRecord addCalculatedBallisticDope({
+    required String rifleId,
+    required String ammoLotId,
+    required double distance,
+    required DistanceUnit distanceUnit,
+    required double windSpeedMph,
+    required String windDirectionValue,
+    required double temperatureF,
+    required double pressureInHg,
+    required double humidityPercent,
+    required double zeroDistance,
+    required DistanceUnit zeroDistanceUnit,
+    required double sightHeightInches,
+    required double muzzleVelocityFps,
+    required double ballisticCoefficient,
+    required DragModel dragModel,
+    required ElevationUnit outputUnit,
+    required double calculatedElevation,
+    required double calculatedWind,
+    required String solverVersion,
+  }) {
+    final user = _activeUser;
+    if (user == null) {
+      throw StateError('No active user selected');
+    }
+
+    final record = BallisticDopeRecord(
+      id: _newId(),
+      userId: user.id,
+      rifleId: rifleId,
+      ammoLotId: ammoLotId,
+      createdAt: DateTime.now(),
+      distance: distance,
+      distanceUnit: distanceUnit,
+      windSpeedMph: windSpeedMph,
+      windDirectionValue: windDirectionValue,
+      temperatureF: temperatureF,
+      pressureInHg: pressureInHg,
+      humidityPercent: humidityPercent,
+      zeroDistance: zeroDistance,
+      zeroDistanceUnit: zeroDistanceUnit,
+      sightHeightInches: sightHeightInches,
+      muzzleVelocityFps: muzzleVelocityFps,
+      ballisticCoefficient: ballisticCoefficient,
+      dragModel: dragModel,
+      outputUnit: outputUnit,
+      calculatedElevation: calculatedElevation,
+      calculatedWind: calculatedWind,
+      solverVersion: solverVersion,
+    );
+    _ballisticDopeRecords.add(record);
+    notifyListeners();
+    return record;
+  }
+
+  BallisticDopeRecord? validateBallisticDope({
+    required String recordId,
+    required BallisticValidationOutcome outcome,
+    required double elevationCorrection,
+    required double windCorrection,
+    required String notes,
+    required DateTime verificationDate,
+    required String weatherSnapshot,
+  }) {
+    final idx = _ballisticDopeRecords.indexWhere((x) => x.id == recordId);
+    if (idx < 0) return null;
+    final current = _ballisticDopeRecords[idx];
+    final updated = current.copyWith(
+      validatedAt: DateTime.now(),
+      validationOutcome: outcome,
+      verifiedElevationCorrection: elevationCorrection,
+      verifiedWindCorrection: windCorrection,
+      verifiedNotes: notes.trim(),
+      verificationDate: verificationDate,
+      weatherSnapshot: weatherSnapshot.trim(),
+    );
+    _ballisticDopeRecords[idx] = updated;
+    notifyListeners();
+    return updated;
+  }
+
+  int verifiedBallisticConfirmationCount(BallisticDopeRecord record) {
+    final userId = _activeUser?.id;
+    if (userId == null) return 0;
+    return _ballisticDopeRecords.where((entry) {
+      if (entry.userId != userId || !entry.isVerified) return false;
+      if (entry.rifleId != record.rifleId) return false;
+      if (entry.ammoLotId != record.ammoLotId) return false;
+      if (entry.distanceUnit != record.distanceUnit) return false;
+      return (entry.distance - record.distance).abs() < 0.001;
+    }).length;
+  }
+
+  DopeEntry verifiedBallisticRecordToDopeEntry(BallisticDopeRecord record) {
+    final finalWind = record.verifiedWind;
+    return DopeEntry(
+      id: _newId(),
+      time: DateTime.now(),
+      rifleId: record.rifleId,
+      ammoLotId: record.ammoLotId,
+      distance: record.distance,
+      distanceUnit: record.distanceUnit,
+      elevation: record.verifiedElevation,
+      elevationUnit: record.outputUnit,
+      elevationNotes: 'Verified via Ballistic Assistant',
+      windType: WindType.fullValue,
+      windValue: '${record.windSpeedMph.toStringAsFixed(1)} mph',
+      windNotes: record.verifiedNotes,
+      windageLeft: finalWind < 0 ? finalWind.abs() : 0.0,
+      windageRight: finalWind >= 0 ? finalWind.abs() : 0.0,
+    );
   }
 
   void updateSessionLoadout({
@@ -4960,6 +5318,97 @@ DopeEntry _dopeEntryFromMap(Map<String, dynamic> map) => DopeEntry(
   windageLeft: _toNullableDouble(map['windageLeft']) ?? 0,
   windageRight: _toNullableDouble(map['windageRight']) ?? 0,
 );
+
+Map<String, dynamic> _ballisticDopeRecordToMap(BallisticDopeRecord record) =>
+    <String, dynamic>{
+      'id': record.id,
+      'userId': record.userId,
+      'rifleId': record.rifleId,
+      'ammoLotId': record.ammoLotId,
+      'createdAt': record.createdAt.toIso8601String(),
+      'distance': record.distance,
+      'distanceUnit': record.distanceUnit.name,
+      'windSpeedMph': record.windSpeedMph,
+      'windDirectionValue': record.windDirectionValue,
+      'temperatureF': record.temperatureF,
+      'pressureInHg': record.pressureInHg,
+      'humidityPercent': record.humidityPercent,
+      'zeroDistance': record.zeroDistance,
+      'zeroDistanceUnit': record.zeroDistanceUnit.name,
+      'sightHeightInches': record.sightHeightInches,
+      'muzzleVelocityFps': record.muzzleVelocityFps,
+      'ballisticCoefficient': record.ballisticCoefficient,
+      'dragModel': record.dragModel.name,
+      'outputUnit': record.outputUnit.name,
+      'calculatedElevation': record.calculatedElevation,
+      'calculatedWind': record.calculatedWind,
+      'solverVersion': record.solverVersion,
+      'validatedAt': record.validatedAt?.toIso8601String(),
+      'validationOutcome': record.validationOutcome?.name,
+      'verifiedElevationCorrection': record.verifiedElevationCorrection,
+      'verifiedWindCorrection': record.verifiedWindCorrection,
+      'verifiedNotes': record.verifiedNotes,
+      'verificationDate': record.verificationDate?.toIso8601String(),
+      'weatherSnapshot': record.weatherSnapshot,
+    };
+
+BallisticDopeRecord _ballisticDopeRecordFromMap(Map<String, dynamic> map) =>
+    BallisticDopeRecord(
+      id: (map['id'] ?? '').toString(),
+      userId: (map['userId'] ?? '').toString(),
+      rifleId: (map['rifleId'] ?? '').toString(),
+      ammoLotId: (map['ammoLotId'] ?? '').toString(),
+      createdAt: _parseDateTime(map['createdAt']),
+      distance: _toNullableDouble(map['distance']) ?? 0,
+      distanceUnit: DistanceUnit.values.firstWhere(
+        (u) =>
+            u.name == (map['distanceUnit'] ?? DistanceUnit.yards.name).toString(),
+        orElse: () => DistanceUnit.yards,
+      ),
+      windSpeedMph: _toNullableDouble(map['windSpeedMph']) ?? 0,
+      windDirectionValue: (map['windDirectionValue'] ?? '').toString(),
+      temperatureF: _toNullableDouble(map['temperatureF']) ?? 59,
+      pressureInHg: _toNullableDouble(map['pressureInHg']) ?? 29.92,
+      humidityPercent: _toNullableDouble(map['humidityPercent']) ?? 50,
+      zeroDistance: _toNullableDouble(map['zeroDistance']) ?? 100,
+      zeroDistanceUnit: DistanceUnit.values.firstWhere(
+        (u) =>
+            u.name ==
+            (map['zeroDistanceUnit'] ?? DistanceUnit.yards.name).toString(),
+        orElse: () => DistanceUnit.yards,
+      ),
+      sightHeightInches: _toNullableDouble(map['sightHeightInches']) ?? 1.8,
+      muzzleVelocityFps: _toNullableDouble(map['muzzleVelocityFps']) ?? 2600,
+      ballisticCoefficient: _toNullableDouble(map['ballisticCoefficient']) ?? 0.45,
+      dragModel: DragModel.values.firstWhere(
+        (u) => u.name == (map['dragModel'] ?? DragModel.g7.name).toString(),
+        orElse: () => DragModel.g7,
+      ),
+      outputUnit: ElevationUnit.values.firstWhere(
+        (u) => u.name == (map['outputUnit'] ?? ElevationUnit.mil.name).toString(),
+        orElse: () => ElevationUnit.mil,
+      ),
+      calculatedElevation: _toNullableDouble(map['calculatedElevation']) ?? 0,
+      calculatedWind: _toNullableDouble(map['calculatedWind']) ?? 0,
+      solverVersion: (map['solverVersion'] ?? 'placeholder-v1').toString(),
+      validatedAt: map['validatedAt'] == null
+          ? null
+          : _parseDateTime(map['validatedAt']),
+      validationOutcome: map['validationOutcome'] == null
+          ? null
+          : BallisticValidationOutcome.values.firstWhere(
+              (v) => v.name == map['validationOutcome'].toString(),
+              orElse: () => BallisticValidationOutcome.confirmedAccurate,
+            ),
+      verifiedElevationCorrection:
+          _toNullableDouble(map['verifiedElevationCorrection']) ?? 0,
+      verifiedWindCorrection: _toNullableDouble(map['verifiedWindCorrection']) ?? 0,
+      verifiedNotes: (map['verifiedNotes'] ?? '').toString(),
+      verificationDate: map['verificationDate'] == null
+          ? null
+          : _parseDateTime(map['verificationDate']),
+      weatherSnapshot: (map['weatherSnapshot'] ?? '').toString(),
+    );
 
 Map<String, dynamic> _coldBorePhotoToMap(ColdBorePhoto photo) =>
     <String, dynamic>{
@@ -8068,6 +8517,26 @@ class _DataScreenState extends State<DataScreen> {
               ),
               const SizedBox(height: 12),
               Card(
+                child: ListTile(
+                  leading: const Icon(Icons.calculate_outlined),
+                  title: const Text('Ballistic Assistant'),
+                  subtitle: const Text(
+                    'Calculate estimated DOPE, validate with live fire, and optionally write verified results to Working DOPE.',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => BallisticAssistantScreen(
+                          state: widget.state,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 12),
+              Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
@@ -8269,6 +8738,790 @@ class _DataScreenState extends State<DataScreen> {
                     ),
                   );
                 },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class BallisticAssistantScreen extends StatefulWidget {
+  final AppState state;
+
+  const BallisticAssistantScreen({super.key, required this.state});
+
+  @override
+  State<BallisticAssistantScreen> createState() => _BallisticAssistantScreenState();
+}
+
+class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
+  final BallisticCalculationService _solver = const BallisticCalculationService();
+
+  String? _selectedRifleId;
+  String? _selectedAmmoId;
+  DistanceUnit _distanceUnit = DistanceUnit.yards;
+  DistanceUnit _zeroDistanceUnit = DistanceUnit.yards;
+  DragModel _dragModel = DragModel.g7;
+  BallisticValidationOutcome _validationOutcome =
+      BallisticValidationOutcome.confirmedAccurate;
+  bool _writeRifleOnly = false;
+  bool _includeWeatherSnapshot = true;
+  DateTime _verificationDate = DateTime.now();
+  BallisticDopeRecord? _activeRecord;
+
+  final TextEditingController _distanceCtrl = TextEditingController(text: '100');
+  final TextEditingController _windSpeedCtrl = TextEditingController(text: '10');
+  final TextEditingController _windDirectionCtrl =
+      TextEditingController(text: 'Full value');
+  final TextEditingController _temperatureCtrl = TextEditingController(text: '59');
+  final TextEditingController _pressureCtrl = TextEditingController(text: '29.92');
+  final TextEditingController _humidityCtrl = TextEditingController(text: '50');
+  final TextEditingController _zeroDistanceCtrl = TextEditingController(text: '100');
+  final TextEditingController _sightHeightCtrl = TextEditingController(text: '1.8');
+  final TextEditingController _muzzleVelocityCtrl = TextEditingController(text: '2650');
+  final TextEditingController _bcCtrl = TextEditingController(text: '0.45');
+  final TextEditingController _elevationCorrectionCtrl = TextEditingController(text: '0');
+  final TextEditingController _windCorrectionCtrl = TextEditingController(text: '0');
+  final TextEditingController _validationNotesCtrl = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    final rifles = widget.state.rifles;
+    if (rifles.isNotEmpty) {
+      _selectedRifleId = rifles.first.id;
+      _syncAmmoSelectionForRifle();
+    }
+    final temp = widget.state.temperatureF;
+    final wind = widget.state.windSpeedMph;
+    if (temp != null) _temperatureCtrl.text = temp.toStringAsFixed(1);
+    if (wind != null) _windSpeedCtrl.text = wind.toStringAsFixed(1);
+  }
+
+  @override
+  void dispose() {
+    _distanceCtrl.dispose();
+    _windSpeedCtrl.dispose();
+    _windDirectionCtrl.dispose();
+    _temperatureCtrl.dispose();
+    _pressureCtrl.dispose();
+    _humidityCtrl.dispose();
+    _zeroDistanceCtrl.dispose();
+    _sightHeightCtrl.dispose();
+    _muzzleVelocityCtrl.dispose();
+    _bcCtrl.dispose();
+    _elevationCorrectionCtrl.dispose();
+    _windCorrectionCtrl.dispose();
+    _validationNotesCtrl.dispose();
+    super.dispose();
+  }
+
+  void _syncAmmoSelectionForRifle() {
+    final rifle = widget.state.rifleById(_selectedRifleId);
+    if (rifle == null) {
+      _selectedAmmoId = null;
+      return;
+    }
+    final ammo = widget.state.ammoLots
+        .where((a) => a.caliber == rifle.caliber)
+        .toList();
+    if (ammo.isEmpty) {
+      _selectedAmmoId = null;
+      return;
+    }
+    final hasSelected = ammo.any((a) => a.id == _selectedAmmoId);
+    if (!hasSelected) {
+      _selectedAmmoId = ammo.first.id;
+      final bc = ammo.first.ballisticCoefficient;
+      if (bc != null && bc > 0) {
+        _bcCtrl.text = bc.toStringAsFixed(3);
+      }
+    }
+  }
+
+  Future<void> _pickVerificationDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _verificationDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (picked == null) return;
+    if (!mounted) return;
+    setState(() => _verificationDate = picked);
+  }
+
+  String _weatherSnapshotText() {
+    return 'Temp ${_temperatureCtrl.text.trim()} F | Pressure ${_pressureCtrl.text.trim()} inHg | Humidity ${_humidityCtrl.text.trim()}% | Wind ${_windSpeedCtrl.text.trim()} mph (${_windDirectionCtrl.text.trim()})';
+  }
+
+  Future<void> _calculateDope() async {
+    final rifleId = _selectedRifleId;
+    final ammoId = _selectedAmmoId;
+    if (rifleId == null || ammoId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select rifle and ammo first.')),
+      );
+      return;
+    }
+
+    final distance = double.tryParse(_distanceCtrl.text.trim());
+    final windSpeed = double.tryParse(_windSpeedCtrl.text.trim());
+    final temp = double.tryParse(_temperatureCtrl.text.trim());
+    final pressure = double.tryParse(_pressureCtrl.text.trim());
+    final humidity = double.tryParse(_humidityCtrl.text.trim());
+    final zeroDistance = double.tryParse(_zeroDistanceCtrl.text.trim());
+    final sightHeight = double.tryParse(_sightHeightCtrl.text.trim());
+    final mv = double.tryParse(_muzzleVelocityCtrl.text.trim());
+    final bc = double.tryParse(_bcCtrl.text.trim());
+    if (distance == null ||
+        windSpeed == null ||
+        temp == null ||
+        pressure == null ||
+        humidity == null ||
+        zeroDistance == null ||
+        sightHeight == null ||
+        mv == null ||
+        bc == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter valid numeric values.')),
+      );
+      return;
+    }
+
+    final rifle = widget.state.rifleById(rifleId);
+    final scopeUnit = rifle?.scopeUnit == ScopeUnit.moa
+        ? ScopeUnit.moa
+        : ScopeUnit.mil;
+
+    final solution = _solver.calculate(
+      BallisticSolverInput(
+        distance: distance,
+        distanceUnit: _distanceUnit,
+        windSpeedMph: windSpeed,
+        windDirectionValue: _windDirectionCtrl.text.trim(),
+        temperatureF: temp,
+        pressureInHg: pressure,
+        humidityPercent: humidity,
+        zeroDistance: zeroDistance,
+        zeroDistanceUnit: _zeroDistanceUnit,
+        sightHeightInches: sightHeight,
+        muzzleVelocityFps: mv,
+        ballisticCoefficient: bc,
+        dragModel: _dragModel,
+        scopeUnit: scopeUnit,
+      ),
+    );
+
+    final saved = widget.state.addCalculatedBallisticDope(
+      rifleId: rifleId,
+      ammoLotId: ammoId,
+      distance: distance,
+      distanceUnit: _distanceUnit,
+      windSpeedMph: windSpeed,
+      windDirectionValue: _windDirectionCtrl.text.trim(),
+      temperatureF: temp,
+      pressureInHg: pressure,
+      humidityPercent: humidity,
+      zeroDistance: zeroDistance,
+      zeroDistanceUnit: _zeroDistanceUnit,
+      sightHeightInches: sightHeight,
+      muzzleVelocityFps: mv,
+      ballisticCoefficient: bc,
+      dragModel: _dragModel,
+      outputUnit: solution.unit,
+      calculatedElevation: solution.elevation,
+      calculatedWind: solution.windHold,
+      solverVersion: solution.solverVersion,
+    );
+
+    if (!mounted) return;
+    setState(() {
+      _activeRecord = saved;
+      _validationOutcome = BallisticValidationOutcome.confirmedAccurate;
+      _elevationCorrectionCtrl.text = '0';
+      _windCorrectionCtrl.text = '0';
+      _validationNotesCtrl.clear();
+    });
+  }
+
+  Future<void> _saveValidation() async {
+    final record = _activeRecord;
+    if (record == null) return;
+
+    final elevationCorrection =
+        double.tryParse(_elevationCorrectionCtrl.text.trim()) ?? 0.0;
+    final windCorrection =
+        double.tryParse(_windCorrectionCtrl.text.trim()) ?? 0.0;
+
+    final updated = widget.state.validateBallisticDope(
+      recordId: record.id,
+      outcome: _validationOutcome,
+      elevationCorrection: _validationOutcome ==
+              BallisticValidationOutcome.adjustmentRequired
+          ? elevationCorrection
+          : 0.0,
+      windCorrection:
+          _validationOutcome == BallisticValidationOutcome.adjustmentRequired
+          ? windCorrection
+          : 0.0,
+      notes: _validationNotesCtrl.text,
+      verificationDate: _verificationDate,
+      weatherSnapshot: _includeWeatherSnapshot ? _weatherSnapshotText() : '',
+    );
+    if (updated == null) return;
+
+    if (!mounted) return;
+    setState(() => _activeRecord = updated);
+    final confirmations = widget.state.verifiedBallisticConfirmationCount(updated);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Verified DOPE saved. $confirmations confirmation${confirmations == 1 ? '' : 's'}.'),
+      ),
+    );
+  }
+
+  Future<void> _writeVerifiedToWorkingDope() async {
+    final record = _activeRecord;
+    if (record == null || !record.isVerified) return;
+
+    final entry = widget.state.verifiedBallisticRecordToDopeEntry(record);
+    final key = _writeRifleOnly
+        ? record.rifleId
+        : '${record.rifleId}_${record.ammoLotId}';
+    final map = _writeRifleOnly
+        ? widget.state.workingDopeRifleOnly[key]
+        : widget.state.workingDopeRifleAmmo[key];
+    final dk = DistanceKey(record.distance, record.distanceUnit);
+    final exists = map?.containsKey(dk) == true;
+
+    if (exists) {
+      final overwrite = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Working DOPE exists'),
+          content: const Text(
+            'A Working DOPE entry already exists for this rifle/ammo/distance. Overwrite it with this verified result?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Overwrite'),
+            ),
+          ],
+        ),
+      );
+      if (overwrite != true) return;
+    }
+
+    widget.state.promoteExistingDope(entry: entry, rifleOnly: _writeRifleOnly);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Verified DOPE written to Working DOPE.')),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: widget.state,
+      builder: (context, _) {
+        final rifles = widget.state.rifles;
+        if (_selectedRifleId != null &&
+            !rifles.any((r) => r.id == _selectedRifleId)) {
+          _selectedRifleId = null;
+          _selectedAmmoId = null;
+        }
+
+        final rifle = widget.state.rifleById(_selectedRifleId);
+        final ammoOptions = (rifle == null)
+            ? <AmmoLot>[]
+            : widget.state.ammoLots
+                .where((a) => a.caliber == rifle.caliber)
+                .toList();
+        if (_selectedAmmoId != null && !ammoOptions.any((a) => a.id == _selectedAmmoId)) {
+          _selectedAmmoId = null;
+        }
+
+        final records = widget.state.ballisticDopeRecords;
+
+        String rifleLabel(Rifle r) {
+          final n = (r.name ?? '').trim();
+          if (n.isNotEmpty) return '$n • ${r.caliber}';
+          return r.caliber;
+        }
+
+        String ammoLabel(AmmoLot a) {
+          final n = (a.name ?? '').trim();
+          if (n.isNotEmpty) return n;
+          return '${a.grain > 0 ? '${a.grain}gr ' : ''}${a.bullet}'.trim();
+        }
+
+        final active = _activeRecord;
+        final activeConfirmations =
+            active == null ? 0 : widget.state.verifiedBallisticConfirmationCount(active);
+
+        return Scaffold(
+          appBar: AppBar(title: const Text('Ballistic Assistant')),
+          body: ListView(
+            padding: const EdgeInsets.all(12),
+            children: [
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Select rifle/ammo, enter conditions, calculate estimate, validate with live fire, then save verified DOPE.',
+                      ),
+                      const SizedBox(height: 10),
+                      DropdownButtonFormField<String?>(
+                        initialValue: _selectedRifleId,
+                        decoration: const InputDecoration(labelText: 'Rifle'),
+                        items: [
+                          const DropdownMenuItem<String?>(
+                            value: null,
+                            child: Text('Select rifle'),
+                          ),
+                          ...rifles.map(
+                            (r) => DropdownMenuItem<String?>(
+                              value: r.id,
+                              child: Text(rifleLabel(r)),
+                            ),
+                          ),
+                        ],
+                        onChanged: (v) {
+                          setState(() {
+                            _selectedRifleId = v;
+                            _syncAmmoSelectionForRifle();
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<String?>(
+                        initialValue: _selectedAmmoId,
+                        decoration: const InputDecoration(labelText: 'Ammo'),
+                        items: [
+                          const DropdownMenuItem<String?>(
+                            value: null,
+                            child: Text('Select ammo'),
+                          ),
+                          ...ammoOptions.map(
+                            (a) => DropdownMenuItem<String?>(
+                              value: a.id,
+                              child: Text(ammoLabel(a)),
+                            ),
+                          ),
+                        ],
+                        onChanged: (v) => setState(() => _selectedAmmoId = v),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              textCapitalization: TextCapitalization.none,
+                              controller: _distanceCtrl,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(decimal: true),
+                              decoration: const InputDecoration(labelText: 'Distance'),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: DropdownButtonFormField<DistanceUnit>(
+                              initialValue: _distanceUnit,
+                              decoration: const InputDecoration(labelText: 'Distance unit'),
+                              items: DistanceUnit.values
+                                  .map(
+                                    (u) => DropdownMenuItem(
+                                      value: u,
+                                      child: Text(u.name),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (v) => setState(
+                                () => _distanceUnit = v ?? DistanceUnit.yards,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              textCapitalization: TextCapitalization.none,
+                              controller: _windSpeedCtrl,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(decimal: true),
+                              decoration:
+                                  const InputDecoration(labelText: 'Wind speed (mph)'),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextField(
+                              textCapitalization: TextCapitalization.none,
+                              controller: _windDirectionCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Wind direction/value',
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              textCapitalization: TextCapitalization.none,
+                              controller: _temperatureCtrl,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(decimal: true),
+                              decoration:
+                                  const InputDecoration(labelText: 'Temperature (F)'),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextField(
+                              textCapitalization: TextCapitalization.none,
+                              controller: _pressureCtrl,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(decimal: true),
+                              decoration:
+                                  const InputDecoration(labelText: 'Pressure (inHg)'),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextField(
+                              textCapitalization: TextCapitalization.none,
+                              controller: _humidityCtrl,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(decimal: true),
+                              decoration:
+                                  const InputDecoration(labelText: 'Humidity (%)'),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              textCapitalization: TextCapitalization.none,
+                              controller: _zeroDistanceCtrl,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(decimal: true),
+                              decoration:
+                                  const InputDecoration(labelText: 'Zero distance'),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: DropdownButtonFormField<DistanceUnit>(
+                              initialValue: _zeroDistanceUnit,
+                              decoration:
+                                  const InputDecoration(labelText: 'Zero unit'),
+                              items: DistanceUnit.values
+                                  .map(
+                                    (u) => DropdownMenuItem(
+                                      value: u,
+                                      child: Text(u.name),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (v) => setState(
+                                () => _zeroDistanceUnit = v ?? DistanceUnit.yards,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              textCapitalization: TextCapitalization.none,
+                              controller: _sightHeightCtrl,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(decimal: true),
+                              decoration: const InputDecoration(
+                                labelText: 'Sight height (inches)',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextField(
+                              textCapitalization: TextCapitalization.none,
+                              controller: _muzzleVelocityCtrl,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(decimal: true),
+                              decoration: const InputDecoration(
+                                labelText: 'Muzzle velocity (fps)',
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              textCapitalization: TextCapitalization.none,
+                              controller: _bcCtrl,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(decimal: true),
+                              decoration: const InputDecoration(
+                                labelText: 'Ballistic coefficient',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: DropdownButtonFormField<DragModel>(
+                              initialValue: _dragModel,
+                              decoration:
+                                  const InputDecoration(labelText: 'Drag model'),
+                              items: DragModel.values
+                                  .map(
+                                    (m) => DropdownMenuItem(
+                                      value: m,
+                                      child: Text(m.name.toUpperCase()),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (v) =>
+                                  setState(() => _dragModel = v ?? DragModel.g7),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      FilledButton.icon(
+                        onPressed: _calculateDope,
+                        icon: const Icon(Icons.calculate_outlined),
+                        label: const Text('Generate Calculated DOPE'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              if (active != null) ...[
+                const SizedBox(height: 12),
+                Card(
+                  color: active.isVerified
+                      ? Colors.green.withValues(alpha: 0.15)
+                      : Colors.yellow.withValues(alpha: 0.20),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          active.isVerified
+                              ? 'Verified DOPE${activeConfirmations > 0 ? ' - $activeConfirmations confirmation${activeConfirmations == 1 ? '' : 's'}' : ''}'
+                              : 'Calculated DOPE (Unverified Estimate)',
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Elevation: ${(active.isVerified ? active.verifiedElevation : active.calculatedElevation).toStringAsFixed(2)} ${active.outputUnit.name.toUpperCase()}',
+                        ),
+                        Text(
+                          'Wind hold: ${(active.isVerified ? active.verifiedWind : active.calculatedWind).toStringAsFixed(2)} ${active.outputUnit.name.toUpperCase()}',
+                        ),
+                        Text(
+                          'Drag: ${active.dragModel.name.toUpperCase()} • Solver: ${active.solverVersion}',
+                        ),
+                        if (!active.isVerified) ...[
+                          const SizedBox(height: 10),
+                          const Text(
+                            'Validate with live fire',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 6),
+                          DropdownButtonFormField<BallisticValidationOutcome>(
+                            initialValue: _validationOutcome,
+                            decoration: const InputDecoration(
+                              labelText: 'Validation outcome',
+                            ),
+                            items: const [
+                              DropdownMenuItem(
+                                value:
+                                    BallisticValidationOutcome.confirmedAccurate,
+                                child: Text('Confirmed accurate'),
+                              ),
+                              DropdownMenuItem(
+                                value:
+                                    BallisticValidationOutcome.adjustmentRequired,
+                                child: Text('Adjustment required'),
+                              ),
+                            ],
+                            onChanged: (v) => setState(
+                              () => _validationOutcome =
+                                  v ?? BallisticValidationOutcome.confirmedAccurate,
+                            ),
+                          ),
+                          if (_validationOutcome ==
+                              BallisticValidationOutcome.adjustmentRequired) ...[
+                            const SizedBox(height: 8),
+                            TextField(
+                              textCapitalization: TextCapitalization.none,
+                              controller: _elevationCorrectionCtrl,
+                              keyboardType: const TextInputType.numberWithOptions(
+                                decimal: true,
+                              ),
+                              decoration: InputDecoration(
+                                labelText:
+                                    'Elevation correction (${active.outputUnit.name.toUpperCase()})',
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            TextField(
+                              textCapitalization: TextCapitalization.none,
+                              controller: _windCorrectionCtrl,
+                              keyboardType: const TextInputType.numberWithOptions(
+                                decimal: true,
+                              ),
+                              decoration: InputDecoration(
+                                labelText:
+                                    'Wind correction (${active.outputUnit.name.toUpperCase()})',
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 8),
+                          TextField(
+                            textCapitalization: TextCapitalization.none,
+                            controller: _validationNotesCtrl,
+                            decoration: const InputDecoration(
+                              labelText: 'Validation notes',
+                            ),
+                            maxLines: 2,
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  'Date: ${_verificationDate.month}/${_verificationDate.day}/${_verificationDate.year}',
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: _pickVerificationDate,
+                                child: const Text('Change'),
+                              ),
+                            ],
+                          ),
+                          SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
+                            value: _includeWeatherSnapshot,
+                            onChanged: (v) =>
+                                setState(() => _includeWeatherSnapshot = v),
+                            title: const Text('Attach weather snapshot'),
+                          ),
+                          const SizedBox(height: 8),
+                          FilledButton(
+                            onPressed: _saveValidation,
+                            child: const Text('Save Verified DOPE'),
+                          ),
+                        ],
+                        if (active.isVerified) ...[
+                          const SizedBox(height: 10),
+                          SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
+                            value: _writeRifleOnly,
+                            onChanged: (v) => setState(() => _writeRifleOnly = v),
+                            title: const Text('Write as Rifle only working DOPE'),
+                            subtitle: const Text(
+                              'Off = write as Rifle + Ammo working DOPE',
+                            ),
+                          ),
+                          FilledButton.tonal(
+                            onPressed: _writeVerifiedToWorkingDope,
+                            child: const Text('Write Verified to Working DOPE'),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Text(
+                    'Ballistic solutions are estimates based on the information provided. Actual impacts may vary due to firearm characteristics, ammunition lot variations, environmental conditions, and shooter factors. Always confirm your DOPE through live-fire validation before relying on calculated data.',
+                    style: TextStyle(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withValues(alpha: 0.8),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Recent Ballistic DOPE',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 8),
+                      if (records.isEmpty)
+                        Text(
+                          'No ballistic records yet.',
+                          style: TextStyle(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurface
+                                .withValues(alpha: 0.7),
+                          ),
+                        )
+                      else
+                        ...records.take(10).map((record) {
+                          final recRifle = widget.state.rifleById(record.rifleId);
+                          final recAmmo = widget.state.ammoById(record.ammoLotId);
+                          final confirmations =
+                              widget.state.verifiedBallisticConfirmationCount(record);
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 6),
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: record.isVerified
+                                  ? Colors.green.withValues(alpha: 0.12)
+                                  : Colors.yellow.withValues(alpha: 0.18),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              '${recRifle?.name ?? recRifle?.caliber ?? 'Rifle'} • ${recAmmo?.name ?? recAmmo?.bullet ?? 'Ammo'} • ${record.distance.toStringAsFixed(0)} ${record.distanceUnit == DistanceUnit.yards ? 'yd' : 'm'}\n${record.isVerified ? 'Verified DOPE - $confirmations confirmation${confirmations == 1 ? '' : 's'}' : 'Calculated estimate (unverified)'}',
+                            ),
+                          );
+                        }),
+                    ],
+                  ),
+                ),
               ),
             ],
           ),
@@ -11196,7 +12449,7 @@ class SessionDetailScreen extends StatelessWidget {
     required this.sessionId,
   });
 
-  Map<String, int> _shotCountsByRifle(TrainingSession session) {
+  Map<String, int> shotCountsByRifle0(TrainingSession session) {
     final counts = <String, int>{};
 
     int timerShotCount(TrainingSession s) {
@@ -11271,7 +12524,7 @@ class SessionDetailScreen extends StatelessWidget {
     return counts;
   }
 
-  String _sessionRifleLabel(String rifleId) {
+  String sessionRifleLabel(String rifleId) {
     final rifle = state.rifleById(rifleId);
     if (rifle == null) return 'Deleted rifle ($rifleId)';
     final parts = <String>[
@@ -11284,7 +12537,7 @@ class SessionDetailScreen extends StatelessWidget {
     return parts.isEmpty ? 'Rifle' : parts.join(' • ');
   }
 
-  Future<bool> _promptStartNewStringDialog(BuildContext context) async {
+  Future<bool> promptStartNewStringDialog(BuildContext context) async {
     final res = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -11308,7 +12561,7 @@ class SessionDetailScreen extends StatelessWidget {
     return res ?? true;
   }
 
-  SessionStringMeta? _findMatchingString(
+  SessionStringMeta? findMatchingString(
     TrainingSession session, {
     required String? rifleId,
     required String? ammoLotId,
@@ -11324,7 +12577,7 @@ class SessionDetailScreen extends StatelessWidget {
     return null;
   }
 
-  Future<bool> _promptSwitchToExistingStringDialog(
+  Future<bool> promptSwitchToExistingStringDialog(
     BuildContext context,
     SessionStringMeta existing,
   ) async {
@@ -11350,14 +12603,14 @@ class SessionDetailScreen extends StatelessWidget {
     return res == true;
   }
 
-  Rect _shareOriginRect(BuildContext context) {
+  Rect shareOriginRect(BuildContext context) {
     final box = context.findRenderObject() as RenderBox?;
     if (box == null || !box.hasSize) return const Rect.fromLTWH(0, 0, 1, 1);
     final origin = box.localToGlobal(Offset.zero);
     return origin & box.size;
   }
 
-  Future<void> _shareSessionFile(
+  Future<void> shareSessionFile(
     BuildContext context,
     TrainingSession s,
   ) async {
@@ -11378,7 +12631,7 @@ class SessionDetailScreen extends StatelessWidget {
         await Share.shareXFiles(
           [XFile.fromData(bytes, mimeType: 'application/json', name: fname)],
           text: 'Cold Bore shared session',
-          sharePositionOrigin: _shareOriginRect(context),
+          sharePositionOrigin: shareOriginRect(context),
         );
       }
 
@@ -11398,7 +12651,7 @@ class SessionDetailScreen extends StatelessWidget {
     }
   }
 
-  Future<void> _shareSessionNearby(
+  Future<void> shareSessionNearby(
     BuildContext context,
     TrainingSession s,
   ) async {
@@ -11438,7 +12691,7 @@ class SessionDetailScreen extends StatelessWidget {
       ownerIdentifier: ownerIdentifier,
     );
 
-    await _refreshNearbyPresenceForShare();
+    await refreshNearbyPresenceForShare();
     await _nearbyShareChannel.invokeMethod('setSharePayload', {
       'jsonText': json,
     });
@@ -11448,7 +12701,7 @@ class SessionDetailScreen extends StatelessWidget {
       context: context,
       builder: (_) => _NearbySessionShareDialog(
         state: state,
-        onRefresh: _refreshNearbyPresenceForShare,
+        onRefresh: refreshNearbyPresenceForShare,
         onSelectPeer: (peer) async {
           selectedPeerIdentifier = peer.identifier;
           await _nearbyShareChannel.invokeMethod('invitePeer', {
@@ -11479,20 +12732,20 @@ class SessionDetailScreen extends StatelessWidget {
     );
   }
 
-  Future<void> _refreshNearbyPresenceForShare() async {
+  Future<void> refreshNearbyPresenceForShare() async {
     final identifier = state.activeUserIdentifier?.trim().toUpperCase();
     if (identifier == null || identifier.isEmpty) {
       state.setNearbyStatusMessage(
         'Nearby discovery is unavailable until a user identifier is set.',
       );
-      await _stopNearbyPresenceForShare();
+      await stopNearbyPresenceForShare();
       return;
     }
     if (_isSeedUserIdentifier(identifier)) {
       state.setNearbyStatusMessage(
         'Set a unique user identifier to discover nearby Cold Bore users.',
       );
-      await _stopNearbyPresenceForShare();
+      await stopNearbyPresenceForShare();
       return;
     }
 
@@ -11516,7 +12769,7 @@ class SessionDetailScreen extends StatelessWidget {
     }
   }
 
-  Future<void> _stopNearbyPresenceForShare() async {
+  Future<void> stopNearbyPresenceForShare() async {
     state.setNearbyPeers(const <NearbyPeer>[]);
     state.setNearbyStatusMessage('Nearby discovery stopped.');
     try {
@@ -11526,7 +12779,7 @@ class SessionDetailScreen extends StatelessWidget {
     }
   }
 
-  Future<void> _shareSession(BuildContext context, TrainingSession s) async {
+  Future<void> shareSession(BuildContext context, TrainingSession s) async {
     final action = await showModalBottomSheet<String>(
       context: context,
       builder: (sheetContext) => SafeArea(
@@ -11560,16 +12813,16 @@ class SessionDetailScreen extends StatelessWidget {
     );
 
     if (action == 'nearby') {
-      await _shareSessionNearby(context, s);
+      await shareSessionNearby(context, s);
       return;
     }
     if (action == 'file') {
-      await _shareSessionFile(context, s);
+      await shareSessionFile(context, s);
       return;
     }
   }
 
-  Future<void> _addColdBore(BuildContext context, TrainingSession s) async {
+  Future<void> addColdBore(BuildContext context, TrainingSession s) async {
     if (!await _guardWrite(context)) return;
     final res = await showDialog<_ColdBoreResult>(
       context: context,
@@ -11590,7 +12843,7 @@ class SessionDetailScreen extends StatelessWidget {
     );
   }
 
-  Future<void> _addPhotoNote(BuildContext context, TrainingSession s) async {
+  Future<void> addPhotoNote(BuildContext context, TrainingSession s) async {
     if (!await _guardWrite(context)) return;
     final res = await showDialog<String>(
       context: context,
@@ -11601,7 +12854,7 @@ class SessionDetailScreen extends StatelessWidget {
     state.addPhotoNote(sessionId: s.id, time: DateTime.now(), caption: res);
   }
 
-  Future<void> _editTrainingNotes(
+  Future<void> editTrainingNotes(
     BuildContext context,
     TrainingSession s,
   ) async {
@@ -11613,7 +12866,7 @@ class SessionDetailScreen extends StatelessWidget {
     state.updateSessionNotes(sessionId: s.id, notes: res);
   }
 
-  Future<DateTime?> _pickSessionDateTime(
+  Future<DateTime?> pickSessionDateTime(
     BuildContext context, {
     required DateTime initial,
   }) async {
@@ -11636,7 +12889,7 @@ class SessionDetailScreen extends StatelessWidget {
     return DateTime(date.year, date.month, date.day, time.hour, time.minute);
   }
 
-  Future<void> _editSessionDateTimes(
+  Future<void> editSessionDateTimes(
     BuildContext context,
     TrainingSession s,
   ) async {
@@ -11666,7 +12919,7 @@ class SessionDetailScreen extends StatelessWidget {
                         ),
                         TextButton.icon(
                           onPressed: () async {
-                            final picked = await _pickSessionDateTime(
+                            final picked = await pickSessionDateTime(
                               context,
                               initial: startAt,
                             );
@@ -11712,7 +12965,7 @@ class SessionDetailScreen extends StatelessWidget {
                           Expanded(child: Text('End: ${_fmtDateTime(endAt)}')),
                           TextButton.icon(
                             onPressed: () async {
-                              final picked = await _pickSessionDateTime(
+                              final picked = await pickSessionDateTime(
                                 context,
                                 initial: endAt,
                               );
@@ -11782,8 +13035,8 @@ class SessionDetailScreen extends StatelessWidget {
     ).showSnackBar(const SnackBar(content: Text('Session date/time updated.')));
   }
 
-  Future<void> _endSession(BuildContext context, TrainingSession s) async {
-    final shotCountsByRifle = _shotCountsByRifle(s);
+  Future<void> endSession(BuildContext context, TrainingSession s) async {
+    final shotCountsByRifle = shotCountsByRifle0(s);
     final res = await showDialog<_EndSessionResult>(
       context: context,
       builder: (_) => _EndSessionDialog(
@@ -11791,7 +13044,7 @@ class SessionDetailScreen extends StatelessWidget {
             .map(
               (entry) => _EndSessionRifleCount(
                 rifleId: entry.key,
-                label: _sessionRifleLabel(entry.key),
+                label: sessionRifleLabel(entry.key),
                 initialShotCount: entry.value,
               ),
             )
@@ -11820,7 +13073,7 @@ class SessionDetailScreen extends StatelessWidget {
     );
   }
 
-  Future<void> _exportSessionReport(
+  Future<void> exportSessionReport(
     BuildContext context,
     TrainingSession s,
   ) async {
@@ -11928,7 +13181,7 @@ class SessionDetailScreen extends StatelessWidget {
     );
   }
 
-  Future<void> _editAcceptedSharedData(
+  Future<void> editAcceptedSharedData(
     BuildContext context,
     TrainingSession s,
   ) async {
@@ -12071,7 +13324,7 @@ class SessionDetailScreen extends StatelessWidget {
     );
   }
 
-  Future<void> _addDope(BuildContext context, TrainingSession s) async {
+  Future<void> addDope(BuildContext context, TrainingSession s) async {
     if (!await _guardWrite(context)) return;
     if (s.rifleId == null) {
       ScaffoldMessenger.of(
@@ -12187,7 +13440,7 @@ class SessionDetailScreen extends StatelessWidget {
     }
   }
 
-  Future<void> _promoteSuggestedDope(
+  Future<void> promoteSuggestedDope(
     BuildContext context, {
     required TrainingSession session,
     required DopeEntry entry,
@@ -12361,23 +13614,23 @@ class SessionDetailScreen extends StatelessWidget {
             actions: [
               IconButton(
                 tooltip: 'Share session',
-                onPressed: () => _shareSession(context, s),
+                onPressed: () => shareSession(context, s),
                 icon: const Icon(Icons.share_outlined),
               ),
               if (!isSessionOwner)
                 IconButton(
                   tooltip: 'Accepted shared data',
-                  onPressed: () => _editAcceptedSharedData(context, s),
+                  onPressed: () => editAcceptedSharedData(context, s),
                   icon: const Icon(Icons.fact_check_outlined),
                 ),
               IconButton(
                 tooltip: 'Edit session notes',
-                onPressed: () => _editTrainingNotes(context, s),
+                onPressed: () => editTrainingNotes(context, s),
                 icon: const Icon(Icons.edit_note_outlined),
               ),
               IconButton(
                 tooltip: 'Edit session date/time',
-                onPressed: () => _editSessionDateTimes(context, s),
+                onPressed: () => editSessionDateTimes(context, s),
                 icon: const Icon(Icons.event_outlined),
               ),
               PopupMenuButton<String>(
@@ -12395,18 +13648,18 @@ class SessionDetailScreen extends StatelessWidget {
                 ],
                 onSelected: (v) async {
                   if (v == 'end_session') {
-                    await _endSession(context, s);
+                    await endSession(context, s);
                     return;
                   }
                   if (v == 'session_report') {
-                    await _exportSessionReport(context, s);
+                    await exportSessionReport(context, s);
                   }
                 },
               ),
             ],
           ),
           floatingActionButton: FloatingActionButton.extended(
-            onPressed: () => _addColdBore(context, s),
+            onPressed: () => addColdBore(context, s),
             icon: const Icon(Icons.ac_unit_outlined),
             label: const Text('Add Cold Bore'),
           ),
@@ -12415,7 +13668,7 @@ class SessionDetailScreen extends StatelessWidget {
               : SafeArea(
                   minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                   child: FilledButton.icon(
-                    onPressed: () => _endSession(context, s),
+                    onPressed: () => endSession(context, s),
                     icon: const Icon(Icons.check_circle_outline),
                     label: const Text('End Session'),
                   ),
@@ -12550,7 +13803,7 @@ class SessionDetailScreen extends StatelessWidget {
                         Align(
                           alignment: Alignment.centerRight,
                           child: TextButton.icon(
-                            onPressed: () => _editTrainingNotes(context, s),
+                            onPressed: () => editTrainingNotes(context, s),
                             icon: const Icon(Icons.edit_note_outlined),
                             label: const Text('Edit'),
                           ),
@@ -12663,7 +13916,7 @@ class SessionDetailScreen extends StatelessWidget {
                                   state.rifleById(v)?.caliber))
                           ? s.ammoLotId
                           : null;
-                      final existing = _findMatchingString(
+                      final existing = findMatchingString(
                         s,
                         rifleId: v,
                         ammoLotId: nextAmmo,
@@ -12671,7 +13924,7 @@ class SessionDetailScreen extends StatelessWidget {
                       );
                       if (existing != null) {
                         final shouldSwitch =
-                            await _promptSwitchToExistingStringDialog(
+                            await promptSwitchToExistingStringDialog(
                               context,
                               existing,
                             );
@@ -12684,7 +13937,7 @@ class SessionDetailScreen extends StatelessWidget {
                         }
                       }
 
-                      final startNew = await _promptStartNewStringDialog(
+                      final startNew = await promptStartNewStringDialog(
                         context,
                       );
                       if (!startNew) {
@@ -12808,7 +14061,7 @@ class SessionDetailScreen extends StatelessWidget {
                                   (nextAmmo != current.ammoLotId);
                               if (!changed) return;
 
-                              final existing = _findMatchingString(
+                              final existing = findMatchingString(
                                 s,
                                 rifleId: nextRifle,
                                 ammoLotId: nextAmmo,
@@ -12816,7 +14069,7 @@ class SessionDetailScreen extends StatelessWidget {
                               );
                               if (existing != null) {
                                 final shouldSwitch =
-                                    await _promptSwitchToExistingStringDialog(
+                                    await promptSwitchToExistingStringDialog(
                                       context,
                                       existing,
                                     );
@@ -12830,7 +14083,7 @@ class SessionDetailScreen extends StatelessWidget {
                               }
 
                               final startNew =
-                                  await _promptStartNewStringDialog(context);
+                                  await promptStartNewStringDialog(context);
                               if (!startNew) {
                                 // Revert to current active string loadout.
                                 state.updateSessionLoadout(
@@ -12859,7 +14112,7 @@ class SessionDetailScreen extends StatelessWidget {
                   Expanded(child: _SectionTitle('Training DOPE')),
                   if (canViewTrainingDope)
                     TextButton.icon(
-                      onPressed: () => _addDope(context, s),
+                      onPressed: () => addDope(context, s),
                       icon: const Icon(Icons.add),
                       label: const Text('Add'),
                     ),
@@ -13216,7 +14469,7 @@ class SessionDetailScreen extends StatelessWidget {
                       label: const Text('Capture'),
                     ),
                     OutlinedButton.icon(
-                      onPressed: () => _addPhotoNote(context, s),
+                      onPressed: () => addPhotoNote(context, s),
                       icon: const Icon(Icons.note_add_outlined),
                       label: const Text('Add note'),
                     ),
@@ -21215,3 +22468,4 @@ class _ImportBackupDialogState extends State<_ImportBackupDialog> {
     );
   }
 }
+
