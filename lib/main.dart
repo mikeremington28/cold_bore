@@ -1025,8 +1025,11 @@ class BallisticSolution {
 class BallisticCalculationService {
   const BallisticCalculationService();
 
-  // Placeholder solver with physically reasonable behavior and explicit assumptions.
-  // It is intentionally modular so a full external solver can replace this class.
+  // Current assumptions/limitations:
+  // 1) Uses a simplified time-of-flight model and coarse drag scaling.
+  // 2) Wind is treated as full-value with no spin drift/coriolis/aero jump.
+  // This class is intentionally isolated so it can be replaced with a
+  // full-featured external solver without changing UI/state code.
   BallisticSolution calculate(BallisticSolverInput input) {
     final distanceYards = input.distanceUnit == DistanceUnit.yards
         ? input.distance
@@ -1065,7 +1068,7 @@ class BallisticCalculationService {
         elevation: holdMoa,
         windHold: windMoa,
         unit: ElevationUnit.moa,
-        solverVersion: 'placeholder-v1',
+        solverVersion: 'basic_estimate_v1',
       );
     }
 
@@ -1073,7 +1076,7 @@ class BallisticCalculationService {
       elevation: holdMil,
       windHold: windMil,
       unit: ElevationUnit.mil,
-      solverVersion: 'placeholder-v1',
+      solverVersion: 'basic_estimate_v1',
     );
   }
 }
@@ -5390,7 +5393,7 @@ BallisticDopeRecord _ballisticDopeRecordFromMap(Map<String, dynamic> map) =>
       ),
       calculatedElevation: _toNullableDouble(map['calculatedElevation']) ?? 0,
       calculatedWind: _toNullableDouble(map['calculatedWind']) ?? 0,
-      solverVersion: (map['solverVersion'] ?? 'placeholder-v1').toString(),
+      solverVersion: (map['solverVersion'] ?? 'basic_estimate_v1').toString(),
       validatedAt: map['validatedAt'] == null
           ? null
           : _parseDateTime(map['validatedAt']),
@@ -8770,8 +8773,16 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
   bool _includeWeatherSnapshot = true;
   DateTime _verificationDate = DateTime.now();
   BallisticDopeRecord? _activeRecord;
+    List<_GeneratedDopeRow> _chartRows = const <_GeneratedDopeRow>[];
+    int? _selectedChartRowIndex;
 
   final TextEditingController _distanceCtrl = TextEditingController(text: '100');
+    final TextEditingController _chartStartDistanceCtrl =
+      TextEditingController(text: '100');
+    final TextEditingController _chartEndDistanceCtrl =
+      TextEditingController(text: '1000');
+    final TextEditingController _chartIncrementCtrl =
+      TextEditingController(text: '100');
   final TextEditingController _windSpeedCtrl = TextEditingController(text: '10');
   final TextEditingController _windDirectionCtrl =
       TextEditingController(text: 'Full value');
@@ -8803,6 +8814,9 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
   @override
   void dispose() {
     _distanceCtrl.dispose();
+    _chartStartDistanceCtrl.dispose();
+    _chartEndDistanceCtrl.dispose();
+    _chartIncrementCtrl.dispose();
     _windSpeedCtrl.dispose();
     _windDirectionCtrl.dispose();
     _temperatureCtrl.dispose();
@@ -8853,21 +8867,71 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
     setState(() => _verificationDate = picked);
   }
 
+  String _formatDate(DateTime d) => '${d.month}/${d.day}/${d.year}';
+
+  String _distanceUnitLabel(DistanceUnit unit) {
+    return unit == DistanceUnit.yards ? 'yd' : 'm';
+  }
+
+  String _elevationUnitLabel(ElevationUnit unit) {
+    switch (unit) {
+      case ElevationUnit.mil:
+        return 'MIL';
+      case ElevationUnit.moa:
+        return 'MOA';
+      case ElevationUnit.inches:
+        return 'IN';
+    }
+  }
+
+  Future<void> _useCurrentWeather() async {
+    final temp = widget.state.temperatureF;
+    final wind = widget.state.windSpeedMph;
+    final windDir = widget.state.windDirectionDeg;
+
+    if (temp == null && wind == null && windDir == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Current weather is unavailable right now. You can still enter values manually.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      if (temp != null) _temperatureCtrl.text = temp.toStringAsFixed(1);
+      if (wind != null) _windSpeedCtrl.text = wind.toStringAsFixed(1);
+      if (windDir != null) _windDirectionCtrl.text = '$windDir deg';
+    });
+
+    final missing = <String>['pressure', 'humidity'];
+    final detail = missing.isEmpty
+        ? 'Current weather applied.'
+        : 'Current weather applied where available. ${missing.join(' and ')} still require manual entry.';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(detail)),
+    );
+  }
+
   String _weatherSnapshotText() {
     return 'Temp ${_temperatureCtrl.text.trim()} F | Pressure ${_pressureCtrl.text.trim()} inHg | Humidity ${_humidityCtrl.text.trim()}% | Wind ${_windSpeedCtrl.text.trim()} mph (${_windDirectionCtrl.text.trim()})';
   }
 
-  Future<void> _calculateDope() async {
+  _GeneratedDopeRow? _buildCalculatedRow({
+    required double distance,
+    required DistanceUnit distanceUnit,
+  }) {
     final rifleId = _selectedRifleId;
     final ammoId = _selectedAmmoId;
     if (rifleId == null || ammoId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Select rifle and ammo first.')),
       );
-      return;
+      return null;
     }
 
-    final distance = double.tryParse(_distanceCtrl.text.trim());
     final windSpeed = double.tryParse(_windSpeedCtrl.text.trim());
     final temp = double.tryParse(_temperatureCtrl.text.trim());
     final pressure = double.tryParse(_pressureCtrl.text.trim());
@@ -8876,8 +8940,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
     final sightHeight = double.tryParse(_sightHeightCtrl.text.trim());
     final mv = double.tryParse(_muzzleVelocityCtrl.text.trim());
     final bc = double.tryParse(_bcCtrl.text.trim());
-    if (distance == null ||
-        windSpeed == null ||
+    if (windSpeed == null ||
         temp == null ||
         pressure == null ||
         humidity == null ||
@@ -8888,7 +8951,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Enter valid numeric values.')),
       );
-      return;
+      return null;
     }
 
     final rifle = widget.state.rifleById(rifleId);
@@ -8899,7 +8962,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
     final solution = _solver.calculate(
       BallisticSolverInput(
         distance: distance,
-        distanceUnit: _distanceUnit,
+        distanceUnit: distanceUnit,
         windSpeedMph: windSpeed,
         windDirectionValue: _windDirectionCtrl.text.trim(),
         temperatureF: temp,
@@ -8915,11 +8978,14 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
       ),
     );
 
-    final saved = widget.state.addCalculatedBallisticDope(
+    return _GeneratedDopeRow(
+      distance: distance,
+      distanceUnit: distanceUnit,
+      outputUnit: solution.unit,
+      calculatedElevation: solution.elevation,
+      calculatedWind: solution.windHold,
       rifleId: rifleId,
       ammoLotId: ammoId,
-      distance: distance,
-      distanceUnit: _distanceUnit,
       windSpeedMph: windSpeed,
       windDirectionValue: _windDirectionCtrl.text.trim(),
       temperatureF: temp,
@@ -8931,10 +8997,42 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
       muzzleVelocityFps: mv,
       ballisticCoefficient: bc,
       dragModel: _dragModel,
-      outputUnit: solution.unit,
-      calculatedElevation: solution.elevation,
-      calculatedWind: solution.windHold,
       solverVersion: solution.solverVersion,
+    );
+  }
+
+  Future<void> _calculateDope() async {
+    final distance = double.tryParse(_distanceCtrl.text.trim());
+    if (distance == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a valid distance.')),
+      );
+      return;
+    }
+
+    final row = _buildCalculatedRow(distance: distance, distanceUnit: _distanceUnit);
+    if (row == null) return;
+
+    final saved = widget.state.addCalculatedBallisticDope(
+      rifleId: row.rifleId,
+      ammoLotId: row.ammoLotId,
+      distance: row.distance,
+      distanceUnit: row.distanceUnit,
+      windSpeedMph: row.windSpeedMph,
+      windDirectionValue: row.windDirectionValue,
+      temperatureF: row.temperatureF,
+      pressureInHg: row.pressureInHg,
+      humidityPercent: row.humidityPercent,
+      zeroDistance: row.zeroDistance,
+      zeroDistanceUnit: row.zeroDistanceUnit,
+      sightHeightInches: row.sightHeightInches,
+      muzzleVelocityFps: row.muzzleVelocityFps,
+      ballisticCoefficient: row.ballisticCoefficient,
+      dragModel: row.dragModel,
+      outputUnit: row.outputUnit,
+      calculatedElevation: row.calculatedElevation,
+      calculatedWind: row.calculatedWind,
+      solverVersion: row.solverVersion,
     );
 
     if (!mounted) return;
@@ -8945,6 +9043,460 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
       _windCorrectionCtrl.text = '0';
       _validationNotesCtrl.clear();
     });
+  }
+
+  Future<void> _generateChart() async {
+    final start = double.tryParse(_chartStartDistanceCtrl.text.trim());
+    final end = double.tryParse(_chartEndDistanceCtrl.text.trim());
+    final step = double.tryParse(_chartIncrementCtrl.text.trim());
+    if (start == null || end == null || step == null || step <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Enter valid chart distance values and a positive increment.',
+          ),
+        ),
+      );
+      return;
+    }
+    if (end < start) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Ending distance must be greater than start distance.'),
+        ),
+      );
+      return;
+    }
+
+    final rows = <_GeneratedDopeRow>[];
+    var d = start;
+    var guard = 0;
+    while (d <= end + 0.0001 && guard < 500) {
+      final row = _buildCalculatedRow(distance: d, distanceUnit: _distanceUnit);
+      if (row == null) return;
+      rows.add(row);
+      d += step;
+      guard++;
+    }
+
+    setState(() {
+      _chartRows = rows;
+      _selectedChartRowIndex = rows.isEmpty ? null : 0;
+    });
+  }
+
+  Future<_GeneratedDopeRow?> _ensureChartRowSavedToHistory(int index) async {
+    if (index < 0 || index >= _chartRows.length) return null;
+    final row = _chartRows[index];
+    if (row.recordId != null) return row;
+
+    final saved = widget.state.addCalculatedBallisticDope(
+      rifleId: row.rifleId,
+      ammoLotId: row.ammoLotId,
+      distance: row.distance,
+      distanceUnit: row.distanceUnit,
+      windSpeedMph: row.windSpeedMph,
+      windDirectionValue: row.windDirectionValue,
+      temperatureF: row.temperatureF,
+      pressureInHg: row.pressureInHg,
+      humidityPercent: row.humidityPercent,
+      zeroDistance: row.zeroDistance,
+      zeroDistanceUnit: row.zeroDistanceUnit,
+      sightHeightInches: row.sightHeightInches,
+      muzzleVelocityFps: row.muzzleVelocityFps,
+      ballisticCoefficient: row.ballisticCoefficient,
+      dragModel: row.dragModel,
+      outputUnit: row.outputUnit,
+      calculatedElevation: row.calculatedElevation,
+      calculatedWind: row.calculatedWind,
+      solverVersion: row.solverVersion,
+    );
+
+    final updated = row.copyWith(recordId: saved.id);
+    setState(() {
+      _chartRows = _chartRows
+          .asMap()
+          .entries
+          .map((e) => e.key == index ? updated : e.value)
+          .toList(growable: false);
+    });
+    return updated;
+  }
+
+  Future<void> _saveChartToHistory() async {
+    if (_chartRows.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Generate a chart first.')),
+      );
+      return;
+    }
+
+    var savedCount = 0;
+    for (var i = 0; i < _chartRows.length; i++) {
+      final before = _chartRows[i];
+      if (before.recordId != null) continue;
+      final updated = await _ensureChartRowSavedToHistory(i);
+      if (updated != null && updated.recordId != null) {
+        savedCount++;
+      }
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          savedCount == 0
+              ? 'All chart rows are already saved in Ballistic DOPE history.'
+              : 'Saved $savedCount chart row${savedCount == 1 ? '' : 's'} to Ballistic DOPE history.',
+        ),
+      ),
+    );
+  }
+
+  DopeEntry _dopeEntryFromChartRow(_GeneratedDopeRow row, BallisticDopeRecord? record) {
+    final bool useVerified = record?.isVerified == true;
+    final double windValue = useVerified
+        ? (record?.verifiedWind ?? row.calculatedWind)
+        : row.calculatedWind;
+    final double elevationValue = useVerified
+        ? (record?.verifiedElevation ?? row.calculatedElevation)
+        : row.calculatedElevation;
+
+    return DopeEntry(
+      id: widget.state.newChildId(),
+      time: DateTime.now(),
+      rifleId: row.rifleId,
+      ammoLotId: row.ammoLotId,
+      distance: row.distance,
+      distanceUnit: row.distanceUnit,
+      elevation: elevationValue,
+      elevationUnit: row.outputUnit,
+      elevationNotes: useVerified
+          ? 'Verified via Ballistic Assistant chart'
+          : 'Calculated estimate via Ballistic Assistant chart',
+      windType: WindType.fullValue,
+      windValue: '${row.windSpeedMph.toStringAsFixed(1)} mph',
+      windNotes: useVerified
+          ? (record?.verifiedNotes ?? '')
+          : 'Calculated estimate',
+      windageLeft: windValue < 0 ? windValue.abs() : 0,
+      windageRight: windValue >= 0 ? windValue.abs() : 0,
+    );
+  }
+
+  Future<bool> _confirmOverwriteIfNeeded({
+    required String key,
+    required DistanceKey dk,
+  }) async {
+    final existing = _writeRifleOnly
+        ? widget.state.workingDopeRifleOnly[key]
+        : widget.state.workingDopeRifleAmmo[key];
+    if (existing?.containsKey(dk) != true) {
+      return true;
+    }
+    final overwrite = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Working DOPE exists'),
+        content: const Text(
+          'A Working DOPE entry already exists for this rifle/ammo/distance. Overwrite it?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Overwrite'),
+          ),
+        ],
+      ),
+    );
+    return overwrite == true;
+  }
+
+  Future<void> _saveSelectedRowToWorkingDope() async {
+    final selected = _selectedChartRowIndex;
+    if (selected == null || selected < 0 || selected >= _chartRows.length) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select a chart row first.')),
+      );
+      return;
+    }
+
+    final row = _chartRows[selected];
+    final key = _writeRifleOnly ? row.rifleId : '${row.rifleId}_${row.ammoLotId}';
+    final dk = DistanceKey(row.distance, row.distanceUnit);
+    final ok = await _confirmOverwriteIfNeeded(key: key, dk: dk);
+    if (!ok) return;
+
+    final recordsById = {
+      for (final r in widget.state.ballisticDopeRecords) r.id: r,
+    };
+    final rec = row.recordId == null ? null : recordsById[row.recordId!];
+    final entry = _dopeEntryFromChartRow(row, rec);
+    widget.state.promoteExistingDope(entry: entry, rifleOnly: _writeRifleOnly);
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Selected chart row saved to Working DOPE.')),
+    );
+  }
+
+  Future<void> _saveAllRowsToWorkingDope() async {
+    if (_chartRows.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Generate a chart first.')),
+      );
+      return;
+    }
+
+    final existingConflicts = <_GeneratedDopeRow>[];
+    for (final row in _chartRows) {
+      final key = _writeRifleOnly
+          ? row.rifleId
+          : '${row.rifleId}_${row.ammoLotId}';
+      final dk = DistanceKey(row.distance, row.distanceUnit);
+      final existing = _writeRifleOnly
+          ? widget.state.workingDopeRifleOnly[key]
+          : widget.state.workingDopeRifleAmmo[key];
+      if (existing?.containsKey(dk) == true) {
+        existingConflicts.add(row);
+      }
+    }
+
+    var overwriteConflicts = false;
+    if (existingConflicts.isNotEmpty) {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Working DOPE conflicts found'),
+          content: Text(
+            '${existingConflicts.length} existing Working DOPE entries match chart distances. Overwrite matching entries?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Skip existing'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Overwrite'),
+            ),
+          ],
+        ),
+      );
+      overwriteConflicts = confirm == true;
+    }
+
+    final recordsById = {
+      for (final r in widget.state.ballisticDopeRecords) r.id: r,
+    };
+
+    var savedCount = 0;
+    var skippedCount = 0;
+    for (final row in _chartRows) {
+      final key = _writeRifleOnly
+          ? row.rifleId
+          : '${row.rifleId}_${row.ammoLotId}';
+      final dk = DistanceKey(row.distance, row.distanceUnit);
+      final existing = _writeRifleOnly
+          ? widget.state.workingDopeRifleOnly[key]
+          : widget.state.workingDopeRifleAmmo[key];
+      final hasConflict = existing?.containsKey(dk) == true;
+      if (hasConflict && !overwriteConflicts) {
+        skippedCount++;
+        continue;
+      }
+      final rec = row.recordId == null ? null : recordsById[row.recordId!];
+      final entry = _dopeEntryFromChartRow(row, rec);
+      widget.state.promoteExistingDope(entry: entry, rifleOnly: _writeRifleOnly);
+      savedCount++;
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Saved $savedCount row${savedCount == 1 ? '' : 's'} to Working DOPE${skippedCount > 0 ? ' ($skippedCount skipped)' : ''}.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _validateChartRow(int index) async {
+    if (index < 0 || index >= _chartRows.length) return;
+
+    final savedRow = await _ensureChartRowSavedToHistory(index);
+    if (savedRow == null || savedRow.recordId == null) return;
+
+    var outcome = BallisticValidationOutcome.confirmedAccurate;
+    final elevCtrl = TextEditingController(text: '0');
+    final windCtrl = TextEditingController(text: '0');
+    final notesCtrl = TextEditingController();
+    var date = DateTime.now();
+
+    final didSave = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (context, setLocalState) {
+            return AlertDialog(
+              title: Text(
+                'Validate ${savedRow.distance.toStringAsFixed(0)} ${_distanceUnitLabel(savedRow.distanceUnit)}',
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Estimated elevation ${savedRow.calculatedElevation.toStringAsFixed(2)} ${_elevationUnitLabel(savedRow.outputUnit)}',
+                    ),
+                    Text(
+                      'Estimated wind ${savedRow.calculatedWind.toStringAsFixed(2)} ${_elevationUnitLabel(savedRow.outputUnit)}',
+                    ),
+                    const SizedBox(height: 10),
+                    DropdownButtonFormField<BallisticValidationOutcome>(
+                      initialValue: outcome,
+                      decoration: const InputDecoration(
+                        labelText: 'Validation outcome',
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: BallisticValidationOutcome.confirmedAccurate,
+                          child: Text('Confirmed accurate'),
+                        ),
+                        DropdownMenuItem(
+                          value: BallisticValidationOutcome.adjustmentRequired,
+                          child: Text('Adjustment required'),
+                        ),
+                      ],
+                      onChanged: (v) {
+                        setLocalState(
+                          () => outcome =
+                              v ?? BallisticValidationOutcome.confirmedAccurate,
+                        );
+                      },
+                    ),
+                    if (outcome == BallisticValidationOutcome.adjustmentRequired)
+                      ...[
+                        const SizedBox(height: 8),
+                        TextField(
+                          textCapitalization: TextCapitalization.none,
+                          controller: elevCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: InputDecoration(
+                            labelText:
+                                'Actual elevation correction (${_elevationUnitLabel(savedRow.outputUnit)})',
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          textCapitalization: TextCapitalization.none,
+                          controller: windCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: InputDecoration(
+                            labelText:
+                                'Actual wind correction (${_elevationUnitLabel(savedRow.outputUnit)})',
+                          ),
+                        ),
+                      ],
+                    const SizedBox(height: 8),
+                    TextField(
+                      textCapitalization: TextCapitalization.none,
+                      controller: notesCtrl,
+                      maxLines: 2,
+                      decoration: const InputDecoration(labelText: 'Notes'),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(child: Text('Date: ${_formatDate(date)}')),
+                        TextButton(
+                          onPressed: () async {
+                            final picked = await showDatePicker(
+                              context: dialogCtx,
+                              initialDate: date,
+                              firstDate: DateTime(2000),
+                              lastDate: DateTime(2100),
+                            );
+                            if (picked != null) {
+                              setLocalState(() => date = picked);
+                            }
+                          },
+                          child: const Text('Change'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogCtx).pop(false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(dialogCtx).pop(true),
+                  child: const Text('Save Validation'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (didSave != true) {
+      elevCtrl.dispose();
+      windCtrl.dispose();
+      notesCtrl.dispose();
+      return;
+    }
+
+    final elevationCorrection = double.tryParse(elevCtrl.text.trim()) ?? 0.0;
+    final windCorrection = double.tryParse(windCtrl.text.trim()) ?? 0.0;
+
+    final updated = widget.state.validateBallisticDope(
+      recordId: savedRow.recordId!,
+      outcome: outcome,
+      elevationCorrection: outcome == BallisticValidationOutcome.adjustmentRequired
+          ? elevationCorrection
+          : 0.0,
+      windCorrection: outcome == BallisticValidationOutcome.adjustmentRequired
+          ? windCorrection
+          : 0.0,
+      notes: notesCtrl.text,
+      verificationDate: date,
+      weatherSnapshot: _includeWeatherSnapshot ? _weatherSnapshotText() : '',
+    );
+
+    elevCtrl.dispose();
+    windCtrl.dispose();
+    notesCtrl.dispose();
+
+    if (updated == null) return;
+
+    if (!mounted) return;
+    setState(() {
+      _activeRecord = updated;
+      _selectedChartRowIndex = index;
+    });
+
+    final confirmations = widget.state.verifiedBallisticConfirmationCount(updated);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Row validated as verified DOPE. $confirmations confirmation${confirmations == 1 ? '' : 's'}.',
+        ),
+      ),
+    );
   }
 
   Future<void> _saveValidation() async {
@@ -9027,6 +9579,16 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
     );
   }
 
+  Widget _sectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(
+        title,
+        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -9066,6 +9628,16 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
         final active = _activeRecord;
         final activeConfirmations =
             active == null ? 0 : widget.state.verifiedBallisticConfirmationCount(active);
+        final recordsById = {
+          for (final r in records) r.id: r,
+        };
+
+        final Color unverifiedCardBg = Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xFF4A3A14)
+            : const Color(0xFFFFF1C2);
+        final Color verifiedCardBg = Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xFF143525)
+            : const Color(0xFFDDF5E6);
 
         return Scaffold(
           appBar: AppBar(title: const Text('Ballistic Assistant')),
@@ -9079,9 +9651,10 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Select rifle/ammo, enter conditions, calculate estimate, validate with live fire, then save verified DOPE.',
+                        'Build calculated estimates, validate with live fire, and promote trusted values into Working DOPE.',
                       ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 12),
+                      _sectionTitle('Rifle / Ammo'),
                       DropdownButtonFormField<String?>(
                         initialValue: _selectedRifleId,
                         decoration: const InputDecoration(labelText: 'Rifle'),
@@ -9122,7 +9695,8 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                         ],
                         onChanged: (v) => setState(() => _selectedAmmoId = v),
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 12),
+                      _sectionTitle('Distance / Zero'),
                       Row(
                         children: [
                           Expanded(
@@ -9131,7 +9705,9 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                               controller: _distanceCtrl,
                               keyboardType:
                                   const TextInputType.numberWithOptions(decimal: true),
-                              decoration: const InputDecoration(labelText: 'Distance'),
+                              decoration: const InputDecoration(
+                                labelText: 'Single distance',
+                              ),
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -9153,6 +9729,50 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                             ),
                           ),
                         ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              textCapitalization: TextCapitalization.none,
+                              controller: _zeroDistanceCtrl,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(decimal: true),
+                              decoration:
+                                  const InputDecoration(labelText: 'Zero distance'),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: DropdownButtonFormField<DistanceUnit>(
+                              initialValue: _zeroDistanceUnit,
+                              decoration:
+                                  const InputDecoration(labelText: 'Zero unit'),
+                              items: DistanceUnit.values
+                                  .map(
+                                    (u) => DropdownMenuItem(
+                                      value: u,
+                                      child: Text(u.name),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (v) => setState(
+                                () => _zeroDistanceUnit = v ?? DistanceUnit.yards,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      _sectionTitle('Environment'),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: OutlinedButton.icon(
+                          onPressed: _useCurrentWeather,
+                          icon: const Icon(Icons.cloud_outlined),
+                          label: const Text('Use current weather'),
+                        ),
                       ),
                       const SizedBox(height: 8),
                       Row(
@@ -9216,41 +9836,8 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              textCapitalization: TextCapitalization.none,
-                              controller: _zeroDistanceCtrl,
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(decimal: true),
-                              decoration:
-                                  const InputDecoration(labelText: 'Zero distance'),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: DropdownButtonFormField<DistanceUnit>(
-                              initialValue: _zeroDistanceUnit,
-                              decoration:
-                                  const InputDecoration(labelText: 'Zero unit'),
-                              items: DistanceUnit.values
-                                  .map(
-                                    (u) => DropdownMenuItem(
-                                      value: u,
-                                      child: Text(u.name),
-                                    ),
-                                  )
-                                  .toList(),
-                              onChanged: (v) => setState(
-                                () => _zeroDistanceUnit = v ?? DistanceUnit.yards,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 12),
+                      _sectionTitle('Bullet Data'),
                       Row(
                         children: [
                           Expanded(
@@ -9313,11 +9900,180 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                         ],
                       ),
                       const SizedBox(height: 12),
-                      FilledButton.icon(
-                        onPressed: _calculateDope,
-                        icon: const Icon(Icons.calculate_outlined),
-                        label: const Text('Generate Calculated DOPE'),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          FilledButton.icon(
+                            onPressed: _calculateDope,
+                            icon: const Icon(Icons.calculate_outlined),
+                            label: const Text('Generate Calculated DOPE'),
+                          ),
+                          FilledButton.tonalIcon(
+                            onPressed: _generateChart,
+                            icon: const Icon(Icons.table_chart_outlined),
+                            label: const Text('Generate DOPE Chart'),
+                          ),
+                        ],
                       ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _sectionTitle('DOPE Chart Builder'),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              textCapitalization: TextCapitalization.none,
+                              controller: _chartStartDistanceCtrl,
+                              keyboardType: const TextInputType.numberWithOptions(
+                                decimal: true,
+                              ),
+                              decoration: const InputDecoration(
+                                labelText: 'Starting distance',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextField(
+                              textCapitalization: TextCapitalization.none,
+                              controller: _chartEndDistanceCtrl,
+                              keyboardType: const TextInputType.numberWithOptions(
+                                decimal: true,
+                              ),
+                              decoration: const InputDecoration(
+                                labelText: 'Ending distance',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextField(
+                              textCapitalization: TextCapitalization.none,
+                              controller: _chartIncrementCtrl,
+                              keyboardType: const TextInputType.numberWithOptions(
+                                decimal: true,
+                              ),
+                              decoration: const InputDecoration(
+                                labelText: 'Increment',
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'Distances use ${_distanceUnitLabel(_distanceUnit)} and output uses rifle scope unit (${rifle?.scopeUnit == ScopeUnit.moa ? 'MOA' : 'MIL'}).',
+                        style: TextStyle(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurface
+                              .withValues(alpha: 0.75),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        value: _writeRifleOnly,
+                        onChanged: (v) => setState(() => _writeRifleOnly = v),
+                        title: const Text('Save Working DOPE as Rifle only'),
+                        subtitle: const Text(
+                          'Off = save as Rifle + Ammo working DOPE',
+                        ),
+                      ),
+                      if (_chartRows.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: DataTable(
+                            columns: const [
+                              DataColumn(label: Text('Distance')),
+                              DataColumn(label: Text('Elevation')),
+                              DataColumn(label: Text('Wind')),
+                              DataColumn(label: Text('Unit')),
+                              DataColumn(label: Text('Status')),
+                            ],
+                            rows: _chartRows.asMap().entries.map((entry) {
+                              final idx = entry.key;
+                              final row = entry.value;
+                              final linked = row.recordId == null
+                                  ? null
+                                  : recordsById[row.recordId!];
+                              final isVerified = linked?.isVerified == true;
+                              final elevation = isVerified
+                                  ? linked!.verifiedElevation
+                                  : row.calculatedElevation;
+                              final wind = isVerified
+                                  ? linked!.verifiedWind
+                                  : row.calculatedWind;
+                              final status = isVerified
+                                  ? 'Verified'
+                                  : 'Calculated estimate';
+                              return DataRow(
+                                selected: _selectedChartRowIndex == idx,
+                                onSelectChanged: (_) {
+                                  setState(() => _selectedChartRowIndex = idx);
+                                  _validateChartRow(idx);
+                                },
+                                cells: [
+                                  DataCell(
+                                    Text(
+                                      '${row.distance.toStringAsFixed(0)} ${_distanceUnitLabel(row.distanceUnit)}',
+                                    ),
+                                  ),
+                                  DataCell(
+                                    Text(elevation.toStringAsFixed(2)),
+                                  ),
+                                  DataCell(Text(wind.toStringAsFixed(2))),
+                                  DataCell(Text(_elevationUnitLabel(row.outputUnit))),
+                                  DataCell(Text(status)),
+                                ],
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            OutlinedButton.icon(
+                              onPressed: _saveChartToHistory,
+                              icon: const Icon(Icons.save_outlined),
+                              label: const Text('Save generated chart to history'),
+                            ),
+                            OutlinedButton.icon(
+                              onPressed: _saveSelectedRowToWorkingDope,
+                              icon: const Icon(Icons.file_upload_outlined),
+                              label: const Text('Save selected row to Working DOPE'),
+                            ),
+                            FilledButton.tonalIcon(
+                              onPressed: _saveAllRowsToWorkingDope,
+                              icon: const Icon(Icons.playlist_add_check_outlined),
+                              label: const Text('Save all rows to Working DOPE'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Tip: tap any chart row to validate it with live-fire feedback.',
+                          style: TextStyle(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurface
+                                .withValues(alpha: 0.75),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -9325,18 +10081,17 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
               if (active != null) ...[
                 const SizedBox(height: 12),
                 Card(
-                  color: active.isVerified
-                      ? Colors.green.withValues(alpha: 0.15)
-                      : Colors.yellow.withValues(alpha: 0.20),
+                  color: active.isVerified ? verifiedCardBg : unverifiedCardBg,
                   child: Padding(
                     padding: const EdgeInsets.all(12),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        _sectionTitle('Result'),
                         Text(
                           active.isVerified
                               ? 'Verified DOPE${activeConfirmations > 0 ? ' - $activeConfirmations confirmation${activeConfirmations == 1 ? '' : 's'}' : ''}'
-                              : 'Calculated DOPE (Unverified Estimate)',
+                              : 'Calculated estimate (Unverified)',
                           style: const TextStyle(fontWeight: FontWeight.w700),
                         ),
                         const SizedBox(height: 6),
@@ -9347,15 +10102,21 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                           'Wind hold: ${(active.isVerified ? active.verifiedWind : active.calculatedWind).toStringAsFixed(2)} ${active.outputUnit.name.toUpperCase()}',
                         ),
                         Text(
-                          'Drag: ${active.dragModel.name.toUpperCase()} • Solver: ${active.solverVersion}',
+                          'Drag model: ${active.dragModel.name.toUpperCase()}',
                         ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _sectionTitle('Validation'),
                         if (!active.isVerified) ...[
-                          const SizedBox(height: 10),
-                          const Text(
-                            'Validate with live fire',
-                            style: TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          const SizedBox(height: 6),
                           DropdownButtonFormField<BallisticValidationOutcome>(
                             initialValue: _validationOutcome,
                             decoration: const InputDecoration(
@@ -9389,7 +10150,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                               ),
                               decoration: InputDecoration(
                                 labelText:
-                                    'Elevation correction (${active.outputUnit.name.toUpperCase()})',
+                                    'Actual elevation correction (${active.outputUnit.name.toUpperCase()})',
                               ),
                             ),
                             const SizedBox(height: 8),
@@ -9401,7 +10162,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                               ),
                               decoration: InputDecoration(
                                 labelText:
-                                    'Wind correction (${active.outputUnit.name.toUpperCase()})',
+                                    'Actual wind correction (${active.outputUnit.name.toUpperCase()})',
                               ),
                             ),
                           ],
@@ -9410,7 +10171,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                             textCapitalization: TextCapitalization.none,
                             controller: _validationNotesCtrl,
                             decoration: const InputDecoration(
-                              labelText: 'Validation notes',
+                              labelText: 'Notes',
                             ),
                             maxLines: 2,
                           ),
@@ -9440,18 +10201,11 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                             onPressed: _saveValidation,
                             child: const Text('Save Verified DOPE'),
                           ),
-                        ],
-                        if (active.isVerified) ...[
-                          const SizedBox(height: 10),
-                          SwitchListTile(
-                            contentPadding: EdgeInsets.zero,
-                            value: _writeRifleOnly,
-                            onChanged: (v) => setState(() => _writeRifleOnly = v),
-                            title: const Text('Write as Rifle only working DOPE'),
-                            subtitle: const Text(
-                              'Off = write as Rifle + Ammo working DOPE',
-                            ),
+                        ] else ...[
+                          Text(
+                            'Verified on ${active.verificationDate == null ? _formatDate(active.createdAt) : _formatDate(active.verificationDate!)}',
                           ),
+                          const SizedBox(height: 8),
                           FilledButton.tonal(
                             onPressed: _writeVerifiedToWorkingDope,
                             child: const Text('Write Verified to Working DOPE'),
@@ -9484,10 +10238,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Recent Ballistic DOPE',
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
+                      _sectionTitle('Recent Ballistic DOPE'),
                       const SizedBox(height: 8),
                       if (records.isEmpty)
                         Text(
@@ -9509,13 +10260,17 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                             margin: const EdgeInsets.only(bottom: 6),
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: record.isVerified
-                                  ? Colors.green.withValues(alpha: 0.12)
-                                  : Colors.yellow.withValues(alpha: 0.18),
+                              color: record.isVerified ? verifiedCardBg : unverifiedCardBg,
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
-                              '${recRifle?.name ?? recRifle?.caliber ?? 'Rifle'} • ${recAmmo?.name ?? recAmmo?.bullet ?? 'Ammo'} • ${record.distance.toStringAsFixed(0)} ${record.distanceUnit == DistanceUnit.yards ? 'yd' : 'm'}\n${record.isVerified ? 'Verified DOPE - $confirmations confirmation${confirmations == 1 ? '' : 's'}' : 'Calculated estimate (unverified)'}',
+                              'Rifle: ${recRifle?.name ?? recRifle?.caliber ?? 'Rifle'}\n'
+                              'Ammo: ${recAmmo?.name ?? recAmmo?.bullet ?? 'Ammo'}\n'
+                              'Distance: ${record.distance.toStringAsFixed(0)} ${_distanceUnitLabel(record.distanceUnit)}\n'
+                              'Date: ${_formatDate(record.createdAt)}\n'
+                              'Elevation: ${(record.isVerified ? record.verifiedElevation : record.calculatedElevation).toStringAsFixed(2)} ${_elevationUnitLabel(record.outputUnit)}\n'
+                              'Wind hold: ${(record.isVerified ? record.verifiedWind : record.calculatedWind).toStringAsFixed(2)} ${_elevationUnitLabel(record.outputUnit)}\n'
+                              'Status: ${record.isVerified ? 'Verified ($confirmations confirmation${confirmations == 1 ? '' : 's'})' : 'Calculated estimate'}',
                             ),
                           );
                         }),
@@ -9527,6 +10282,79 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
           ),
         );
       },
+    );
+  }
+}
+
+class _GeneratedDopeRow {
+  final double distance;
+  final DistanceUnit distanceUnit;
+  final ElevationUnit outputUnit;
+  final double calculatedElevation;
+  final double calculatedWind;
+  final String rifleId;
+  final String ammoLotId;
+  final double windSpeedMph;
+  final String windDirectionValue;
+  final double temperatureF;
+  final double pressureInHg;
+  final double humidityPercent;
+  final double zeroDistance;
+  final DistanceUnit zeroDistanceUnit;
+  final double sightHeightInches;
+  final double muzzleVelocityFps;
+  final double ballisticCoefficient;
+  final DragModel dragModel;
+  final String solverVersion;
+  final String? recordId;
+
+  const _GeneratedDopeRow({
+    required this.distance,
+    required this.distanceUnit,
+    required this.outputUnit,
+    required this.calculatedElevation,
+    required this.calculatedWind,
+    required this.rifleId,
+    required this.ammoLotId,
+    required this.windSpeedMph,
+    required this.windDirectionValue,
+    required this.temperatureF,
+    required this.pressureInHg,
+    required this.humidityPercent,
+    required this.zeroDistance,
+    required this.zeroDistanceUnit,
+    required this.sightHeightInches,
+    required this.muzzleVelocityFps,
+    required this.ballisticCoefficient,
+    required this.dragModel,
+    required this.solverVersion,
+    this.recordId,
+  });
+
+  _GeneratedDopeRow copyWith({
+    String? recordId,
+  }) {
+    return _GeneratedDopeRow(
+      distance: distance,
+      distanceUnit: distanceUnit,
+      outputUnit: outputUnit,
+      calculatedElevation: calculatedElevation,
+      calculatedWind: calculatedWind,
+      rifleId: rifleId,
+      ammoLotId: ammoLotId,
+      windSpeedMph: windSpeedMph,
+      windDirectionValue: windDirectionValue,
+      temperatureF: temperatureF,
+      pressureInHg: pressureInHg,
+      humidityPercent: humidityPercent,
+      zeroDistance: zeroDistance,
+      zeroDistanceUnit: zeroDistanceUnit,
+      sightHeightInches: sightHeightInches,
+      muzzleVelocityFps: muzzleVelocityFps,
+      ballisticCoefficient: ballisticCoefficient,
+      dragModel: dragModel,
+      solverVersion: solverVersion,
+      recordId: recordId ?? this.recordId,
     );
   }
 }
