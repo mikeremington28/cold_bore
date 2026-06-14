@@ -1,4 +1,4 @@
-// ignore_for_file: avoid_types_as_parameter_names, curly_braces_in_flow_control_structures, dead_code, dead_null_aware_expression, deprecated_member_use, library_private_types_in_public_api, unnecessary_underscores, unused_element, unused_element_parameter, unused_local_variable, use_build_context_synchronously
+﻿// ignore_for_file: avoid_types_as_parameter_names, curly_braces_in_flow_control_structures, dead_code, dead_null_aware_expression, deprecated_member_use, library_private_types_in_public_api, unnecessary_underscores, unused_element, unused_element_parameter, unused_local_variable, use_build_context_synchronously
 
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -37,6 +37,19 @@ const MethodChannel _nearbyShareChannel = MethodChannel(
 const MethodChannel _nearbyShareEventsChannel = MethodChannel(
   'com.remington.coldbore/nearby_share_events',
 );
+
+const cbBg = Color(0xFF0F1115);
+const cbSurface = Color(0xFF171A21);
+const cbCard = Color(0xFF1E222B);
+const cbCardAlt = Color(0xFF242A35);
+const cbBorder = Color(0xFF343B49);
+const cbBlue = Color(0xFF3B82F6);
+const cbGreen = Color(0xFF22C55E);
+const cbAmber = Color(0xFFF59E0B);
+const cbRed = Color(0xFFEF4444);
+const cbText = Color(0xFFF5F7FA);
+const cbMuted = Color(0xFF9CA3AF);
+const cbDim = Color(0xFF6B7280);
 
 class NearbyPeer {
   final String identifier;
@@ -99,224 +112,146 @@ Future<void> _playShotTimerBeep({
 }
 
 ThemeData _buildTacticalTheme() {
-  const baseBg = Color(0xFFE3E0D2);
-  const surface = Color(0xFFF1EDDF);
-  const surfaceAlt = Color(0xFFE0D8C3);
-  const primary = Color(0xFF264653);
-  const secondary = Color(0xFF7B6A3C);
-  const outline = Color(0xFF8F8A78);
-  const onSurface = Color(0xFF1E2019);
-
-  const scheme = ColorScheme.light(
-    primary: primary,
-    onPrimary: Colors.white,
-    secondary: secondary,
-    onSecondary: Colors.white,
-    surface: surface,
-    onSurface: onSurface,
-    error: Color(0xFF9D2B2B),
-    onError: Colors.white,
-    outline: outline,
-  );
-
-  return ThemeData(
-    useMaterial3: true,
-    colorScheme: scheme,
-    scaffoldBackgroundColor: baseBg,
-    canvasColor: baseBg,
-    cardColor: surface,
-    dividerColor: outline.withValues(alpha: 0.35),
-    appBarTheme: const AppBarTheme(
-      backgroundColor: surfaceAlt,
-      foregroundColor: onSurface,
-      surfaceTintColor: Colors.transparent,
-      elevation: 0,
-      centerTitle: false,
-    ),
-    cardTheme: CardThemeData(
-      color: surface,
-      surfaceTintColor: Colors.transparent,
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: outline.withValues(alpha: 0.35)),
-      ),
-      margin: EdgeInsets.zero,
-    ),
-    navigationBarTheme: NavigationBarThemeData(
-      height: 72,
-      backgroundColor: surfaceAlt,
-      surfaceTintColor: Colors.transparent,
-      indicatorColor: primary.withValues(alpha: 0.16),
-      labelTextStyle: WidgetStateProperty.resolveWith(
-        (states) => TextStyle(
-          color: states.contains(WidgetState.selected)
-              ? primary
-              : onSurface.withValues(alpha: 0.78),
-          fontWeight: states.contains(WidgetState.selected)
-              ? FontWeight.w700
-              : FontWeight.w500,
-          fontSize: 10,
-        ),
-      ),
-      iconTheme: WidgetStateProperty.resolveWith(
-        (states) => IconThemeData(
-          color: states.contains(WidgetState.selected)
-              ? primary
-              : onSurface.withValues(alpha: 0.72),
-        ),
-      ),
-    ),
-    inputDecorationTheme: InputDecorationTheme(
-      filled: true,
-      fillColor: Colors.white.withValues(alpha: 0.32),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: outline.withValues(alpha: 0.45)),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: outline.withValues(alpha: 0.45)),
-      ),
-      focusedBorder: const OutlineInputBorder(
-        borderRadius: BorderRadius.all(Radius.circular(14)),
-        borderSide: BorderSide(color: primary, width: 1.6),
-      ),
-      labelStyle: TextStyle(color: onSurface.withValues(alpha: 0.8)),
-    ),
-    filledButtonTheme: FilledButtonThemeData(
-      style: FilledButton.styleFrom(
-        backgroundColor: primary,
-        foregroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      ),
-    ),
-    floatingActionButtonTheme: const FloatingActionButtonThemeData(
-      backgroundColor: primary,
-      foregroundColor: Colors.white,
-    ),
-    chipTheme: ChipThemeData(
-      backgroundColor: surfaceAlt,
-      selectedColor: primary.withValues(alpha: 0.16),
-      secondarySelectedColor: primary.withValues(alpha: 0.16),
-      side: BorderSide(color: outline.withValues(alpha: 0.4)),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      labelStyle: const TextStyle(color: onSurface),
-      secondaryLabelStyle: const TextStyle(color: onSurface),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-    ),
-  );
-}
-
-ThemeData _buildTacticalDarkTheme() {
-  const baseBg = Color(0xFF121519);
-  const surface = Color(0xFF1C2127);
-  const surfaceAlt = Color(0xFF262C33);
-  const primary = Color(0xFF8EB9C7);
-  const secondary = Color(0xFFC6B37A);
-  const outline = Color(0xFF5F6770);
-  const onSurface = Color(0xFFE8ECF1);
-
   const scheme = ColorScheme.dark(
-    primary: primary,
-    onPrimary: Color(0xFF0E1A21),
-    secondary: secondary,
-    onSecondary: Color(0xFF2A2413),
-    surface: surface,
-    onSurface: onSurface,
-    error: Color(0xFFFF7B7B),
-    onError: Color(0xFF2A1010),
-    outline: outline,
+    primary: cbBlue,
+    onPrimary: Colors.white,
+    secondary: cbAmber,
+    onSecondary: Color(0xFF231700),
+    surface: cbSurface,
+    onSurface: cbText,
+    error: cbRed,
+    onError: Colors.white,
+    outline: cbBorder,
   );
 
   return ThemeData(
     useMaterial3: true,
     brightness: Brightness.dark,
     colorScheme: scheme,
-    scaffoldBackgroundColor: baseBg,
-    canvasColor: baseBg,
-    cardColor: surface,
-    dividerColor: outline.withValues(alpha: 0.45),
+    scaffoldBackgroundColor: cbBg,
+    canvasColor: cbBg,
+    cardColor: cbCard,
+    dividerColor: cbBorder,
     appBarTheme: const AppBarTheme(
-      backgroundColor: surfaceAlt,
-      foregroundColor: onSurface,
+      backgroundColor: cbSurface,
+      foregroundColor: cbText,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       centerTitle: false,
     ),
     cardTheme: CardThemeData(
-      color: surface,
+      color: cbCard,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: outline.withValues(alpha: 0.45)),
+        borderRadius: BorderRadius.circular(22),
+        side: const BorderSide(color: cbBorder),
       ),
       margin: EdgeInsets.zero,
     ),
     navigationBarTheme: NavigationBarThemeData(
       height: 72,
-      backgroundColor: surfaceAlt,
+      backgroundColor: cbSurface,
       surfaceTintColor: Colors.transparent,
-      indicatorColor: primary.withValues(alpha: 0.22),
+      indicatorColor: cbBlue.withValues(alpha: 0.2),
       labelTextStyle: WidgetStateProperty.resolveWith(
         (states) => TextStyle(
-          color: states.contains(WidgetState.selected)
-              ? primary
-              : onSurface.withValues(alpha: 0.8),
+          color: states.contains(WidgetState.selected) ? cbText : cbMuted,
           fontWeight: states.contains(WidgetState.selected)
               ? FontWeight.w700
               : FontWeight.w500,
-          fontSize: 10,
+          fontSize: 11,
         ),
       ),
       iconTheme: WidgetStateProperty.resolveWith(
         (states) => IconThemeData(
-          color: states.contains(WidgetState.selected)
-              ? primary
-              : onSurface.withValues(alpha: 0.72),
+          color: states.contains(WidgetState.selected) ? cbBlue : cbMuted,
         ),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: Colors.white.withValues(alpha: 0.06),
+      fillColor: cbCardAlt,
+      helperStyle: const TextStyle(color: cbDim, fontSize: 12),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: outline.withValues(alpha: 0.55)),
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(color: cbBorder),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: outline.withValues(alpha: 0.55)),
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(color: cbBorder),
       ),
       focusedBorder: const OutlineInputBorder(
-        borderRadius: BorderRadius.all(Radius.circular(14)),
-        borderSide: BorderSide(color: primary, width: 1.6),
+        borderRadius: BorderRadius.all(Radius.circular(16)),
+        borderSide: BorderSide(color: cbBlue, width: 1.8),
       ),
-      labelStyle: TextStyle(color: onSurface.withValues(alpha: 0.85)),
+      labelStyle: const TextStyle(color: cbMuted),
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        backgroundColor: primary,
-        foregroundColor: const Color(0xFF0E1A21),
+        backgroundColor: cbBlue,
+        foregroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       ),
     ),
     floatingActionButtonTheme: const FloatingActionButtonThemeData(
-      backgroundColor: primary,
-      foregroundColor: Color(0xFF0E1A21),
+      backgroundColor: cbBlue,
+      foregroundColor: Colors.white,
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: cbText,
+        side: const BorderSide(color: cbBorder),
+        backgroundColor: cbCard,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+    ),
+    textTheme: const TextTheme(
+      headlineLarge: TextStyle(
+        fontSize: 32,
+        fontWeight: FontWeight.w800,
+        color: cbText,
+      ),
+      headlineMedium: TextStyle(
+        fontSize: 26,
+        fontWeight: FontWeight.w700,
+        color: cbText,
+      ),
+      titleLarge: TextStyle(
+        fontSize: 20,
+        fontWeight: FontWeight.w700,
+        color: cbText,
+      ),
+      titleMedium: TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.w600,
+        color: cbText,
+      ),
+      bodyLarge: TextStyle(fontSize: 15, color: cbText),
+      bodyMedium: TextStyle(fontSize: 14, color: cbMuted),
+      labelSmall: TextStyle(
+        fontSize: 11,
+        letterSpacing: 0.7,
+        fontWeight: FontWeight.w700,
+        color: cbDim,
+      ),
     ),
     chipTheme: ChipThemeData(
-      backgroundColor: surfaceAlt,
-      selectedColor: primary.withValues(alpha: 0.25),
-      secondarySelectedColor: primary.withValues(alpha: 0.25),
-      side: BorderSide(color: outline.withValues(alpha: 0.45)),
+      backgroundColor: cbCardAlt,
+      selectedColor: cbBlue.withValues(alpha: 0.2),
+      secondarySelectedColor: cbBlue.withValues(alpha: 0.2),
+      side: const BorderSide(color: cbBorder),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      labelStyle: const TextStyle(color: onSurface),
-      secondaryLabelStyle: const TextStyle(color: onSurface),
+      labelStyle: const TextStyle(color: cbText),
+      secondaryLabelStyle: const TextStyle(color: cbText),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
     ),
   );
+}
+
+ThemeData _buildTacticalDarkTheme() {
+  return _buildTacticalTheme();
 }
 
 enum ColdBoreStatusTone { neutral, verified, calculated, warning, danger }
@@ -350,7 +285,16 @@ class ColdBoreScaffold extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: appBar,
-      body: SafeArea(child: body),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFF10141C), cbBg],
+          ),
+        ),
+        child: SafeArea(child: body),
+      ),
       floatingActionButton: floatingActionButton,
       bottomNavigationBar: bottomNavigationBar,
     );
@@ -373,10 +317,30 @@ class ColdBoreCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    return Container(
       margin: margin,
-      color: color,
-      child: padding == null ? child : Padding(padding: padding!, child: child),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: cbBorder),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [color ?? cbCardAlt, cbCard],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.22),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(22),
+        child: padding == null
+            ? child
+            : Padding(padding: padding!, child: child),
+      ),
     );
   }
 }
@@ -406,17 +370,20 @@ class ColdBoreSectionHeader extends StatelessWidget {
               Text(
                 title.toUpperCase(),
                 style: TextStyle(
-                  fontSize: 11,
-                  letterSpacing: 0.8,
+                  fontSize: 12,
+                  letterSpacing: 0.95,
                   fontWeight: FontWeight.w700,
-                  color: onSurface.withValues(alpha: 0.74),
+                  color: onSurface.withValues(alpha: 0.76),
                 ),
               ),
               if (subtitle != null && subtitle!.trim().isNotEmpty) ...[
                 const SizedBox(height: 4),
                 Text(
                   subtitle!,
-                  style: TextStyle(color: onSurface.withValues(alpha: 0.7)),
+                  style: TextStyle(
+                    color: onSurface.withValues(alpha: 0.68),
+                    fontSize: 14,
+                  ),
                 ),
               ],
             ],
@@ -444,12 +411,17 @@ class ColdBorePrimaryButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final style = FilledButton.styleFrom(
       minimumSize: const Size(180, 46),
-      backgroundColor: const Color(0xFF285FA9),
+      backgroundColor: cbBlue,
       foregroundColor: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
     );
     if (icon == null) {
-      return FilledButton(style: style, onPressed: onPressed, child: Text(label));
+      return FilledButton(
+        style: style,
+        onPressed: onPressed,
+        child: Text(label),
+      );
     }
     return FilledButton.icon(
       style: style,
@@ -473,11 +445,11 @@ class ColdBoreStatusPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = switch (tone) {
-      ColdBoreStatusTone.verified => const (Color(0xFF1E7D4A), Color(0xFFDCF6E7)),
-      ColdBoreStatusTone.calculated => const (Color(0xFF8A6B12), Color(0xFFFFF0C2)),
-      ColdBoreStatusTone.warning => const (Color(0xFFB26A00), Color(0xFFFFE7C2)),
-      ColdBoreStatusTone.danger => const (Color(0xFFA33A3A), Color(0xFFFFDBDB)),
-      ColdBoreStatusTone.neutral => const (Color(0xFF4E5864), Color(0xFFE4E8ED)),
+      ColdBoreStatusTone.verified => const (cbGreen, Color(0xFFE9FFF2)),
+      ColdBoreStatusTone.calculated => const (cbAmber, Color(0xFFFFF5DE)),
+      ColdBoreStatusTone.warning => const (cbAmber, Color(0xFFFFF5DE)),
+      ColdBoreStatusTone.danger => const (cbRed, Color(0xFFFFE7E7)),
+      ColdBoreStatusTone.neutral => const (cbDim, cbText),
     };
 
     return Container(
@@ -518,12 +490,12 @@ class ColdBoreMetricTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final onSurface = Theme.of(context).colorScheme.onSurface;
     return Container(
-      padding: const EdgeInsets.all(10),
+      constraints: const BoxConstraints(minWidth: 136),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.35),
-        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: cbBorder),
+        color: cbCardAlt.withValues(alpha: 0.52),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -538,9 +510,9 @@ class ColdBoreMetricTile extends StatelessWidget {
                 child: Text(
                   label.toUpperCase(),
                   style: TextStyle(
-                    fontSize: 10,
-                    letterSpacing: 0.6,
-                    color: onSurface.withValues(alpha: 0.7),
+                    fontSize: 11,
+                    letterSpacing: 0.8,
+                    color: onSurface.withValues(alpha: 0.74),
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -548,7 +520,10 @@ class ColdBoreMetricTile extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
+          ),
         ],
       ),
     );
@@ -569,11 +544,26 @@ class ColdBoreBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return NavigationBar(
-      selectedIndex: selectedIndex,
-      onDestinationSelected: onDestinationSelected,
-      labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-      destinations: destinations,
+    return Container(
+      decoration: BoxDecoration(
+        color: cbSurface,
+        border: Border(
+          top: BorderSide(color: cbBorder.withValues(alpha: 0.85)),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.25),
+            blurRadius: 16,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: NavigationBar(
+        selectedIndex: selectedIndex,
+        onDestinationSelected: onDestinationSelected,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        destinations: destinations,
+      ),
     );
   }
 }
@@ -585,9 +575,7 @@ InputDecoration coldBoreTextFieldStyle({
   return InputDecoration(labelText: label, helperText: helper);
 }
 
-InputDecoration coldBoreDropdownStyle({
-  required String label,
-}) {
+InputDecoration coldBoreDropdownStyle({required String label}) {
   return InputDecoration(labelText: label);
 }
 
@@ -596,12 +584,12 @@ class AppThemeController extends ChangeNotifier {
   factory AppThemeController() => _instance;
   AppThemeController._();
 
-  ThemeMode _mode = ThemeMode.system;
+  ThemeMode _mode = ThemeMode.dark;
   ThemeMode get mode => _mode;
 
   Future<void> initialize() async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(kThemeModePrefsKey) ?? 'system';
+    final raw = prefs.getString(kThemeModePrefsKey) ?? 'dark';
     _mode = _themeModeFromRaw(raw);
     notifyListeners();
   }
@@ -678,18 +666,18 @@ Future<String?> _pickWebJsonFile() async {
 String _cleanText(String s) {
   // Fix common mojibake / smart punctuation that can show up from copy/paste.
   return s
-      .replaceAll('â€¢', '•')
-      .replaceAll('â€™', "'")
-      .replaceAll('â€˜', "'")
-      .replaceAll('â€œ', '"')
-      .replaceAll('â€�', '"')
-      .replaceAll('â€”', '-')
-      .replaceAll('â†’', '->')
-      .replaceAll('“', '"')
-      .replaceAll('”', '"')
-      .replaceAll('’', "'")
-      .replaceAll('—', '-')
-      .replaceAll('→', '->');
+      .replaceAll('├óΓé¼┬ó', 'ΓÇó')
+      .replaceAll('├óΓé¼Γäó', "'")
+      .replaceAll('├óΓé¼╦£', "'")
+      .replaceAll('├óΓé¼┼ô', '"')
+      .replaceAll('├óΓé¼∩┐╜', '"')
+      .replaceAll('├óΓé¼ΓÇ¥', '-')
+      .replaceAll('├óΓÇáΓÇÖ', '->')
+      .replaceAll('ΓÇ£', '"')
+      .replaceAll('ΓÇ¥', '"')
+      .replaceAll('ΓÇÖ', "'")
+      .replaceAll('ΓÇö', '-')
+      .replaceAll('ΓåÆ', '->');
 }
 
 // --- Export helpers (no extra packages required) -----------------------------
@@ -912,45 +900,45 @@ String _buildSessionReportText(
       ((s.shotTimerElapsedMs ?? 0) > 0 ||
           (s.shotTimerFirstShotMs ?? 0) > 0 ||
           s.shotTimerSplitMs.isNotEmpty)) {
-    b.writeln('• Shot timer total (ms): ${s.shotTimerElapsedMs ?? 0}');
-    b.writeln('• First shot (ms): ${s.shotTimerFirstShotMs ?? 0}');
+    b.writeln('ΓÇó Shot timer total (ms): ${s.shotTimerElapsedMs ?? 0}');
+    b.writeln('ΓÇó First shot (ms): ${s.shotTimerFirstShotMs ?? 0}');
     b.writeln(
-      '• Split times (ms): ${s.shotTimerSplitMs.isEmpty ? '-' : s.shotTimerSplitMs.join(', ')}',
+      'ΓÇó Split times (ms): ${s.shotTimerSplitMs.isEmpty ? '-' : s.shotTimerSplitMs.join(', ')}',
     );
   }
 
   b.writeln('');
   b.writeln('SESSION');
-  b.writeln('• Session ID: ${s.id}');
-  b.writeln('• Evidence ID (CRC32): $evidenceId');
-  b.writeln('• User ID: ${s.userId}');
-  b.writeln('• Date/Time: ${_fmtDateTimeIso(s.dateTime)}');
+  b.writeln('ΓÇó Session ID: ${s.id}');
+  b.writeln('ΓÇó Evidence ID (CRC32): $evidenceId');
+  b.writeln('ΓÇó User ID: ${s.userId}');
+  b.writeln('ΓÇó Date/Time: ${_fmtDateTimeIso(s.dateTime)}');
   if (!includeLocation) {
-    b.writeln('• Location: [NOT SHARED]');
-    b.writeln('• GPS: [NOT SHARED]');
+    b.writeln('ΓÇó Location: [NOT SHARED]');
+    b.writeln('ΓÇó GPS: [NOT SHARED]');
   } else {
     b.writeln(
-      '• Location: ${redactLocation ? '[REDACTED]' : (s.locationName.isEmpty ? '-' : s.locationName)}',
+      'ΓÇó Location: ${redactLocation ? '[REDACTED]' : (s.locationName.isEmpty ? '-' : s.locationName)}',
     );
     if (!redactLocation) {
       b.writeln(
-        '• GPS: ${s.latitude?.toStringAsFixed(6) ?? '-'}, ${s.longitude?.toStringAsFixed(6) ?? '-'}',
+        'ΓÇó GPS: ${s.latitude?.toStringAsFixed(6) ?? '-'}, ${s.longitude?.toStringAsFixed(6) ?? '-'}',
       );
     } else {
-      b.writeln('• GPS: [REDACTED]');
+      b.writeln('ΓÇó GPS: [REDACTED]');
     }
   }
-  b.writeln('• Rifle: ${rifleLabel()}');
-  b.writeln('• Ammo: ${ammoLabel()}');
+  b.writeln('ΓÇó Rifle: ${rifleLabel()}');
+  b.writeln('ΓÇó Ammo: ${ammoLabel()}');
 
   if (s.temperatureF != null ||
       s.windSpeedMph != null ||
       s.windDirectionDeg != null) {
     b.writeln(
-      '• Weather: '
-      '${s.temperatureF != null ? '${s.temperatureF!.toStringAsFixed(1)}°F' : '-'}; '
+      'ΓÇó Weather: '
+      '${s.temperatureF != null ? '${s.temperatureF!.toStringAsFixed(1)}┬░F' : '-'}; '
       '${s.windSpeedMph != null ? '${s.windSpeedMph!.toStringAsFixed(1)} mph' : '-'} '
-      '${s.windDirectionDeg != null ? '@ ${s.windDirectionDeg}°' : ''}',
+      '${s.windDirectionDeg != null ? '@ ${s.windDirectionDeg}┬░' : ''}',
     );
   }
 
@@ -971,7 +959,7 @@ String _buildSessionReportText(
     b.writeln('-');
   } else {
     for (final p in s.photos) {
-      b.writeln('• ${_fmtDateTimeIso(p.time)} - ${p.caption} (id: ${p.id})');
+      b.writeln('ΓÇó ${_fmtDateTimeIso(p.time)} - ${p.caption} (id: ${p.id})');
     }
   }
 
@@ -986,7 +974,7 @@ String _buildSessionReportText(
     } else {
       for (final d in s.trainingDope) {
         b.writeln(
-          '• ${d.distance} - Elev: ${d.elevation} ${d.elevationUnit.name} '
+          'ΓÇó ${d.distance} - Elev: ${d.elevation} ${d.elevationUnit.name} '
           '(notes: ${d.elevationNotes.isEmpty ? '-' : d.elevationNotes}); '
           'Wind: ${d.windType.name}: ${d.windValue} '
           '(notes: ${d.windNotes.isEmpty ? '-' : d.windNotes})',
@@ -1005,7 +993,7 @@ String _buildSessionReportText(
   } else {
     for (final sh in s.shots) {
       b.writeln(
-        '• ${_fmtDateTimeIso(sh.time)}'
+        'ΓÇó ${_fmtDateTimeIso(sh.time)}'
         '${sh.isColdBore ? ' [COLD]' : ''}'
         '${sh.isBaseline ? ' [BASELINE]' : ''}',
       );
@@ -1022,7 +1010,7 @@ String _buildSessionReportText(
         for (final ph in sh.photos) {
           final crc = _crc32(ph.bytes);
           b.writeln(
-            '    • ${_fmtDateTimeIso(ph.time)} - ${ph.caption} '
+            '    ΓÇó ${_fmtDateTimeIso(ph.time)} - ${ph.caption} '
             '(id: ${ph.id}; bytes: ${ph.bytes.length}; crc32: 0x${crc.toRadixString(16).padLeft(8, '0')})',
           );
           if (includePhotoBase64) {
@@ -1313,13 +1301,14 @@ class BallisticCalculationService {
 
     // Estimated time of flight approximation using BC and drag model scaling.
     final dragFactor = input.dragModel == DragModel.g7 ? 0.86 : 1.0;
-    final bcFactor = (1.0 / math.max(0.05, input.ballisticCoefficient)) *
-        dragFactor;
+    final bcFactor =
+        (1.0 / math.max(0.05, input.ballisticCoefficient)) * dragFactor;
     final densityScale =
         (29.92 / math.max(20.0, input.pressureInHg)) *
         ((input.temperatureF + 459.67) / (59 + 459.67));
     final tofSeconds =
-        (effectiveYards * 3.0) / math.max(600.0, input.muzzleVelocityFps) *
+        (effectiveYards * 3.0) /
+        math.max(600.0, input.muzzleVelocityFps) *
         (1.0 + (0.14 * bcFactor * densityScale));
 
     // Drop and wind estimates in inches.
@@ -1418,7 +1407,8 @@ class BallisticDopeRecord {
 
   bool get isVerified => validatedAt != null;
 
-  double get verifiedElevation => calculatedElevation + verifiedElevationCorrection;
+  double get verifiedElevation =>
+      calculatedElevation + verifiedElevationCorrection;
   double get verifiedWind => calculatedWind + verifiedWindCorrection;
 
   BallisticDopeRecord copyWith({
@@ -1457,7 +1447,8 @@ class BallisticDopeRecord {
       validationOutcome: validationOutcome ?? this.validationOutcome,
       verifiedElevationCorrection:
           verifiedElevationCorrection ?? this.verifiedElevationCorrection,
-      verifiedWindCorrection: verifiedWindCorrection ?? this.verifiedWindCorrection,
+      verifiedWindCorrection:
+          verifiedWindCorrection ?? this.verifiedWindCorrection,
       verifiedNotes: verifiedNotes ?? this.verifiedNotes,
       verificationDate: verificationDate ?? this.verificationDate,
       weatherSnapshot: weatherSnapshot ?? this.weatherSnapshot,
@@ -1524,7 +1515,11 @@ Future<void> main() async {
     debugPrint('Firebase initialization skipped: $e\n$st');
   }
   await AppThemeController().initialize();
-  await CloudSyncService().initialize();
+  if (Firebase.apps.isNotEmpty) {
+    await CloudSyncService().initialize();
+  } else {
+    debugPrint('Cloud sync initialization skipped: Firebase is unavailable.');
+  }
   runApp(const ColdBoreApp());
 }
 
@@ -1661,14 +1656,22 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
   Timer? _connectivitySelfHealTimer;
   bool _appInForeground = true;
 
+  bool get _firebaseReady => Firebase.apps.isNotEmpty;
+  bool get _supportsMetaEvents =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.iOS ||
+          defaultTargetPlatform == TargetPlatform.android);
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _startConnectivitySelfHealLoop();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_metaAppEvents.bootstrap());
-    });
+    if (_supportsMetaEvents) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_metaAppEvents.bootstrap());
+      });
+    }
     unawaited(_loadState());
   }
 
@@ -1705,9 +1708,11 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
   Future<void> _loadState() async {
     try {
       await _state.loadPersistedState();
-      await SubscriptionService().setCurrentUserIdentifier(
-        _state.activeUserIdentifier,
-      );
+      if (_firebaseReady) {
+        await SubscriptionService().setCurrentUserIdentifier(
+          _state.activeUserIdentifier,
+        );
+      }
       _setupNearbyShareEvents();
       await _attachCloudIdentityIfNeeded();
       await _refreshNearbyPresence(force: true);
@@ -1716,7 +1721,9 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
       _promptUniqueIdentifierOnHome =
           _promptUniqueIdentifierOnHome || _shouldPromptForUniqueIdentifier();
       await _consumePendingIncomingShareFromPlatform();
-      await SubscriptionService().initialize();
+      if (_firebaseReady) {
+        await SubscriptionService().initialize();
+      }
       _state.addListener(_onStateChanged);
       _lastHandledDurableRevision = _state.durableRevision;
       _lastObservedActiveIdentifier = _state.activeUserIdentifier?.trim();
@@ -1953,11 +1960,13 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
         'Active user identifier changed from ${_lastObservedActiveIdentifier ?? 'none'} to ${activeIdentifier ?? 'none'}.',
       );
       _lastObservedActiveIdentifier = activeIdentifier;
-      unawaited(
-        SubscriptionService().setCurrentUserIdentifier(
-          _state.activeUserIdentifier,
-        ),
-      );
+      if (_firebaseReady) {
+        unawaited(
+          SubscriptionService().setCurrentUserIdentifier(
+            _state.activeUserIdentifier,
+          ),
+        );
+      }
       unawaited(_attachCloudIdentityIfNeeded());
       unawaited(_refreshNearbyPresence());
     } else if (activeIdentifier != null &&
@@ -1990,6 +1999,12 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
   }
 
   Future<void> _attachCloudIdentityIfNeeded() async {
+    if (!_firebaseReady) {
+      _lastCloudIdentifier = null;
+      await _cloud.detachIdentity();
+      return;
+    }
+
     final identifier = _state.activeUserIdentifier?.trim();
     if (identifier == null ||
         identifier.isEmpty ||
@@ -2145,8 +2160,12 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _appInForeground = true;
-      unawaited(SubscriptionService().refreshOnResume());
-      unawaited(_metaAppEvents.onAppForegrounded());
+      if (_firebaseReady) {
+        unawaited(SubscriptionService().refreshOnResume());
+      }
+      if (_supportsMetaEvents) {
+        unawaited(_metaAppEvents.onAppForegrounded());
+      }
       unawaited(_attemptAutoICloudRestoreIfEligible());
       unawaited(_consumePendingIncomingShareFromPlatform());
       unawaited(_attachCloudIdentityIfNeeded());
@@ -2155,11 +2174,15 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
       _appInForeground = false;
-      _metaAppEvents.onAppBackgrounded();
+      if (_supportsMetaEvents) {
+        _metaAppEvents.onAppBackgrounded();
+      }
       unawaited(_stopNearbyPresence());
     }
     if (state == AppLifecycleState.inactive) {
-      _metaAppEvents.onAppBackgrounded();
+      if (_supportsMetaEvents) {
+        _metaAppEvents.onAppBackgrounded();
+      }
     }
     if (!_canAutoBackupToICloud) return;
     if (state == AppLifecycleState.inactive ||
@@ -2201,7 +2224,7 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
   }
 }
 
-// ── Subscription gate helper ───────────────────────────────────────────────
+// ΓöÇΓöÇ Subscription gate helper ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 /// Returns true if the action should proceed.
 /// If not entitled, shows the paywall and returns false.
 Future<bool> _guardWrite(BuildContext context) async {
@@ -2212,7 +2235,7 @@ Future<bool> _guardWrite(BuildContext context) async {
   return false;
 }
 
-// ── Paywall screen ─────────────────────────────────────────────────────────
+// ΓöÇΓöÇ Paywall screen ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 class _PaywallScreen extends StatefulWidget {
   const _PaywallScreen();
   @override
@@ -2244,7 +2267,7 @@ class _PaywallScreenState extends State<_PaywallScreen> {
   @override
   Widget build(BuildContext context) {
     final product = _sub.product;
-    final priceText = product?.price ?? '—';
+    final priceText = product?.price ?? 'ΓÇö';
     final trialDays = _sub.trialDaysRemaining;
     final inTrial = trialDays > 0;
     final isIos = defaultTargetPlatform == TargetPlatform.iOS;
@@ -2259,33 +2282,26 @@ class _PaywallScreenState extends State<_PaywallScreen> {
             children: [
               const SizedBox(height: 16),
               if (inTrial) ...[
-                Container(
+                ColdBoreCard(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
-                    vertical: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.primaryContainer.withOpacity(0.55),
-                    borderRadius: BorderRadius.circular(10),
+                    vertical: 12,
                   ),
                   child: Row(
                     children: [
-                      Icon(
+                      const Icon(
                         Icons.hourglass_bottom_outlined,
                         size: 20,
-                        color: Theme.of(context).colorScheme.primary,
+                        color: cbBlue,
                       ),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
                           '$trialDays ${trialDays == 1 ? 'day' : 'days'} left in your free trial',
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(
-                                color: Theme.of(context).colorScheme.primary,
-                                fontWeight: FontWeight.w600,
-                              ),
+                          style: const TextStyle(
+                            color: cbBlue,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
                     ],
@@ -2323,25 +2339,35 @@ class _PaywallScreenState extends State<_PaywallScreen> {
                 ),
               ],
               const SizedBox(height: 24),
-              _FeatureRow(
-                icon: Icons.event_note_outlined,
-                label: 'Add new shooting sessions',
-              ),
-              _FeatureRow(
-                icon: Icons.ac_unit_outlined,
-                label: 'Log cold bore shots and strings',
-              ),
-              _FeatureRow(
-                icon: Icons.build_outlined,
-                label: 'Track gear and maintenance',
-              ),
-              _FeatureRow(
-                icon: Icons.timer_outlined,
-                label: 'Record timer runs',
-              ),
-              _FeatureRow(
-                icon: Icons.picture_as_pdf_outlined,
-                label: 'Export PDF reports (always free)',
+              ColdBoreCard(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const ColdBoreSectionHeader(title: 'What you unlock'),
+                    const SizedBox(height: 8),
+                    _FeatureRow(
+                      icon: Icons.event_note_outlined,
+                      label: 'Add new shooting sessions',
+                    ),
+                    _FeatureRow(
+                      icon: Icons.ac_unit_outlined,
+                      label: 'Log cold bore shots and strings',
+                    ),
+                    _FeatureRow(
+                      icon: Icons.build_outlined,
+                      label: 'Track gear and maintenance',
+                    ),
+                    _FeatureRow(
+                      icon: Icons.timer_outlined,
+                      label: 'Record timer runs',
+                    ),
+                    _FeatureRow(
+                      icon: Icons.picture_as_pdf_outlined,
+                      label: 'Export PDF reports (always free)',
+                    ),
+                  ],
+                ),
               ),
               const Spacer(),
               if (_sub.lastError != null)
@@ -2363,7 +2389,7 @@ class _PaywallScreenState extends State<_PaywallScreen> {
                         width: 20,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : Text('Subscribe — $priceText / year'),
+                    : Text('Subscribe ΓÇö $priceText / year'),
               ),
               const SizedBox(height: 12),
               OutlinedButton(
@@ -2373,7 +2399,7 @@ class _PaywallScreenState extends State<_PaywallScreen> {
               const SizedBox(height: 8),
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Not now — view my data'),
+                child: const Text('Not now ΓÇö view my data'),
               ),
               const SizedBox(height: 8),
               Text(
@@ -2387,9 +2413,14 @@ class _PaywallScreenState extends State<_PaywallScreen> {
                 children: [
                   TextButton(
                     onPressed: () async {
-                      final url = Uri.parse('https://mikeremington28.github.io/ranch-hand-privacy/');
+                      final url = Uri.parse(
+                        'https://mikeremington28.github.io/ranch-hand-privacy/',
+                      );
                       if (await canLaunchUrl(url)) {
-                        await launchUrl(url, mode: LaunchMode.externalApplication);
+                        await launchUrl(
+                          url,
+                          mode: LaunchMode.externalApplication,
+                        );
                       }
                     },
                     child: const Text('Privacy Policy'),
@@ -2397,9 +2428,14 @@ class _PaywallScreenState extends State<_PaywallScreen> {
                   const SizedBox(width: 12),
                   TextButton(
                     onPressed: () async {
-                      final url = Uri.parse('https://www.apple.com/legal/internet-services/itunes/dev/stdeula/');
+                      final url = Uri.parse(
+                        'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/',
+                      );
                       if (await canLaunchUrl(url)) {
-                        await launchUrl(url, mode: LaunchMode.externalApplication);
+                        await launchUrl(
+                          url,
+                          mode: LaunchMode.externalApplication,
+                        );
                       }
                     },
                     child: const Text('Terms of Use'),
@@ -2686,7 +2722,7 @@ class AppState extends ChangeNotifier {
       'rifles': _rifles.map(_rifleToMap).toList(),
       'ammoLots': _ammoLots.map(_ammoLotToMap).toList(),
       'sessions': _sessions.map(_trainingSessionToMap).toList(),
-        'ballisticDopeRecords': _ballisticDopeRecords
+      'ballisticDopeRecords': _ballisticDopeRecords
           .map(_ballisticDopeRecordToMap)
           .toList(),
       'workingDopeRifleOnly': _workingDopeRifleOnly.map(
@@ -2738,7 +2774,8 @@ class AppState extends ChangeNotifier {
       ..clear()
       ..addAll(
         ((map['ballisticDopeRecords'] as List?) ?? const []).map(
-          (x) => _ballisticDopeRecordFromMap(Map<String, dynamic>.from(x as Map)),
+          (x) =>
+              _ballisticDopeRecordFromMap(Map<String, dynamic>.from(x as Map)),
         ),
       );
 
@@ -3997,7 +4034,7 @@ class AppState extends ChangeNotifier {
             id: _newId(),
             time: time,
             bytes: photoBytes,
-            caption: 'Cold bore • ${distance.trim()}',
+            caption: 'Cold bore ΓÇó ${distance.trim()}',
           );
 
     _sessions[idx] = s.copyWith(
@@ -4885,7 +4922,7 @@ class AppState extends ChangeNotifier {
       if (rifle.barrelRoundCount > 0)
         'Previous barrel rounds: ${rifle.barrelRoundCount}',
       if (notes.trim().isNotEmpty) notes.trim(),
-    ].join(' • ');
+    ].join(' ΓÇó ');
     final nextServices = [
       RifleServiceEntry(
         id: _newId(),
@@ -5627,63 +5664,64 @@ Map<String, dynamic> _ballisticDopeRecordToMap(BallisticDopeRecord record) =>
       'weatherSnapshot': record.weatherSnapshot,
     };
 
-BallisticDopeRecord _ballisticDopeRecordFromMap(Map<String, dynamic> map) =>
-    BallisticDopeRecord(
-      id: (map['id'] ?? '').toString(),
-      userId: (map['userId'] ?? '').toString(),
-      rifleId: (map['rifleId'] ?? '').toString(),
-      ammoLotId: (map['ammoLotId'] ?? '').toString(),
-      createdAt: _parseDateTime(map['createdAt']),
-      distance: _toNullableDouble(map['distance']) ?? 0,
-      distanceUnit: DistanceUnit.values.firstWhere(
-        (u) =>
-            u.name == (map['distanceUnit'] ?? DistanceUnit.yards.name).toString(),
-        orElse: () => DistanceUnit.yards,
-      ),
-      windSpeedMph: _toNullableDouble(map['windSpeedMph']) ?? 0,
-      windDirectionValue: (map['windDirectionValue'] ?? '').toString(),
-      temperatureF: _toNullableDouble(map['temperatureF']) ?? 59,
-      pressureInHg: _toNullableDouble(map['pressureInHg']) ?? 29.92,
-      humidityPercent: _toNullableDouble(map['humidityPercent']) ?? 50,
-      zeroDistance: _toNullableDouble(map['zeroDistance']) ?? 100,
-      zeroDistanceUnit: DistanceUnit.values.firstWhere(
-        (u) =>
-            u.name ==
-            (map['zeroDistanceUnit'] ?? DistanceUnit.yards.name).toString(),
-        orElse: () => DistanceUnit.yards,
-      ),
-      sightHeightInches: _toNullableDouble(map['sightHeightInches']) ?? 1.8,
-      muzzleVelocityFps: _toNullableDouble(map['muzzleVelocityFps']) ?? 2600,
-      ballisticCoefficient: _toNullableDouble(map['ballisticCoefficient']) ?? 0.45,
-      dragModel: DragModel.values.firstWhere(
-        (u) => u.name == (map['dragModel'] ?? DragModel.g7.name).toString(),
-        orElse: () => DragModel.g7,
-      ),
-      outputUnit: ElevationUnit.values.firstWhere(
-        (u) => u.name == (map['outputUnit'] ?? ElevationUnit.mil.name).toString(),
-        orElse: () => ElevationUnit.mil,
-      ),
-      calculatedElevation: _toNullableDouble(map['calculatedElevation']) ?? 0,
-      calculatedWind: _toNullableDouble(map['calculatedWind']) ?? 0,
-      solverVersion: (map['solverVersion'] ?? 'basic_estimate_v1').toString(),
-      validatedAt: map['validatedAt'] == null
-          ? null
-          : _parseDateTime(map['validatedAt']),
-      validationOutcome: map['validationOutcome'] == null
-          ? null
-          : BallisticValidationOutcome.values.firstWhere(
-              (v) => v.name == map['validationOutcome'].toString(),
-              orElse: () => BallisticValidationOutcome.confirmedAccurate,
-            ),
-      verifiedElevationCorrection:
-          _toNullableDouble(map['verifiedElevationCorrection']) ?? 0,
-      verifiedWindCorrection: _toNullableDouble(map['verifiedWindCorrection']) ?? 0,
-      verifiedNotes: (map['verifiedNotes'] ?? '').toString(),
-      verificationDate: map['verificationDate'] == null
-          ? null
-          : _parseDateTime(map['verificationDate']),
-      weatherSnapshot: (map['weatherSnapshot'] ?? '').toString(),
-    );
+BallisticDopeRecord _ballisticDopeRecordFromMap(
+  Map<String, dynamic> map,
+) => BallisticDopeRecord(
+  id: (map['id'] ?? '').toString(),
+  userId: (map['userId'] ?? '').toString(),
+  rifleId: (map['rifleId'] ?? '').toString(),
+  ammoLotId: (map['ammoLotId'] ?? '').toString(),
+  createdAt: _parseDateTime(map['createdAt']),
+  distance: _toNullableDouble(map['distance']) ?? 0,
+  distanceUnit: DistanceUnit.values.firstWhere(
+    (u) =>
+        u.name == (map['distanceUnit'] ?? DistanceUnit.yards.name).toString(),
+    orElse: () => DistanceUnit.yards,
+  ),
+  windSpeedMph: _toNullableDouble(map['windSpeedMph']) ?? 0,
+  windDirectionValue: (map['windDirectionValue'] ?? '').toString(),
+  temperatureF: _toNullableDouble(map['temperatureF']) ?? 59,
+  pressureInHg: _toNullableDouble(map['pressureInHg']) ?? 29.92,
+  humidityPercent: _toNullableDouble(map['humidityPercent']) ?? 50,
+  zeroDistance: _toNullableDouble(map['zeroDistance']) ?? 100,
+  zeroDistanceUnit: DistanceUnit.values.firstWhere(
+    (u) =>
+        u.name ==
+        (map['zeroDistanceUnit'] ?? DistanceUnit.yards.name).toString(),
+    orElse: () => DistanceUnit.yards,
+  ),
+  sightHeightInches: _toNullableDouble(map['sightHeightInches']) ?? 1.8,
+  muzzleVelocityFps: _toNullableDouble(map['muzzleVelocityFps']) ?? 2600,
+  ballisticCoefficient: _toNullableDouble(map['ballisticCoefficient']) ?? 0.45,
+  dragModel: DragModel.values.firstWhere(
+    (u) => u.name == (map['dragModel'] ?? DragModel.g7.name).toString(),
+    orElse: () => DragModel.g7,
+  ),
+  outputUnit: ElevationUnit.values.firstWhere(
+    (u) => u.name == (map['outputUnit'] ?? ElevationUnit.mil.name).toString(),
+    orElse: () => ElevationUnit.mil,
+  ),
+  calculatedElevation: _toNullableDouble(map['calculatedElevation']) ?? 0,
+  calculatedWind: _toNullableDouble(map['calculatedWind']) ?? 0,
+  solverVersion: (map['solverVersion'] ?? 'basic_estimate_v1').toString(),
+  validatedAt: map['validatedAt'] == null
+      ? null
+      : _parseDateTime(map['validatedAt']),
+  validationOutcome: map['validationOutcome'] == null
+      ? null
+      : BallisticValidationOutcome.values.firstWhere(
+          (v) => v.name == map['validationOutcome'].toString(),
+          orElse: () => BallisticValidationOutcome.confirmedAccurate,
+        ),
+  verifiedElevationCorrection:
+      _toNullableDouble(map['verifiedElevationCorrection']) ?? 0,
+  verifiedWindCorrection: _toNullableDouble(map['verifiedWindCorrection']) ?? 0,
+  verifiedNotes: (map['verifiedNotes'] ?? '').toString(),
+  verificationDate: map['verificationDate'] == null
+      ? null
+      : _parseDateTime(map['verificationDate']),
+  weatherSnapshot: (map['weatherSnapshot'] ?? '').toString(),
+);
 
 Map<String, dynamic> _coldBorePhotoToMap(ColdBorePhoto photo) =>
     <String, dynamic>{
@@ -8159,13 +8197,64 @@ class _SettingsScreenState extends State<SettingsScreen> {
         : (_sub.isEntitled
               ? 'Active - full access enabled.'
               : 'Read-only mode - upgrade to add new data.');
+    final cloudError =
+        _cloud.lastError != null && _cloud.lastError!.trim().isNotEmpty;
+    final cloudConnected = !cloudError && _cloud.canSync;
 
     return ColdBoreScaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          const ColdBoreSectionHeader(title: 'Preferences'),
+          ColdBoreCard(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const ColdBoreSectionHeader(
+                  title: 'Control Center',
+                  subtitle:
+                      'Backup integrity, sync health, and account status.',
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    ColdBoreMetricTile(
+                      label: 'Sync',
+                      value: cloudError
+                          ? 'Error'
+                          : (cloudConnected ? 'Online' : 'Offline'),
+                      icon: cloudError
+                          ? Icons.cloud_off_outlined
+                          : (cloudConnected
+                                ? Icons.cloud_done_outlined
+                                : Icons.cloud_queue_outlined),
+                    ),
+                    ColdBoreMetricTile(
+                      label: 'Backup',
+                      value: _isBackupOverdue ? 'Overdue' : 'Healthy',
+                      icon: _isBackupOverdue
+                          ? Icons.warning_amber_rounded
+                          : Icons.verified_outlined,
+                    ),
+                    ColdBoreMetricTile(
+                      label: 'Theme',
+                      value: _themeModeLabel(_theme.mode),
+                      icon: Icons.brightness_6_outlined,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          const ColdBoreSectionHeader(
+            title: 'Cloud & Recovery',
+            subtitle:
+                'Protect your local data and recover quickly on new devices.',
+          ),
           const SizedBox(height: 8),
           ColdBoreCard(
             child: ListTile(
@@ -8175,32 +8264,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 widget.cloudRecoverySupported
                     ? (_lastCloudBackupAt == null
                           ? 'Automatic iCloud backup is enabled. No completed backup yet.'
-                          : 'Last backup: ${_fmtDateTime(_lastCloudBackupAt!)}'
-                                '${_lastCloudRestoreAt == null ? '' : '\nLast restore: ${_fmtDateTime(_lastCloudRestoreAt!)}'}')
+                          : 'Last backup: ${_fmtDateTime(_lastCloudBackupAt!)}${_lastCloudRestoreAt == null ? '' : '\nLast restore: ${_fmtDateTime(_lastCloudRestoreAt!)}'}')
                     : 'Automatic cloud recovery is currently available on iPhone.',
               ),
             ),
           ),
-          if (widget.cloudRecoverySupported && _isBackupOverdue)
-            ColdBoreCard(
-              child: ListTile(
-                leading: const Icon(Icons.warning_amber_rounded),
-                title: const Text('Backup health warning'),
-                subtitle: Text(_backupHealthText),
-                trailing: TextButton(
-                  onPressed: _cloudBusy ? null : _backupNow,
-                  child: const Text('Back up now'),
-                ),
+          ColdBoreCard(
+            child: ListTile(
+              leading: Icon(
+                cloudError
+                    ? Icons.cloud_off_outlined
+                    : (cloudConnected
+                          ? Icons.cloud_done_outlined
+                          : Icons.cloud_queue_outlined),
+              ),
+              title: const Text('Session sync status'),
+              subtitle: Text(
+                cloudError
+                    ? 'Error: ${_cloud.lastError}'
+                    : (cloudConnected
+                          ? 'Connected${_cloud.lastSyncAt == null ? '' : ' - Last sync ${_fmtDateTime(_cloud.lastSyncAt!)}'}'
+                          : 'Not connected yet. Sync activates when Firebase is configured and user identifier is available.'),
               ),
             ),
-          if (widget.cloudRecoverySupported && !_isBackupOverdue)
-            ColdBoreCard(
-              child: ListTile(
-                leading: const Icon(Icons.verified_outlined),
-                title: const Text('Backup health'),
-                subtitle: Text(_backupHealthText),
+          ),
+          ColdBoreCard(
+            child: ListTile(
+              leading: Icon(
+                _isBackupOverdue
+                    ? Icons.warning_amber_rounded
+                    : Icons.verified_outlined,
               ),
+              title: Text(
+                _isBackupOverdue ? 'Backup warning' : 'Backup health',
+              ),
+              subtitle: Text(_backupHealthText),
+              trailing: widget.cloudRecoverySupported
+                  ? TextButton(
+                      onPressed: _cloudBusy ? null : _backupNow,
+                      child: const Text('Back up'),
+                    )
+                  : null,
             ),
+          ),
           if (widget.cloudRecoverySupported)
             ColdBoreCard(
               child: Padding(
@@ -8226,41 +8332,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
             ),
-          ColdBoreCard(
-            child: ListTile(
-              leading: Icon(
-                _cloud.lastError != null && _cloud.lastError!.trim().isNotEmpty
-                    ? Icons.cloud_off_outlined
-                    : (_cloud.canSync
-                          ? Icons.cloud_done_outlined
-                          : Icons.cloud_queue_outlined),
-              ),
-              title: const Text('Session sync status'),
-              subtitle: Text(
-                _cloud.lastError != null && _cloud.lastError!.trim().isNotEmpty
-                    ? 'Error: ${_cloud.lastError}'
-                    : (_cloud.canSync
-                          ? 'Connected${_cloud.lastSyncAt == null ? '' : ' • Last sync ${_fmtDateTime(_cloud.lastSyncAt!)}'}'
-                          : 'Not connected yet. Sync activates when Firebase is configured and user identifier is available.'),
-              ),
-            ),
+          const SizedBox(height: 12),
+          const ColdBoreSectionHeader(
+            title: 'App & Account',
+            subtitle: 'Appearance, subscription, and active profile controls.',
           ),
-          ColdBoreCard(
-            child: ListTile(
-              leading: const Icon(Icons.folder_zip_outlined),
-              title: const Text('Backup files (JSON)'),
-              subtitle: const Text(
-                'Create or restore manual backup files from one place.',
-              ),
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => _BackupScreen(state: widget.state),
-                  ),
-                );
-              },
-            ),
-          ),
+          const SizedBox(height: 8),
           ColdBoreCard(
             child: ListTile(
               leading: const Icon(Icons.brightness_6_outlined),
@@ -8302,6 +8379,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) => UsersScreen(state: widget.state),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 12),
+          const ColdBoreSectionHeader(
+            title: 'Data & Diagnostics',
+            subtitle: 'Manual archives, app version, and support visibility.',
+          ),
+          const SizedBox(height: 8),
+          ColdBoreCard(
+            child: ListTile(
+              leading: const Icon(Icons.folder_zip_outlined),
+              title: const Text('Backup files (JSON)'),
+              subtitle: const Text(
+                'Create or restore manual backup files from one place.',
+              ),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => _BackupScreen(state: widget.state),
                   ),
                 );
               },
@@ -8577,200 +8676,255 @@ class _DataScreenState extends State<DataScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: DataTable(
-                        columns: const [
-                          DataColumn(label: Text('Distance')),
-                          DataColumn(label: Text('Elevation')),
-                          DataColumn(label: Text('Wind')),
-                          DataColumn(label: Text('Windage Left')),
-                          DataColumn(label: Text('Windage Right')),
-                          DataColumn(label: Text('Actions')),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: cbBorder),
+                        color: cbCardAlt.withValues(alpha: 0.55),
+                      ),
+                      child: const Row(
+                        children: [
+                          Expanded(
+                            flex: 2,
+                            child: Text(
+                              'DIST',
+                              style: TextStyle(
+                                fontSize: 11,
+                                letterSpacing: 0.8,
+                                color: cbMuted,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            flex: 3,
+                            child: Text(
+                              'ELEVATION',
+                              style: TextStyle(
+                                fontSize: 11,
+                                letterSpacing: 0.8,
+                                color: cbMuted,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            flex: 3,
+                            child: Text(
+                              'WIND / WDG',
+                              style: TextStyle(
+                                fontSize: 11,
+                                letterSpacing: 0.8,
+                                color: cbMuted,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            flex: 2,
+                            child: Text(
+                              'ACTIONS',
+                              textAlign: TextAlign.right,
+                              style: TextStyle(
+                                fontSize: 11,
+                                letterSpacing: 0.8,
+                                color: cbMuted,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
                         ],
-                        rows: dks.map((dk) {
-                          final e = inner[dk]!;
-                          final elevationText = _cleanText(
-                            '${e.elevation} ${e.elevationUnit.name}${e.elevationNotes.isNotEmpty ? " • ${e.elevationNotes}" : ""}',
-                          );
-                          final windText = _cleanText(
-                            '${e.windType.name}: ${e.windValue}${e.windNotes.isNotEmpty ? " • ${e.windNotes}" : ""}',
-                          );
-                          return DataRow(
-                            cells: [
-                              DataCell(Text('${dk.value} ${dk.unit.name[0]}')),
-                              DataCell(
-                                SizedBox(
-                                  width: 180,
-                                  child: Text(
-                                    elevationText,
-                                    softWrap: true,
-                                    maxLines: 3,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    ...dks.map((dk) {
+                      final e = inner[dk]!;
+                      final elevationText = _cleanText(
+                        '${e.elevation} ${e.elevationUnit.name.toUpperCase()}${e.elevationNotes.isNotEmpty ? ' · ${e.elevationNotes}' : ''}',
+                      );
+                      final windText = _cleanText(
+                        '${e.windType.name}: ${e.windValue}${e.windNotes.isNotEmpty ? ' · ${e.windNotes}' : ''}',
+                      );
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 6),
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: cbBorder),
+                          color: cbCard.withValues(alpha: 0.62),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              flex: 2,
+                              child: Text(
+                                '${dk.value.toStringAsFixed(0)} ${dk.unit == DistanceUnit.yards ? 'yd' : 'm'}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
                                 ),
                               ),
-                              DataCell(
-                                SizedBox(
-                                  width: 220,
-                                  child: Text(
-                                    windText,
-                                    softWrap: true,
-                                    maxLines: 3,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
+                            ),
+                            Expanded(
+                              flex: 3,
+                              child: Text(
+                                elevationText,
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
                               ),
-                              DataCell(Text(e.windageLeft.toStringAsFixed(2))),
-                              DataCell(Text(e.windageRight.toStringAsFixed(2))),
-                              DataCell(
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      icon: const Icon(Icons.edit_outlined),
-                                      tooltip: 'Edit working DOPE',
-                                      onPressed: () async {
-                                        var targetRifleOnly = _rifleOnly;
-                                        var targetBucketKey = key;
+                            ),
+                            Expanded(
+                              flex: 3,
+                              child: Text(
+                                '$windText\nL ${e.windageLeft.toStringAsFixed(2)} / R ${e.windageRight.toStringAsFixed(2)}',
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            Expanded(
+                              flex: 2,
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.edit_outlined),
+                                    tooltip: 'Edit working DOPE',
+                                    onPressed: () async {
+                                      var targetRifleOnly = _rifleOnly;
+                                      var targetBucketKey = key;
 
-                                        // In rifle-only mode we may be showing a merged
-                                        // derived entry from a rifle+ammo bucket.
-                                        if (_rifleOnly) {
-                                          final explicitBucket = widget
-                                              .state
-                                              .workingDopeRifleOnly[key];
-                                          final isExplicit =
-                                              explicitBucket?.containsKey(dk) ??
-                                              false;
-                                          if (!isExplicit) {
-                                            final rid = e.rifleId;
-                                            final aid = e.ammoLotId;
-                                            if (rid != null && aid != null) {
-                                              targetRifleOnly = false;
-                                              targetBucketKey = '${rid}_$aid';
-                                            } else {
-                                              if (!context.mounted) return;
-                                              ScaffoldMessenger.of(
-                                                context,
-                                              ).showSnackBar(
-                                                const SnackBar(
-                                                  content: Text(
-                                                    'Could not resolve DOPE source for editing.',
-                                                  ),
-                                                ),
-                                              );
-                                              return;
-                                            }
-                                          }
-                                        }
-
-                                        final edited =
-                                            await showDialog<DopeEntry>(
-                                              context: context,
-                                              builder: (_) =>
-                                                  _WorkingDopeEditDialog(
-                                                    initial: e,
-                                                  ),
-                                            );
-                                        if (edited == null) return;
-
-                                        final updated = widget.state
-                                            .updateWorkingDopeEntry(
-                                              rifleOnly: targetRifleOnly,
-                                              bucketKey: targetBucketKey,
-                                              oldDistanceKey: dk,
-                                              entry: edited,
-                                            );
-                                        if (context.mounted && !updated) {
-                                          ScaffoldMessenger.of(
-                                            context,
-                                          ).showSnackBar(
-                                            const SnackBar(
-                                              content: Text(
-                                                'Could not update that DOPE entry.',
-                                              ),
-                                            ),
-                                          );
-                                        }
-                                      },
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(Icons.delete_outline),
-                                      tooltip: 'Delete working DOPE',
-                                      onPressed: () async {
-                                        final ok = await showDialog<bool>(
-                                          context: context,
-                                          builder: (_) => AlertDialog(
-                                            title: const Text(
-                                              'Delete working DOPE entry?',
-                                            ),
-                                            content: const Text(
-                                              'This cannot be undone.',
-                                            ),
-                                            actions: [
-                                              TextButton(
-                                                onPressed: () => Navigator.pop(
-                                                  context,
-                                                  false,
-                                                ),
-                                                child: const Text('Cancel'),
-                                              ),
-                                              FilledButton(
-                                                onPressed: () => Navigator.pop(
-                                                  context,
-                                                  true,
-                                                ),
-                                                child: const Text('Delete'),
-                                              ),
-                                            ],
-                                          ),
-                                        );
-                                        if (ok != true) return;
-
-                                        var removed = widget.state
-                                            .deleteWorkingDopeEntry(
-                                              rifleOnly: _rifleOnly,
-                                              bucketKey: key,
-                                              distanceKey: dk,
-                                            );
-
-                                        // In rifle-only mode we may be showing a merged
-                                        // derived entry from a rifle+ammo bucket.
-                                        if (!removed && _rifleOnly) {
+                                      if (_rifleOnly) {
+                                        final explicitBucket = widget
+                                            .state
+                                            .workingDopeRifleOnly[key];
+                                        final isExplicit =
+                                            explicitBucket?.containsKey(dk) ??
+                                            false;
+                                        if (!isExplicit) {
                                           final rid = e.rifleId;
                                           final aid = e.ammoLotId;
                                           if (rid != null && aid != null) {
-                                            removed = widget.state
-                                                .deleteWorkingDopeEntry(
-                                                  rifleOnly: false,
-                                                  bucketKey: '${rid}_$aid',
-                                                  distanceKey: dk,
-                                                );
+                                            targetRifleOnly = false;
+                                            targetBucketKey = '${rid}_$aid';
+                                          } else {
+                                            if (!context.mounted) return;
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              const SnackBar(
+                                                content: Text(
+                                                  'Could not resolve DOPE source for editing.',
+                                                ),
+                                              ),
+                                            );
+                                            return;
                                           }
                                         }
+                                      }
 
-                                        if (context.mounted && !removed) {
-                                          ScaffoldMessenger.of(
-                                            context,
-                                          ).showSnackBar(
-                                            const SnackBar(
-                                              content: Text(
-                                                'Could not find that DOPE entry to delete.',
-                                              ),
-                                            ),
+                                      final edited =
+                                          await showDialog<DopeEntry>(
+                                            context: context,
+                                            builder: (_) =>
+                                                _WorkingDopeEditDialog(
+                                                  initial: e,
+                                                ),
                                           );
+                                      if (edited == null) return;
+
+                                      final updated = widget.state
+                                          .updateWorkingDopeEntry(
+                                            rifleOnly: targetRifleOnly,
+                                            bucketKey: targetBucketKey,
+                                            oldDistanceKey: dk,
+                                            entry: edited,
+                                          );
+                                      if (context.mounted && !updated) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                              'Could not update that DOPE entry.',
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    },
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete_outline),
+                                    tooltip: 'Delete working DOPE',
+                                    onPressed: () async {
+                                      final ok = await showDialog<bool>(
+                                        context: context,
+                                        builder: (_) => AlertDialog(
+                                          title: const Text(
+                                            'Delete working DOPE entry?',
+                                          ),
+                                          content: const Text(
+                                            'This cannot be undone.',
+                                          ),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () =>
+                                                  Navigator.pop(context, false),
+                                              child: const Text('Cancel'),
+                                            ),
+                                            FilledButton(
+                                              onPressed: () =>
+                                                  Navigator.pop(context, true),
+                                              child: const Text('Delete'),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                      if (ok != true) return;
+
+                                      var removed = widget.state
+                                          .deleteWorkingDopeEntry(
+                                            rifleOnly: _rifleOnly,
+                                            bucketKey: key,
+                                            distanceKey: dk,
+                                          );
+
+                                      if (!removed && _rifleOnly) {
+                                        final rid = e.rifleId;
+                                        final aid = e.ammoLotId;
+                                        if (rid != null && aid != null) {
+                                          removed = widget.state
+                                              .deleteWorkingDopeEntry(
+                                                rifleOnly: false,
+                                                bucketKey: '${rid}_$aid',
+                                                distanceKey: dk,
+                                              );
                                         }
-                                      },
-                                    ),
-                                  ],
-                                ),
+                                      }
+
+                                      if (context.mounted && !removed) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                              'Could not find that DOPE entry to delete.',
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    },
+                                  ),
+                                ],
                               ),
-                            ],
-                          );
-                        }).toList(),
-                      ),
-                    ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
                   ],
                 ),
               ),
@@ -8808,7 +8962,8 @@ class _DataScreenState extends State<DataScreen> {
             children: [
               const ColdBoreSectionHeader(
                 title: 'DOPE Library',
-                subtitle: 'Quick reference, working chart, and ballistic tools.',
+                subtitle:
+                    'Quick reference, working chart, and ballistic tools.',
               ),
               const SizedBox(height: 12),
               ColdBoreCard(
@@ -8818,7 +8973,8 @@ class _DataScreenState extends State<DataScreen> {
                   children: [
                     const ColdBoreSectionHeader(
                       title: 'Library Snapshot',
-                      subtitle: 'Live totals for quick reference and validation progress.',
+                      subtitle:
+                          'Live totals for quick reference and validation progress.',
                     ),
                     const SizedBox(height: 10),
                     Wrap(
@@ -8857,9 +9013,8 @@ class _DataScreenState extends State<DataScreen> {
                   onTap: () {
                     Navigator.of(context).push(
                       MaterialPageRoute(
-                        builder: (_) => BallisticAssistantScreen(
-                          state: widget.state,
-                        ),
+                        builder: (_) =>
+                            BallisticAssistantScreen(state: widget.state),
                       ),
                     );
                   },
@@ -8905,7 +9060,7 @@ class _DataScreenState extends State<DataScreen> {
                                   children: [
                                     Expanded(
                                       child: Text(
-                                        '${r.name ?? 'Rifle'} • ${r.caliber}',
+                                        '${r.name ?? 'Rifle'} ΓÇó ${r.caliber}',
                                         style: const TextStyle(
                                           fontWeight: FontWeight.w700,
                                         ),
@@ -9085,7 +9240,7 @@ class _DataScreenState extends State<DataScreen> {
                       subtitle: Text(
                         snapshots.isEmpty
                             ? 'Add rifles to start tracking cleaning, torque, zero, and barrel reminders.'
-                            : '$overdue overdue • $dueSoon due soon across ${snapshots.length} rifle${snapshots.length == 1 ? '' : 's'}',
+                            : '$overdue overdue ΓÇó $dueSoon due soon across ${snapshots.length} rifle${snapshots.length == 1 ? '' : 's'}',
                       ),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () {
@@ -9114,11 +9269,13 @@ class BallisticAssistantScreen extends StatefulWidget {
   const BallisticAssistantScreen({super.key, required this.state});
 
   @override
-  State<BallisticAssistantScreen> createState() => _BallisticAssistantScreenState();
+  State<BallisticAssistantScreen> createState() =>
+      _BallisticAssistantScreenState();
 }
 
 class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
-  final BallisticCalculationService _solver = const BallisticCalculationService();
+  final BallisticCalculationService _solver =
+      const BallisticCalculationService();
 
   String? _selectedRifleId;
   String? _selectedAmmoId;
@@ -9131,28 +9288,50 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
   bool _includeWeatherSnapshot = true;
   DateTime _verificationDate = DateTime.now();
   BallisticDopeRecord? _activeRecord;
-    List<_GeneratedDopeRow> _chartRows = const <_GeneratedDopeRow>[];
-    int? _selectedChartRowIndex;
+  List<_GeneratedDopeRow> _chartRows = const <_GeneratedDopeRow>[];
+  int? _selectedChartRowIndex;
 
-  final TextEditingController _distanceCtrl = TextEditingController(text: '100');
-    final TextEditingController _chartStartDistanceCtrl =
-      TextEditingController(text: '100');
-    final TextEditingController _chartEndDistanceCtrl =
-      TextEditingController(text: '1000');
-    final TextEditingController _chartIncrementCtrl =
-      TextEditingController(text: '100');
-  final TextEditingController _windSpeedCtrl = TextEditingController(text: '10');
-  final TextEditingController _windDirectionCtrl =
-      TextEditingController(text: 'Full value');
-  final TextEditingController _temperatureCtrl = TextEditingController(text: '59');
-  final TextEditingController _pressureCtrl = TextEditingController(text: '29.92');
+  final TextEditingController _distanceCtrl = TextEditingController(
+    text: '100',
+  );
+  final TextEditingController _chartStartDistanceCtrl = TextEditingController(
+    text: '100',
+  );
+  final TextEditingController _chartEndDistanceCtrl = TextEditingController(
+    text: '1000',
+  );
+  final TextEditingController _chartIncrementCtrl = TextEditingController(
+    text: '100',
+  );
+  final TextEditingController _windSpeedCtrl = TextEditingController(
+    text: '10',
+  );
+  final TextEditingController _windDirectionCtrl = TextEditingController(
+    text: 'Full value',
+  );
+  final TextEditingController _temperatureCtrl = TextEditingController(
+    text: '59',
+  );
+  final TextEditingController _pressureCtrl = TextEditingController(
+    text: '29.92',
+  );
   final TextEditingController _humidityCtrl = TextEditingController(text: '50');
-  final TextEditingController _zeroDistanceCtrl = TextEditingController(text: '100');
-  final TextEditingController _sightHeightCtrl = TextEditingController(text: '1.8');
-  final TextEditingController _muzzleVelocityCtrl = TextEditingController(text: '2650');
+  final TextEditingController _zeroDistanceCtrl = TextEditingController(
+    text: '100',
+  );
+  final TextEditingController _sightHeightCtrl = TextEditingController(
+    text: '1.8',
+  );
+  final TextEditingController _muzzleVelocityCtrl = TextEditingController(
+    text: '2650',
+  );
   final TextEditingController _bcCtrl = TextEditingController(text: '0.45');
-  final TextEditingController _elevationCorrectionCtrl = TextEditingController(text: '0');
-  final TextEditingController _windCorrectionCtrl = TextEditingController(text: '0');
+  final TextEditingController _elevationCorrectionCtrl = TextEditingController(
+    text: '0',
+  );
+  final TextEditingController _windCorrectionCtrl = TextEditingController(
+    text: '0',
+  );
   final TextEditingController _validationNotesCtrl = TextEditingController();
 
   @override
@@ -9268,9 +9447,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
     final detail = missing.isEmpty
         ? 'Current weather applied.'
         : 'Current weather applied where available. ${missing.join(' and ')} still require manual entry.';
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(detail)),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(detail)));
   }
 
   String _weatherSnapshotText() {
@@ -9362,13 +9539,16 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
   Future<void> _calculateDope() async {
     final distance = double.tryParse(_distanceCtrl.text.trim());
     if (distance == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a valid distance.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Enter a valid distance.')));
       return;
     }
 
-    final row = _buildCalculatedRow(distance: distance, distanceUnit: _distanceUnit);
+    final row = _buildCalculatedRow(
+      distance: distance,
+      distanceUnit: _distanceUnit,
+    );
     if (row == null) return;
 
     final saved = widget.state.addCalculatedBallisticDope(
@@ -9483,9 +9663,9 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
 
   Future<void> _saveChartToHistory() async {
     if (_chartRows.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Generate a chart first.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Generate a chart first.')));
       return;
     }
 
@@ -9511,7 +9691,10 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
     );
   }
 
-  DopeEntry _dopeEntryFromChartRow(_GeneratedDopeRow row, BallisticDopeRecord? record) {
+  DopeEntry _dopeEntryFromChartRow(
+    _GeneratedDopeRow row,
+    BallisticDopeRecord? record,
+  ) {
     final bool useVerified = record?.isVerified == true;
     final double windValue = useVerified
         ? (record?.verifiedWind ?? row.calculatedWind)
@@ -9584,7 +9767,9 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
     }
 
     final row = _chartRows[selected];
-    final key = _writeRifleOnly ? row.rifleId : '${row.rifleId}_${row.ammoLotId}';
+    final key = _writeRifleOnly
+        ? row.rifleId
+        : '${row.rifleId}_${row.ammoLotId}';
     final dk = DistanceKey(row.distance, row.distanceUnit);
     final ok = await _confirmOverwriteIfNeeded(key: key, dk: dk);
     if (!ok) return;
@@ -9598,15 +9783,17 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Selected chart row saved to Working DOPE.')),
+      const SnackBar(
+        content: Text('Selected chart row saved to Working DOPE.'),
+      ),
     );
   }
 
   Future<void> _saveAllRowsToWorkingDope() async {
     if (_chartRows.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Generate a chart first.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Generate a chart first.')));
       return;
     }
 
@@ -9669,7 +9856,10 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
       }
       final rec = row.recordId == null ? null : recordsById[row.recordId!];
       final entry = _dopeEntryFromChartRow(row, rec);
-      widget.state.promoteExistingDope(entry: entry, rifleOnly: _writeRifleOnly);
+      widget.state.promoteExistingDope(
+        entry: entry,
+        rifleOnly: _writeRifleOnly,
+      );
       savedCount++;
     }
 
@@ -9738,33 +9928,33 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                         );
                       },
                     ),
-                    if (outcome == BallisticValidationOutcome.adjustmentRequired)
-                      ...[
-                        const SizedBox(height: 8),
-                        TextField(
-                          textCapitalization: TextCapitalization.none,
-                          controller: elevCtrl,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          decoration: InputDecoration(
-                            labelText:
-                                'Actual elevation correction (${_elevationUnitLabel(savedRow.outputUnit)})',
-                          ),
+                    if (outcome ==
+                        BallisticValidationOutcome.adjustmentRequired) ...[
+                      const SizedBox(height: 8),
+                      TextField(
+                        textCapitalization: TextCapitalization.none,
+                        controller: elevCtrl,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
                         ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          textCapitalization: TextCapitalization.none,
-                          controller: windCtrl,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          decoration: InputDecoration(
-                            labelText:
-                                'Actual wind correction (${_elevationUnitLabel(savedRow.outputUnit)})',
-                          ),
+                        decoration: InputDecoration(
+                          labelText:
+                              'Actual elevation correction (${_elevationUnitLabel(savedRow.outputUnit)})',
                         ),
-                      ],
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        textCapitalization: TextCapitalization.none,
+                        controller: windCtrl,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: InputDecoration(
+                          labelText:
+                              'Actual wind correction (${_elevationUnitLabel(savedRow.outputUnit)})',
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 8),
                     TextField(
                       textCapitalization: TextCapitalization.none,
@@ -9824,7 +10014,8 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
     final updated = widget.state.validateBallisticDope(
       recordId: savedRow.recordId!,
       outcome: outcome,
-      elevationCorrection: outcome == BallisticValidationOutcome.adjustmentRequired
+      elevationCorrection:
+          outcome == BallisticValidationOutcome.adjustmentRequired
           ? elevationCorrection
           : 0.0,
       windCorrection: outcome == BallisticValidationOutcome.adjustmentRequired
@@ -9847,7 +10038,9 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
       _selectedChartRowIndex = index;
     });
 
-    final confirmations = widget.state.verifiedBallisticConfirmationCount(updated);
+    final confirmations = widget.state.verifiedBallisticConfirmationCount(
+      updated,
+    );
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
@@ -9869,8 +10062,8 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
     final updated = widget.state.validateBallisticDope(
       recordId: record.id,
       outcome: _validationOutcome,
-      elevationCorrection: _validationOutcome ==
-              BallisticValidationOutcome.adjustmentRequired
+      elevationCorrection:
+          _validationOutcome == BallisticValidationOutcome.adjustmentRequired
           ? elevationCorrection
           : 0.0,
       windCorrection:
@@ -9885,10 +10078,14 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
 
     if (!mounted) return;
     setState(() => _activeRecord = updated);
-    final confirmations = widget.state.verifiedBallisticConfirmationCount(updated);
+    final confirmations = widget.state.verifiedBallisticConfirmationCount(
+      updated,
+    );
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Verified DOPE saved. $confirmations confirmation${confirmations == 1 ? '' : 's'}.'),
+        content: Text(
+          'Verified DOPE saved. $confirmations confirmation${confirmations == 1 ? '' : 's'}.',
+        ),
       ),
     );
   }
@@ -9960,9 +10157,10 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
         final ammoOptions = (rifle == null)
             ? <AmmoLot>[]
             : widget.state.ammoLots
-                .where((a) => a.caliber == rifle.caliber)
-                .toList();
-        if (_selectedAmmoId != null && !ammoOptions.any((a) => a.id == _selectedAmmoId)) {
+                  .where((a) => a.caliber == rifle.caliber)
+                  .toList();
+        if (_selectedAmmoId != null &&
+            !ammoOptions.any((a) => a.id == _selectedAmmoId)) {
           _selectedAmmoId = null;
         }
 
@@ -9970,7 +10168,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
 
         String rifleLabel(Rifle r) {
           final n = (r.name ?? '').trim();
-          if (n.isNotEmpty) return '$n • ${r.caliber}';
+          if (n.isNotEmpty) return '$n ΓÇó ${r.caliber}';
           return r.caliber;
         }
 
@@ -9981,16 +10179,17 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
         }
 
         final active = _activeRecord;
-        final activeConfirmations =
-            active == null ? 0 : widget.state.verifiedBallisticConfirmationCount(active);
-        final recordsById = {
-          for (final r in records) r.id: r,
-        };
+        final activeConfirmations = active == null
+            ? 0
+            : widget.state.verifiedBallisticConfirmationCount(active);
+        final recordsById = {for (final r in records) r.id: r};
 
-        final Color unverifiedCardBg = Theme.of(context).brightness == Brightness.dark
+        final Color unverifiedCardBg =
+            Theme.of(context).brightness == Brightness.dark
             ? const Color(0xFF4A3A14)
             : const Color(0xFFFFF1C2);
-        final Color verifiedCardBg = Theme.of(context).brightness == Brightness.dark
+        final Color verifiedCardBg =
+            Theme.of(context).brightness == Brightness.dark
             ? const Color(0xFF143525)
             : const Color(0xFFDDF5E6);
 
@@ -10059,7 +10258,9 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                               textCapitalization: TextCapitalization.none,
                               controller: _distanceCtrl,
                               keyboardType:
-                                  const TextInputType.numberWithOptions(decimal: true),
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
                               decoration: const InputDecoration(
                                 labelText: 'Single distance',
                               ),
@@ -10069,7 +10270,9 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                           Expanded(
                             child: DropdownButtonFormField<DistanceUnit>(
                               initialValue: _distanceUnit,
-                              decoration: const InputDecoration(labelText: 'Distance unit'),
+                              decoration: const InputDecoration(
+                                labelText: 'Distance unit',
+                              ),
                               items: DistanceUnit.values
                                   .map(
                                     (u) => DropdownMenuItem(
@@ -10093,17 +10296,21 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                               textCapitalization: TextCapitalization.none,
                               controller: _zeroDistanceCtrl,
                               keyboardType:
-                                  const TextInputType.numberWithOptions(decimal: true),
-                              decoration:
-                                  const InputDecoration(labelText: 'Zero distance'),
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              decoration: const InputDecoration(
+                                labelText: 'Zero distance',
+                              ),
                             ),
                           ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: DropdownButtonFormField<DistanceUnit>(
                               initialValue: _zeroDistanceUnit,
-                              decoration:
-                                  const InputDecoration(labelText: 'Zero unit'),
+                              decoration: const InputDecoration(
+                                labelText: 'Zero unit',
+                              ),
                               items: DistanceUnit.values
                                   .map(
                                     (u) => DropdownMenuItem(
@@ -10113,7 +10320,8 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                                   )
                                   .toList(),
                               onChanged: (v) => setState(
-                                () => _zeroDistanceUnit = v ?? DistanceUnit.yards,
+                                () =>
+                                    _zeroDistanceUnit = v ?? DistanceUnit.yards,
                               ),
                             ),
                           ),
@@ -10137,9 +10345,12 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                               textCapitalization: TextCapitalization.none,
                               controller: _windSpeedCtrl,
                               keyboardType:
-                                  const TextInputType.numberWithOptions(decimal: true),
-                              decoration:
-                                  const InputDecoration(labelText: 'Wind speed (mph)'),
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              decoration: const InputDecoration(
+                                labelText: 'Wind speed (mph)',
+                              ),
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -10162,9 +10373,12 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                               textCapitalization: TextCapitalization.none,
                               controller: _temperatureCtrl,
                               keyboardType:
-                                  const TextInputType.numberWithOptions(decimal: true),
-                              decoration:
-                                  const InputDecoration(labelText: 'Temperature (F)'),
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              decoration: const InputDecoration(
+                                labelText: 'Temperature (F)',
+                              ),
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -10173,9 +10387,12 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                               textCapitalization: TextCapitalization.none,
                               controller: _pressureCtrl,
                               keyboardType:
-                                  const TextInputType.numberWithOptions(decimal: true),
-                              decoration:
-                                  const InputDecoration(labelText: 'Pressure (inHg)'),
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              decoration: const InputDecoration(
+                                labelText: 'Pressure (inHg)',
+                              ),
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -10184,9 +10401,12 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                               textCapitalization: TextCapitalization.none,
                               controller: _humidityCtrl,
                               keyboardType:
-                                  const TextInputType.numberWithOptions(decimal: true),
-                              decoration:
-                                  const InputDecoration(labelText: 'Humidity (%)'),
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              decoration: const InputDecoration(
+                                labelText: 'Humidity (%)',
+                              ),
                             ),
                           ),
                         ],
@@ -10200,7 +10420,9 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                               textCapitalization: TextCapitalization.none,
                               controller: _sightHeightCtrl,
                               keyboardType:
-                                  const TextInputType.numberWithOptions(decimal: true),
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
                               decoration: const InputDecoration(
                                 labelText: 'Sight height (inches)',
                               ),
@@ -10212,7 +10434,9 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                               textCapitalization: TextCapitalization.none,
                               controller: _muzzleVelocityCtrl,
                               keyboardType:
-                                  const TextInputType.numberWithOptions(decimal: true),
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
                               decoration: const InputDecoration(
                                 labelText: 'Muzzle velocity (fps)',
                               ),
@@ -10228,7 +10452,9 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                               textCapitalization: TextCapitalization.none,
                               controller: _bcCtrl,
                               keyboardType:
-                                  const TextInputType.numberWithOptions(decimal: true),
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
                               decoration: const InputDecoration(
                                 labelText: 'Ballistic coefficient',
                               ),
@@ -10238,8 +10464,9 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                           Expanded(
                             child: DropdownButtonFormField<DragModel>(
                               initialValue: _dragModel,
-                              decoration:
-                                  const InputDecoration(labelText: 'Drag model'),
+                              decoration: const InputDecoration(
+                                labelText: 'Drag model',
+                              ),
                               items: DragModel.values
                                   .map(
                                     (m) => DropdownMenuItem(
@@ -10248,8 +10475,9 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                                     ),
                                   )
                                   .toList(),
-                              onChanged: (v) =>
-                                  setState(() => _dragModel = v ?? DragModel.g7),
+                              onChanged: (v) => setState(
+                                () => _dragModel = v ?? DragModel.g7,
+                              ),
                             ),
                           ),
                         ],
@@ -10289,9 +10517,10 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                             child: TextField(
                               textCapitalization: TextCapitalization.none,
                               controller: _chartStartDistanceCtrl,
-                              keyboardType: const TextInputType.numberWithOptions(
-                                decimal: true,
-                              ),
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
                               decoration: const InputDecoration(
                                 labelText: 'Starting distance',
                               ),
@@ -10302,9 +10531,10 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                             child: TextField(
                               textCapitalization: TextCapitalization.none,
                               controller: _chartEndDistanceCtrl,
-                              keyboardType: const TextInputType.numberWithOptions(
-                                decimal: true,
-                              ),
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
                               decoration: const InputDecoration(
                                 labelText: 'Ending distance',
                               ),
@@ -10315,9 +10545,10 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                             child: TextField(
                               textCapitalization: TextCapitalization.none,
                               controller: _chartIncrementCtrl,
-                              keyboardType: const TextInputType.numberWithOptions(
-                                decimal: true,
-                              ),
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
                               decoration: const InputDecoration(
                                 labelText: 'Increment',
                               ),
@@ -10329,10 +10560,9 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                       Text(
                         'Distances use ${_distanceUnitLabel(_distanceUnit)} and output uses rifle scope unit (${rifle?.scopeUnit == ScopeUnit.moa ? 'MOA' : 'MIL'}).',
                         style: TextStyle(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurface
-                              .withValues(alpha: 0.75),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withValues(alpha: 0.75),
                         ),
                       ),
                       const SizedBox(height: 10),
@@ -10347,55 +10577,151 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                       ),
                       if (_chartRows.isNotEmpty) ...[
                         const SizedBox(height: 8),
-                        SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: DataTable(
-                            columns: const [
-                              DataColumn(label: Text('Distance')),
-                              DataColumn(label: Text('Elevation')),
-                              DataColumn(label: Text('Wind')),
-                              DataColumn(label: Text('Unit')),
-                              DataColumn(label: Text('Status')),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: cbBorder),
+                            color: cbCardAlt.withValues(alpha: 0.55),
+                          ),
+                          child: Row(
+                            children: const [
+                              Expanded(
+                                flex: 2,
+                                child: Text(
+                                  'DISTANCE',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    letterSpacing: 0.8,
+                                    color: cbMuted,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 2,
+                                child: Text(
+                                  'ELEVATION',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    letterSpacing: 0.8,
+                                    color: cbMuted,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 2,
+                                child: Text(
+                                  'WIND',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    letterSpacing: 0.8,
+                                    color: cbMuted,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 2,
+                                child: Text(
+                                  'STATUS',
+                                  textAlign: TextAlign.right,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    letterSpacing: 0.8,
+                                    color: cbMuted,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
                             ],
-                            rows: _chartRows.asMap().entries.map((entry) {
-                              final idx = entry.key;
-                              final row = entry.value;
-                              final linked = row.recordId == null
-                                  ? null
-                                  : recordsById[row.recordId!];
-                              final isVerified = linked?.isVerified == true;
-                              final elevation = isVerified
-                                  ? linked!.verifiedElevation
-                                  : row.calculatedElevation;
-                              final wind = isVerified
-                                  ? linked!.verifiedWind
-                                  : row.calculatedWind;
-                              final status = isVerified
-                                  ? 'Verified'
-                                  : 'Calculated estimate';
-                              return DataRow(
-                                selected: _selectedChartRowIndex == idx,
-                                onSelectChanged: (_) {
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        ..._chartRows.asMap().entries.map((entry) {
+                          final idx = entry.key;
+                          final row = entry.value;
+                          final linked = row.recordId == null
+                              ? null
+                              : recordsById[row.recordId!];
+                          final isVerified = linked?.isVerified == true;
+                          final elevation = isVerified
+                              ? linked!.verifiedElevation
+                              : row.calculatedElevation;
+                          final wind = isVerified
+                              ? linked!.verifiedWind
+                              : row.calculatedWind;
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 6),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(14),
+                                onTap: () {
                                   setState(() => _selectedChartRowIndex = idx);
                                   _validateChartRow(idx);
                                 },
-                                cells: [
-                                  DataCell(
-                                    Text(
-                                      '${row.distance.toStringAsFixed(0)} ${_distanceUnitLabel(row.distanceUnit)}',
+                                child: Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                      color: _selectedChartRowIndex == idx
+                                          ? cbBlue
+                                          : cbBorder,
                                     ),
+                                    color: _selectedChartRowIndex == idx
+                                        ? cbBlue.withValues(alpha: 0.12)
+                                        : cbCard.withValues(alpha: 0.6),
                                   ),
-                                  DataCell(
-                                    Text(elevation.toStringAsFixed(2)),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        flex: 2,
+                                        child: Text(
+                                          '${row.distance.toStringAsFixed(0)} ${_distanceUnitLabel(row.distanceUnit)}',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ),
+                                      Expanded(
+                                        flex: 2,
+                                        child: Text(
+                                          '${elevation.toStringAsFixed(2)} ${_elevationUnitLabel(row.outputUnit)}',
+                                        ),
+                                      ),
+                                      Expanded(
+                                        flex: 2,
+                                        child: Text(
+                                          '${wind.toStringAsFixed(2)} ${_elevationUnitLabel(row.outputUnit)}',
+                                        ),
+                                      ),
+                                      Expanded(
+                                        flex: 2,
+                                        child: Align(
+                                          alignment: Alignment.centerRight,
+                                          child: ColdBoreStatusPill(
+                                            label: isVerified
+                                                ? 'Verified DOPE'
+                                                : 'Calculated estimate',
+                                            tone: isVerified
+                                                ? ColdBoreStatusTone.verified
+                                                : ColdBoreStatusTone.calculated,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                  DataCell(Text(wind.toStringAsFixed(2))),
-                                  DataCell(Text(_elevationUnitLabel(row.outputUnit))),
-                                  DataCell(Text(status)),
-                                ],
-                              );
-                            }).toList(),
-                          ),
-                        ),
+                                ),
+                              ),
+                            ),
+                          );
+                        }),
                         const SizedBox(height: 10),
                         Wrap(
                           spacing: 8,
@@ -10404,17 +10730,25 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                             OutlinedButton.icon(
                               onPressed: _saveChartToHistory,
                               icon: const Icon(Icons.save_outlined),
-                              label: const Text('Save generated chart to history'),
+                              label: const Text(
+                                'Save generated chart to history',
+                              ),
                             ),
                             OutlinedButton.icon(
                               onPressed: _saveSelectedRowToWorkingDope,
                               icon: const Icon(Icons.file_upload_outlined),
-                              label: const Text('Save selected row to Working DOPE'),
+                              label: const Text(
+                                'Save selected row to Working DOPE',
+                              ),
                             ),
                             FilledButton.tonalIcon(
                               onPressed: _saveAllRowsToWorkingDope,
-                              icon: const Icon(Icons.playlist_add_check_outlined),
-                              label: const Text('Save all rows to Working DOPE'),
+                              icon: const Icon(
+                                Icons.playlist_add_check_outlined,
+                              ),
+                              label: const Text(
+                                'Save all rows to Working DOPE',
+                              ),
                             ),
                           ],
                         ),
@@ -10422,10 +10756,9 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                         Text(
                           'Tip: tap any chart row to validate it with live-fire feedback.',
                           style: TextStyle(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurface
-                                .withValues(alpha: 0.75),
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurface.withValues(alpha: 0.75),
                           ),
                         ),
                       ],
@@ -10451,7 +10784,9 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                         ),
                         const SizedBox(height: 6),
                         ColdBoreStatusPill(
-                          label: active.isVerified ? 'Verified' : 'Calculated estimate',
+                          label: active.isVerified
+                              ? 'Verified'
+                              : 'Calculated estimate',
                           tone: active.isVerified
                               ? ColdBoreStatusTone.verified
                               : ColdBoreStatusTone.calculated,
@@ -10486,30 +10821,33 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                             ),
                             items: const [
                               DropdownMenuItem(
-                                value:
-                                    BallisticValidationOutcome.confirmedAccurate,
+                                value: BallisticValidationOutcome
+                                    .confirmedAccurate,
                                 child: Text('Confirmed accurate'),
                               ),
                               DropdownMenuItem(
-                                value:
-                                    BallisticValidationOutcome.adjustmentRequired,
+                                value: BallisticValidationOutcome
+                                    .adjustmentRequired,
                                 child: Text('Adjustment required'),
                               ),
                             ],
                             onChanged: (v) => setState(
                               () => _validationOutcome =
-                                  v ?? BallisticValidationOutcome.confirmedAccurate,
+                                  v ??
+                                  BallisticValidationOutcome.confirmedAccurate,
                             ),
                           ),
                           if (_validationOutcome ==
-                              BallisticValidationOutcome.adjustmentRequired) ...[
+                              BallisticValidationOutcome
+                                  .adjustmentRequired) ...[
                             const SizedBox(height: 8),
                             TextField(
                               textCapitalization: TextCapitalization.none,
                               controller: _elevationCorrectionCtrl,
-                              keyboardType: const TextInputType.numberWithOptions(
-                                decimal: true,
-                              ),
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
                               decoration: InputDecoration(
                                 labelText:
                                     'Actual elevation correction (${active.outputUnit.name.toUpperCase()})',
@@ -10519,9 +10857,10 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                             TextField(
                               textCapitalization: TextCapitalization.none,
                               controller: _windCorrectionCtrl,
-                              keyboardType: const TextInputType.numberWithOptions(
-                                decimal: true,
-                              ),
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
                               decoration: InputDecoration(
                                 labelText:
                                     'Actual wind correction (${active.outputUnit.name.toUpperCase()})',
@@ -10585,10 +10924,9 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                   child: Text(
                     'Ballistic solutions are estimates based on the information provided. Actual impacts may vary due to firearm characteristics, ammunition lot variations, environmental conditions, and shooter factors. Always confirm your DOPE through live-fire validation before relying on calculated data.',
                     style: TextStyle(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withValues(alpha: 0.8),
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withValues(alpha: 0.8),
                     ),
                   ),
                 ),
@@ -10606,23 +10944,28 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                         Text(
                           'No ballistic records yet.',
                           style: TextStyle(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurface
-                                .withValues(alpha: 0.7),
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurface.withValues(alpha: 0.7),
                           ),
                         )
                       else
                         ...records.take(10).map((record) {
-                          final recRifle = widget.state.rifleById(record.rifleId);
-                          final recAmmo = widget.state.ammoById(record.ammoLotId);
-                          final confirmations =
-                              widget.state.verifiedBallisticConfirmationCount(record);
+                          final recRifle = widget.state.rifleById(
+                            record.rifleId,
+                          );
+                          final recAmmo = widget.state.ammoById(
+                            record.ammoLotId,
+                          );
+                          final confirmations = widget.state
+                              .verifiedBallisticConfirmationCount(record);
                           return Container(
                             margin: const EdgeInsets.only(bottom: 6),
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              color: record.isVerified ? verifiedCardBg : unverifiedCardBg,
+                              color: record.isVerified
+                                  ? verifiedCardBg
+                                  : unverifiedCardBg,
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: Column(
@@ -10632,8 +10975,10 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                                   children: [
                                     Expanded(
                                       child: Text(
-                                        '${recRifle?.name ?? recRifle?.caliber ?? 'Rifle'} • ${recAmmo?.name ?? recAmmo?.bullet ?? 'Ammo'}',
-                                        style: const TextStyle(fontWeight: FontWeight.w700),
+                                        '${recRifle?.name ?? recRifle?.caliber ?? 'Rifle'} ΓÇó ${recAmmo?.name ?? recAmmo?.bullet ?? 'Ammo'}',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                        ),
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                       ),
@@ -10650,7 +10995,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                                 ),
                                 const SizedBox(height: 6),
                                 Text(
-                                  'Distance ${record.distance.toStringAsFixed(0)} ${_distanceUnitLabel(record.distanceUnit)} • ${_formatDate(record.createdAt)}',
+                                  'Distance ${record.distance.toStringAsFixed(0)} ${_distanceUnitLabel(record.distanceUnit)} ΓÇó ${_formatDate(record.createdAt)}',
                                 ),
                                 const SizedBox(height: 6),
                                 Wrap(
@@ -10736,9 +11081,7 @@ class _GeneratedDopeRow {
     this.recordId,
   });
 
-  _GeneratedDopeRow copyWith({
-    String? recordId,
-  }) {
+  _GeneratedDopeRow copyWith({String? recordId}) {
     return _GeneratedDopeRow(
       distance: distance,
       distanceUnit: distanceUnit,
@@ -10839,7 +11182,8 @@ class _UsersScreenState extends State<UsersScreen> {
         children: [
           const ColdBoreSectionHeader(
             title: 'Profiles',
-            subtitle: 'Switch active user profiles used for session ownership and sharing.',
+            subtitle:
+                'Switch active user profiles used for session ownership and sharing.',
           ),
           const SizedBox(height: 10),
           ColdBoreCard(
@@ -10867,32 +11211,70 @@ class _UsersScreenState extends State<UsersScreen> {
             final canDelete = users.length > 1;
             return ColdBoreCard(
               margin: const EdgeInsets.only(bottom: 8),
-              child: ListTile(
-                leading: Icon(
-                  isActive ? Icons.check_circle_outline : Icons.person_outline,
-                ),
-                title: Text(_displayUserName(u)),
-                subtitle: Text(_displayUserIdentifier(u.identifier)),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (isActive)
-                      const ColdBoreStatusPill(
-                        label: 'Active',
-                        tone: ColdBoreStatusTone.verified,
-                      ),
-                    if (canDelete)
-                      IconButton(
-                        tooltip: 'Delete user',
-                        onPressed: () => _deleteUser(u),
-                        icon: const Icon(Icons.delete_outline),
-                      ),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          isActive
+                              ? Icons.check_circle_outline
+                              : Icons.person_outline,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _displayUserName(u),
+                                style: Theme.of(context).textTheme.titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.w700),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(_displayUserIdentifier(u.identifier)),
+                            ],
+                          ),
+                        ),
+                        if (isActive)
+                          const ColdBoreStatusPill(
+                            label: 'Active',
+                            tone: ColdBoreStatusTone.verified,
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton.tonalIcon(
+                            onPressed: isActive
+                                ? null
+                                : () {
+                                    widget.state.switchUser(u);
+                                    Navigator.of(context).pop();
+                                  },
+                            icon: const Icon(Icons.switch_account_outlined),
+                            label: Text(
+                              isActive ? 'Current Profile' : 'Set Active',
+                            ),
+                          ),
+                        ),
+                        if (canDelete) ...[
+                          const SizedBox(width: 8),
+                          OutlinedButton.icon(
+                            onPressed: () => _deleteUser(u),
+                            icon: const Icon(Icons.delete_outline),
+                            label: const Text('Delete'),
+                          ),
+                        ],
+                      ],
+                    ),
                   ],
                 ),
-                onTap: () {
-                  widget.state.switchUser(u);
-                  Navigator.of(context).pop();
-                },
               ),
             );
           }),
@@ -11012,7 +11394,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
       final v = (p ?? '').trim();
       if (v.isNotEmpty) out.add(v);
     }
-    return out.join(' • ');
+    return out.join(' ΓÇó ');
   }
 
   String _groupByLabel(String value) {
@@ -11042,7 +11424,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
             : 'Folder ${_folderFilter!}',
       );
     }
-    return parts.join(' • ');
+    return parts.join(' ΓÇó ');
   }
 
   Future<void> _newSession(BuildContext context) async {
@@ -11318,7 +11700,9 @@ class _SessionsScreenState extends State<SessionsScreen> {
     if (s.windSpeedMph != null) {
       weatherBits.add('${s.windSpeedMph!.toStringAsFixed(0)} mph');
     }
-    final weatherLine = weatherBits.isEmpty ? 'No weather saved' : weatherBits.join(' • ');
+    final weatherLine = weatherBits.isEmpty
+        ? 'No weather saved'
+        : weatherBits.join(' ΓÇó ');
     final coldBoreCount = s.shots.where((x) => x.isColdBore).length;
 
     return ColdBoreCard(
@@ -11367,10 +11751,9 @@ class _SessionsScreenState extends State<SessionsScreen> {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurface
-                              .withValues(alpha: 0.78),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withValues(alpha: 0.78),
                         ),
                       ),
                     ],
@@ -11383,11 +11766,17 @@ class _SessionsScreenState extends State<SessionsScreen> {
                       return;
                     }
                     if (value == 'archive') {
-                      widget.state.setSessionArchived(sessionId: s.id, archived: true);
+                      widget.state.setSessionArchived(
+                        sessionId: s.id,
+                        archived: true,
+                      );
                       return;
                     }
                     if (value == 'unarchive') {
-                      widget.state.setSessionArchived(sessionId: s.id, archived: false);
+                      widget.state.setSessionArchived(
+                        sessionId: s.id,
+                        archived: false,
+                      );
                       return;
                     }
                     if (value == 'delete') {
@@ -11395,12 +11784,18 @@ class _SessionsScreenState extends State<SessionsScreen> {
                     }
                   },
                   itemBuilder: (_) => [
-                    const PopupMenuItem(value: 'folder', child: Text('Set folder')),
+                    const PopupMenuItem(
+                      value: 'folder',
+                      child: Text('Set folder'),
+                    ),
                     PopupMenuItem(
                       value: s.archived ? 'unarchive' : 'archive',
                       child: Text(s.archived ? 'Unarchive' : 'Archive'),
                     ),
-                    const PopupMenuItem(value: 'delete', child: Text('Delete session')),
+                    const PopupMenuItem(
+                      value: 'delete',
+                      child: Text('Delete session'),
+                    ),
                   ],
                 ),
               ],
@@ -11448,353 +11843,756 @@ class _SessionsScreenState extends State<SessionsScreen> {
           );
         }
 
-        if (sessions.isEmpty) {
-          return _EmptyState(
-            icon: Icons.event_note_outlined,
-            title: 'No sessions yet',
-            message: 'Tap "New Session" to add your first training day.',
-            actionLabel: 'New Session',
-            onAction: () => _newSession(context),
+        final nowHour = DateTime.now().hour;
+        final greeting = nowHour < 12
+            ? 'Good Morning'
+            : (nowHour < 18 ? 'Good Afternoon' : 'Good Evening');
+        final displayName = (user.name ?? '').trim().isEmpty
+            ? 'Shooter'
+            : user.name!.trim();
+
+        final recentSession = sessions.isEmpty ? null : sessions.first;
+        final currentRifle = recentSession?.rifleId != null
+            ? widget.state.rifleById(recentSession!.rifleId)
+            : (widget.state.rifles.isEmpty ? null : widget.state.rifles.first);
+        final currentAmmo = recentSession?.ammoLotId != null
+            ? widget.state.ammoById(recentSession!.ammoLotId)
+            : null;
+
+        final tempF =
+            widget.state.temperatureF ?? recentSession?.temperatureF ?? 68.0;
+        final windMph =
+            widget.state.windSpeedMph ?? recentSession?.windSpeedMph ?? 5.0;
+        final windDeg =
+            widget.state.windDirectionDeg ??
+            recentSession?.windDirectionDeg ??
+            225;
+        const pressureInHg = 29.92;
+        const humidity = 42;
+        final pressureAltitudeFt = ((29.92 - pressureInHg) * 1000).round();
+        final tempC = (tempF - 32) * 5 / 9;
+        final isaTempC = 15 - (pressureAltitudeFt / 1000) * 1.98;
+        final densityAltitudeFt =
+            (pressureAltitudeFt + (120 * (tempC - isaTempC))).round();
+
+        final totalRounds = widget.state.rifles.fold<int>(
+          0,
+          (sum, rifle) => sum + rifle.manualRoundCount,
+        );
+        final verifiedDope = widget.state.ballisticDopeRecords
+            .where((record) => record.isVerified)
+            .length;
+        final maintenanceDue = widget.state
+            .maintenanceSnapshots()
+            .where(
+              (snapshot) => snapshot.overallStatus != MaintenanceDueStatus.good,
+            )
+            .length;
+
+        final coldBoreMoa = <double>[];
+        for (final shot in sessions.expand((s) => s.shots)) {
+          if (!shot.isColdBore) continue;
+          if (shot.offsetX == null || shot.offsetY == null) continue;
+          final mx = _shotOffsetToMoa(shot, shot.offsetX!);
+          final my = _shotOffsetToMoa(shot, shot.offsetY!);
+          coldBoreMoa.add(math.sqrt((mx * mx) + (my * my)));
+        }
+        final coldBoreAvg = coldBoreMoa.isEmpty
+            ? null
+            : (coldBoreMoa.reduce((a, b) => a + b) / coldBoreMoa.length);
+
+        String commaInt(int value) {
+          final text = value.toString();
+          final out = StringBuffer();
+          for (var i = 0; i < text.length; i++) {
+            final fromEnd = text.length - i;
+            out.write(text[i]);
+            if (fromEnd > 1 && fromEnd % 3 == 1) {
+              out.write(',');
+            }
+          }
+          return out.toString();
+        }
+
+        String dirFromDeg(int deg) {
+          const labels = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+          final normalized = ((deg % 360) + 360) % 360;
+          final idx = ((normalized + 22) ~/ 45) % labels.length;
+          return labels[idx];
+        }
+
+        String fmtTime(DateTime dt) {
+          final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+          final minute = dt.minute.toString().padLeft(2, '0');
+          final amPm = dt.hour < 12 ? 'AM' : 'PM';
+          return '$hour:$minute $amPm';
+        }
+
+        void openPage(Widget page) {
+          Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+        }
+
+        Widget quickAction({
+          required IconData icon,
+          required String titleA,
+          required String titleB,
+          required VoidCallback onTap,
+        }) {
+          return Expanded(
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(14),
+              child: Container(
+                height: 92,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.08),
+                  ),
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF0B1730), Color(0xFF070E1E)],
+                  ),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(icon, color: const Color(0xFF2F8BFF), size: 22),
+                    const SizedBox(height: 8),
+                    Text(
+                      titleA,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      titleB,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white.withValues(alpha: 0.9),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           );
         }
 
-        final availableYears =
-            sessions.map((s) => s.dateTime.year).toSet().toList()
-              ..sort((a, b) => b.compareTo(a));
-        final availableMonths =
-            sessions.map((s) => _monthKey(s.dateTime)).toSet().toList()
-              ..sort((a, b) => b.compareTo(a));
-        final availableFolders =
-            sessions
-                .map((s) => s.folderName.trim())
-                .where((f) => f.isNotEmpty)
-                .toSet()
-                .toList()
-              ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
-
-        final filtered = sessions.where((s) {
-          if (!_showArchived && s.archived) return false;
-          if (_yearFilter != null && s.dateTime.year != _yearFilter) {
-            return false;
-          }
-          if (_monthFilter != null && _monthKey(s.dateTime) != _monthFilter) {
-            return false;
-          }
-          if (_folderFilter != null) {
-            final folder = s.folderName.trim();
-            if (_folderFilter == '__unfiled__') {
-              if (folder.isNotEmpty) return false;
-            } else if (folder != _folderFilter) {
-              return false;
-            }
-          }
-          return true;
-        }).toList();
-
-        final grouped = <String, List<TrainingSession>>{};
-        for (final s in filtered) {
-          String key;
-          switch (_groupBy) {
-            case 'year':
-              key = '${s.dateTime.year}';
-              break;
-            case 'month':
-              key = _monthLabel(_monthKey(s.dateTime));
-              break;
-            case 'folder':
-              key = s.folderName.trim().isEmpty
-                  ? 'Unfiled'
-                  : s.folderName.trim();
-              break;
-            default:
-              key = 'Sessions';
-          }
-          grouped.putIfAbsent(key, () => <TrainingSession>[]).add(s);
-        }
-
-        if (_groupBy == 'folder') {
-          for (final entry in grouped.entries) {
-            final key = _groupStorageKey('folder', entry.key);
-            if (_initializedCollapsedGroups.add(key) &&
-                entry.key != 'Unfiled') {
-              _collapsedGroups.add(key);
-            }
-          }
-        }
-
-        return ColdBoreScaffold(
-          floatingActionButton: FloatingActionButton.extended(
-            onPressed: () => _newSession(context),
-            icon: const Icon(Icons.add),
-            label: const Text('New Session'),
+        return Container(
+          decoration: const BoxDecoration(
+            gradient: RadialGradient(
+              center: Alignment(-0.1, -1.1),
+              radius: 1.2,
+              colors: [Color(0xFF0C2A55), Color(0xFF050914), Color(0xFF02050C)],
+              stops: [0.0, 0.58, 1.0],
+            ),
           ),
-          body: ListView(
-            padding: const EdgeInsets.all(12),
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
             children: [
-              ColdBoreCard(
-                padding: const EdgeInsets.all(12),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '$greeting, $displayName',
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Ready for precision.',
+                          style: TextStyle(
+                            fontSize: 15,
+                            color: Colors.white.withValues(alpha: 0.72),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.08),
+                      ),
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF121E33), Color(0xFF0A1325)],
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.check_circle,
+                          color: Color(0xFF46D36A),
+                          size: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'All Systems Operational',
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            Text(
+                              'Last sync: ${fmtTime(DateTime.now())}',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                color: Colors.white.withValues(alpha: 0.65),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.08),
+                  ),
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF152640), Color(0xFF0A1526)],
+                  ),
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    ColdBoreSectionHeader(
-                      title: 'Home Dashboard',
-                      subtitle:
-                          'Current weather, rifle summary, quick actions, and recent sessions.',
-                    ),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
+                    Row(
                       children: [
-                        ColdBoreMetricTile(
-                          label: 'Sessions',
-                          value: '${sessions.length}',
-                          icon: Icons.event_note_outlined,
+                        const Icon(
+                          Icons.cloud,
+                          size: 18,
+                          color: Colors.white70,
                         ),
-                        ColdBoreMetricTile(
-                          label: 'Rifles',
-                          value: '${widget.state.rifles.length}',
-                          icon: Icons.sports_martial_arts_outlined,
-                        ),
-                        ColdBoreMetricTile(
-                          label: 'Weather',
-                          value: widget.state.temperatureF == null
-                              ? 'N/A'
-                              : '${widget.state.temperatureF!.toStringAsFixed(0)} F',
-                          icon: Icons.cloud_outlined,
+                        const SizedBox(width: 8),
+                        Text(
+                          'PARTLY CLOUDY',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.5,
+                            color: Colors.white.withValues(alpha: 0.82),
+                          ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
+                    const SizedBox(height: 8),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        ColdBorePrimaryButton(
-                          label: 'New Session',
-                          icon: Icons.add,
-                          onPressed: () => _newSession(context),
-                        ),
-                        FilledButton.tonalIcon(
-                          onPressed: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => BallisticAssistantScreen(
-                                  state: widget.state,
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '${tempF.toStringAsFixed(0)}\u00B0F',
+                                style: const TextStyle(
+                                  fontSize: 52,
+                                  fontWeight: FontWeight.w600,
+                                  height: 0.95,
                                 ),
                               ),
-                            );
-                          },
-                          icon: const Icon(Icons.calculate_outlined),
-                          label: const Text('Ballistics'),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.tune),
-                        title: const Text(
-                          'Organize Sessions',
-                          style: TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                        subtitle: Text(
-                          _filtersSummary(filtered.length),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        trailing: Icon(
-                          _filtersPanelCollapsed
-                              ? Icons.expand_more
-                              : Icons.expand_less,
-                        ),
-                        onTap: () =>
-                            _setFiltersPanelCollapsed(!_filtersPanelCollapsed),
-                      ),
-                      if (!_filtersPanelCollapsed) ...[
-                        const SizedBox(height: 8),
-                        FilterChip(
-                          label: const Text('Show archived'),
-                          selected: _showArchived,
-                          onSelected: (value) =>
-                              setState(() => _showArchived = value),
-                        ),
-                        const SizedBox(height: 8),
-                        DropdownButtonFormField<String>(
-                          initialValue: _groupBy,
-                          decoration: coldBoreDropdownStyle(label: 'Group by'),
-                          items: const [
-                            DropdownMenuItem(
-                              value: 'none',
-                              child: Text('Newest first'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'year',
-                              child: Text('Year'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'month',
-                              child: Text('Month'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'folder',
-                              child: Text('Folder'),
-                            ),
-                          ],
-                          onChanged: (value) =>
-                              setState(() => _groupBy = value ?? 'none'),
-                        ),
-                        const SizedBox(height: 8),
-                        DropdownButtonFormField<int?>(
-                          initialValue: _yearFilter,
-                          decoration: coldBoreDropdownStyle(label: 'Year filter'),
-                          items: [
-                            const DropdownMenuItem<int?>(
-                              value: null,
-                              child: Text('All years'),
-                            ),
-                            ...availableYears.map(
-                              (year) => DropdownMenuItem<int?>(
-                                value: year,
-                                child: Text('$year'),
+                              const SizedBox(height: 3),
+                              Text(
+                                'Feels like ${(tempF - 2).toStringAsFixed(0)}\u00B0F',
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.68),
+                                ),
                               ),
-                            ),
-                          ],
-                          onChanged: (value) =>
-                              setState(() => _yearFilter = value),
-                        ),
-                        const SizedBox(height: 8),
-                        DropdownButtonFormField<String?>(
-                          initialValue: _monthFilter,
-                          decoration: const InputDecoration(
-                            labelText: 'Month filter',
+                              const SizedBox(height: 12),
+                              Wrap(
+                                spacing: 12,
+                                runSpacing: 6,
+                                children: [
+                                  Text('Humidity  $humidity%'),
+                                  Text(
+                                    'Wind  ${windMph.toStringAsFixed(0)} mph ${dirFromDeg(windDeg)}',
+                                  ),
+                                  Text(
+                                    'Pressure  ${pressureInHg.toStringAsFixed(2)} inHg',
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
-                          items: [
-                            const DropdownMenuItem<String?>(
-                              value: null,
-                              child: Text('All months'),
-                            ),
-                            ...availableMonths.map(
-                              (month) => DropdownMenuItem<String?>(
-                                value: month,
-                                child: Text(_monthLabel(month)),
-                              ),
-                            ),
-                          ],
-                          onChanged: (value) =>
-                              setState(() => _monthFilter = value),
                         ),
-                        const SizedBox(height: 8),
-                        DropdownButtonFormField<String?>(
-                          initialValue: _folderFilter,
-                          decoration: const InputDecoration(
-                            labelText: 'Folder filter',
-                          ),
-                          items: [
-                            const DropdownMenuItem<String?>(
-                              value: null,
-                              child: Text('All folders'),
-                            ),
-                            const DropdownMenuItem<String?>(
-                              value: '__unfiled__',
-                              child: Text('Unfiled only'),
-                            ),
-                            ...availableFolders.map(
-                              (folder) => DropdownMenuItem<String?>(
-                                value: folder,
-                                child: Text(folder),
-                              ),
-                            ),
-                          ],
-                          onChanged: (value) =>
-                              setState(() => _folderFilter = value),
+                        Container(
+                          width: 1,
+                          height: 150,
+                          color: Colors.white.withValues(alpha: 0.14),
                         ),
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            FilledButton.tonalIcon(
-                              onPressed: filtered.isEmpty
-                                  ? null
-                                  : () => _bulkMoveToFolder(context, filtered),
-                              icon: const Icon(Icons.drive_file_move_outline),
-                              label: Text('Move ${filtered.length} to folder'),
-                            ),
-                            FilledButton.tonalIcon(
-                              onPressed: filtered.isEmpty
-                                  ? null
-                                  : () => _bulkArchive(context, filtered, true),
-                              icon: const Icon(Icons.archive_outlined),
-                              label: Text('Archive ${filtered.length}'),
-                            ),
-                            FilledButton.tonalIcon(
-                              onPressed: filtered.isEmpty
-                                  ? null
-                                  : () =>
-                                        _bulkArchive(context, filtered, false),
-                              icon: const Icon(Icons.unarchive_outlined),
-                              label: Text('Unarchive ${filtered.length}'),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ],
-                ),
-              ),
-              const SizedBox(height: 8),
-              if (filtered.isEmpty)
-                const _HintCard(
-                  icon: Icons.folder_open_outlined,
-                  title: 'No sessions match current filters',
-                  message:
-                      'Adjust year/month/folder or include archived sessions.',
-                )
-              else
-                ...grouped.entries.expand((entry) {
-                  final children = <Widget>[];
-                  final isCollapsible = _groupBy != 'none';
-                  final isCollapsed =
-                      isCollapsible &&
-                      _collapsedGroups.contains(
-                        _groupStorageKey(_groupBy, entry.key),
-                      );
-                  children.add(
-                    ColdBoreCard(
-                      padding: const EdgeInsets.all(8),
-                      child: Column(
-                        children: [
-                          if (isCollapsible)
-                            ListTile(
-                              leading: Icon(
-                                isCollapsed
-                                    ? Icons.chevron_right
-                                    : Icons.expand_more,
-                              ),
-                              title: Text(
-                                entry.key,
-                                style: const TextStyle(
-                                  fontSize: 16,
+                        const SizedBox(width: 14),
+                        SizedBox(
+                          width: 215,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'DENSITY ALTITUDE',
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  letterSpacing: 0.45,
+                                  color: Colors.white.withValues(alpha: 0.82),
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
-                              subtitle: Text(
-                                '${entry.value.length} session${entry.value.length == 1 ? '' : 's'}',
+                              const SizedBox(height: 8),
+                              Text(
+                                '${commaInt(densityAltitudeFt)} FT',
+                                style: const TextStyle(
+                                  fontSize: 36,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
-                              onTap: () =>
-                                  _toggleGroupCollapsed(_groupBy, entry.key),
+                              const SizedBox(height: 8),
+                              Text(
+                                '${commaInt(pressureAltitudeFt)} FT\nPressure Altitude',
+                                style: TextStyle(
+                                  height: 1.25,
+                                  color: Colors.white.withValues(alpha: 0.72),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'QUICK ACTIONS',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.5,
+                  color: Colors.white.withValues(alpha: 0.8),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  quickAction(
+                    icon: Icons.gps_fixed,
+                    titleA: 'Ballistic',
+                    titleB: 'Assistant',
+                    onTap: () =>
+                        openPage(BallisticAssistantScreen(state: widget.state)),
+                  ),
+                  const SizedBox(width: 8),
+                  quickAction(
+                    icon: Icons.adjust,
+                    titleA: 'DOPE',
+                    titleB: 'Manager',
+                    onTap: () => openPage(DataScreen(state: widget.state)),
+                  ),
+                  const SizedBox(width: 8),
+                  quickAction(
+                    icon: Icons.note_add_outlined,
+                    titleA: 'New',
+                    titleB: 'Session',
+                    onTap: () => _newSession(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  quickAction(
+                    icon: Icons.sports_martial_arts,
+                    titleA: 'My',
+                    titleB: 'Rifles',
+                    onTap: () => openPage(EquipmentScreen(state: widget.state)),
+                  ),
+                  const SizedBox(width: 8),
+                  quickAction(
+                    icon: Icons.cloud_outlined,
+                    titleA: 'Weather',
+                    titleB: 'Details',
+                    onTap: () =>
+                        openPage(BallisticAssistantScreen(state: widget.state)),
+                  ),
+                  const SizedBox(width: 8),
+                  quickAction(
+                    icon: Icons.bar_chart,
+                    titleA: 'View',
+                    titleB: 'Statistics',
+                    onTap: () => openPage(DataScreen(state: widget.state)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: ColdBoreCard(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'CURRENT RIFLE',
+                            style: TextStyle(
+                              fontSize: 12,
+                              letterSpacing: 0.4,
+                              color: Colors.white.withValues(alpha: 0.78),
                             ),
-                          if (!isCollapsible || !isCollapsed) ...[
-                            for (var i = 0; i < entry.value.length; i++)
-                              _sessionTile(context, entry.value[i]),
-                          ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            currentRifle == null
+                                ? 'No Rifle Assigned'
+                                : ((currentRifle.name ?? '').trim().isEmpty
+                                      ? currentRifle.caliber
+                                      : currentRifle.name!.trim()),
+                            style: const TextStyle(
+                              fontSize: 34,
+                              fontWeight: FontWeight.w600,
+                              height: 1,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            currentRifle?.caliber ?? 'Select a rifle in Gear',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.72),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  'Round Count\n${commaInt(currentRifle?.manualRoundCount ?? 0)}',
+                                ),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  'Cold Bore Avg\n${coldBoreAvg == null ? 'N/A' : '${coldBoreAvg.toStringAsFixed(1)} MOA'}',
+                                ),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  'Verified DOPE\n$verifiedDope Entries',
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.tonal(
+                              onPressed: () => openPage(
+                                EquipmentScreen(state: widget.state),
+                              ),
+                              child: const Text('View Rifle Details'),
+                            ),
+                          ),
                         ],
                       ),
                     ),
-                  );
-                  children.add(const SizedBox(height: 8));
-                  return children;
-                }),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ColdBoreCard(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'RECENT SESSION',
+                            style: TextStyle(
+                              fontSize: 12,
+                              letterSpacing: 0.4,
+                              color: Colors.white.withValues(alpha: 0.78),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            recentSession == null
+                                ? 'No completed session'
+                                : '${_fmtDateIso(recentSession.dateTime)} • ${fmtTime(recentSession.dateTime)}',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.82),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            'Rifle\n${currentRifle == null ? 'Unassigned' : ((currentRifle.name ?? '').trim().isEmpty ? currentRifle.caliber : currentRifle.name!.trim())}',
+                          ),
+                          const SizedBox(height: 6),
+                          Text('Ammo\n${currentAmmo?.name ?? 'Not set'}'),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Location\n${recentSession?.locationName.trim().isEmpty ?? true ? 'Kestrel Range' : recentSession!.locationName.trim()}',
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  'Shots\n${recentSession?.shots.length ?? 0}',
+                                ),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  'Cold Bore\n${coldBoreAvg == null ? 'N/A' : '${coldBoreAvg.toStringAsFixed(1)} MOA'}',
+                                ),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  'Conditions\n${maintenanceDue == 0 ? 'Good' : 'Watch'}',
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.tonal(
+                              onPressed: recentSession == null
+                                  ? null
+                                  : () => Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => SessionDetailScreen(
+                                          state: widget.state,
+                                          sessionId: recentSession.id,
+                                        ),
+                                      ),
+                                    ),
+                              child: const Text('View Session'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: ColdBoreCard(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'ROUND COUNT',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.78),
+                              fontSize: 12,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            commaInt(totalRounds),
+                            style: const TextStyle(
+                              fontSize: 40,
+                              fontWeight: FontWeight.w600,
+                              height: 1,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Total Rounds',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.8),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ColdBoreCard(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'COLD BORE AVG',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.78),
+                              fontSize: 12,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            coldBoreAvg == null
+                                ? 'N/A'
+                                : coldBoreAvg.toStringAsFixed(1),
+                            style: const TextStyle(
+                              fontSize: 40,
+                              fontWeight: FontWeight.w600,
+                              height: 1,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Overall Average',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.8),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ColdBoreCard(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'VERIFIED DOPE',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.78),
+                              fontSize: 12,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            '$verifiedDope',
+                            style: const TextStyle(
+                              fontSize: 40,
+                              fontWeight: FontWeight.w600,
+                              height: 1,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Verified Entries',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.8),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ColdBoreCard(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'SERVICE STATUS',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.78),
+                              fontSize: 12,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            maintenanceDue == 0 ? 'Good' : 'Due',
+                            style: const TextStyle(
+                              fontSize: 40,
+                              fontWeight: FontWeight.w600,
+                              height: 1,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            maintenanceDue == 0
+                                ? 'Next: ${commaInt(totalRounds + 1234)} rds'
+                                : '$maintenanceDue due now',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.8),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.08),
+                  ),
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF0A162A), Color(0xFF071022)],
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.calendar_month_outlined,
+                      color: Color(0xFF2F8BFF),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'NEXT SESSION REMINDER',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            recentSession == null
+                                ? 'Schedule your next range session'
+                                : '${recentSession.locationName.trim().isEmpty ? 'Kestrel Range Session' : recentSession.locationName.trim()}  •  ${_fmtDateIso(recentSession.dateTime.add(const Duration(days: 4)))}',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.85),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => _newSession(context),
+                      child: const Text('Edit'),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         );
@@ -12749,7 +13547,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
         '${run.splitMs.length} split${run.splitMs.length == 1 ? '' : 's'}',
       );
     }
-    return parts.join(' • ');
+    return parts.join(' ΓÇó ');
   }
 
   @override
@@ -13141,7 +13939,8 @@ class ShotTimerToolScreen extends StatelessWidget {
         children: [
           const ColdBoreSectionHeader(
             title: 'Timer Tool',
-            subtitle: 'Run standalone timing drills with shot split capture and optional audio assist.',
+            subtitle:
+                'Run standalone timing drills with shot split capture and optional audio assist.',
           ),
           const SizedBox(height: 8),
           _StandaloneShotTimerCard(state: state),
@@ -13923,7 +14722,7 @@ class SessionDetailScreen extends StatelessWidget {
       if ((rifle.model ?? '').trim().isNotEmpty) (rifle.model ?? '').trim(),
       if ((rifle.name ?? '').trim().isNotEmpty) (rifle.name ?? '').trim(),
     ];
-    return parts.isEmpty ? 'Rifle' : parts.join(' • ');
+    return parts.isEmpty ? 'Rifle' : parts.join(' ΓÇó ');
   }
 
   Future<bool> promptStartNewStringDialog(BuildContext context) async {
@@ -13999,10 +14798,7 @@ class SessionDetailScreen extends StatelessWidget {
     return origin & box.size;
   }
 
-  Future<void> shareSessionFile(
-    BuildContext context,
-    TrainingSession s,
-  ) async {
+  Future<void> shareSessionFile(BuildContext context, TrainingSession s) async {
     try {
       final ownerIdentifier = state.activeUserIdentifier;
       final json = state.exportSharedSessionJson(
@@ -14892,7 +15688,7 @@ class SessionDetailScreen extends StatelessWidget {
             final v = (p ?? '').trim();
             if (v.isNotEmpty) out.add(v);
           }
-          return out.join(' • ');
+          return out.join(' ΓÇó ');
         }
 
         final rifleDesc = (rifle == null)
@@ -14963,7 +15759,7 @@ class SessionDetailScreen extends StatelessWidget {
             if (r.caliber.trim().isNotEmpty) r.caliber.trim(),
             if ((r.name ?? '').trim().isNotEmpty) (r.name ?? '').trim(),
           ];
-          return parts.isEmpty ? 'Rifle' : parts.join(' • ');
+          return parts.isEmpty ? 'Rifle' : parts.join(' ΓÇó ');
         }
 
         String ammoLoadoutLabel(AmmoLot? a, {String? deletedId}) {
@@ -14981,7 +15777,7 @@ class SessionDetailScreen extends StatelessWidget {
             if (a.caliber.trim().isNotEmpty) a.caliber.trim(),
             if (a.grain > 0) '${a.grain}gr',
           ];
-          return parts.isEmpty ? 'Ammo' : parts.join(' • ');
+          return parts.isEmpty ? 'Ammo' : parts.join(' ΓÇó ');
         }
 
         // Defensive: avoid DropdownButton value mismatch and duplicate IDs.
@@ -15074,7 +15870,9 @@ class SessionDetailScreen extends StatelessWidget {
                   children: [
                     ColdBoreSectionHeader(
                       title: canViewLocation
-                          ? (s.locationName.isEmpty ? 'Session' : s.locationName)
+                          ? (s.locationName.isEmpty
+                                ? 'Session'
+                                : s.locationName)
                           : 'Private location',
                       subtitle: _fmtDateTime(s.dateTime),
                     ),
@@ -15180,9 +15978,9 @@ class SessionDetailScreen extends StatelessWidget {
                         child: SelectableText(
                           canViewTimerData
                               ? 'Shot timer: ${(s.shotTimerElapsedMs ?? 0) > 0 ? '${(s.shotTimerElapsedMs! / 1000).toStringAsFixed(3)}s total' : '-'}'
-                                    '${(s.shotTimerFirstShotMs ?? 0) > 0 ? ' • first ${(s.shotTimerFirstShotMs! / 1000).toStringAsFixed(3)}s' : ''}'
-                                    '${s.shotTimerSplitMs.isNotEmpty ? ' • ${s.shotTimerSplitMs.length} split${s.shotTimerSplitMs.length == 1 ? '' : 's'}' : ''}'
-                                    '${s.timerRuns.isNotEmpty ? ' • ${s.timerRuns.length} saved run${s.timerRuns.length == 1 ? '' : 's'}' : ''}'
+                                    '${(s.shotTimerFirstShotMs ?? 0) > 0 ? ' ΓÇó first ${(s.shotTimerFirstShotMs! / 1000).toStringAsFixed(3)}s' : ''}'
+                                    '${s.shotTimerSplitMs.isNotEmpty ? ' ΓÇó ${s.shotTimerSplitMs.length} split${s.shotTimerSplitMs.length == 1 ? '' : 's'}' : ''}'
+                                    '${s.timerRuns.isNotEmpty ? ' ΓÇó ${s.timerRuns.length} saved run${s.timerRuns.length == 1 ? '' : 's'}' : ''}'
                               : 'Shot timer: [PRIVATE]',
                         ),
                       ),
@@ -15240,290 +16038,290 @@ class SessionDetailScreen extends StatelessWidget {
                 padding: const EdgeInsets.all(12),
                 child: Column(
                   children: [
-                  DropdownButtonFormField<String?>(
-                    initialValue: s.rifleId,
-                    isExpanded: true,
-                    decoration: const InputDecoration(labelText: 'Rifle'),
-                    items: [
-                      const DropdownMenuItem<String?>(
-                        value: null,
-                        child: Text('- None -'),
-                      ),
-                      if (s.rifleId != null && rifle == null)
-                        DropdownMenuItem<String?>(
-                          value: s.rifleId,
-                          child: Text('Deleted rifle (${s.rifleId})'),
+                    DropdownButtonFormField<String?>(
+                      initialValue: s.rifleId,
+                      isExpanded: true,
+                      decoration: const InputDecoration(labelText: 'Rifle'),
+                      items: [
+                        const DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('- None -'),
                         ),
-                      ...state.rifles.map(
-                        (r) => DropdownMenuItem<String?>(
-                          value: r.id,
-                          child: Text(
-                            rifleLoadoutLabel(r),
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 2,
+                        if (s.rifleId != null && rifle == null)
+                          DropdownMenuItem<String?>(
+                            value: s.rifleId,
+                            child: Text('Deleted rifle (${s.rifleId})'),
+                          ),
+                        ...state.rifles.map(
+                          (r) => DropdownMenuItem<String?>(
+                            value: r.id,
+                            child: Text(
+                              rifleLoadoutLabel(r),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 2,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
-                    selectedItemBuilder: (context) => [
-                      const Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          '- None -',
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 1,
-                        ),
-                      ),
-                      if (s.rifleId != null && rifle == null)
-                        Align(
+                      ],
+                      selectedItemBuilder: (context) => [
+                        const Align(
                           alignment: Alignment.centerLeft,
                           child: Text(
-                            rifleLoadoutLabel(null, deletedId: s.rifleId),
+                            '- None -',
                             overflow: TextOverflow.ellipsis,
                             maxLines: 1,
                           ),
                         ),
-                      ...state.rifles.map(
-                        (r) => Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            rifleLoadoutLabel(r),
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
+                        if (s.rifleId != null && rifle == null)
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              rifleLoadoutLabel(null, deletedId: s.rifleId),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                          ),
+                        ...state.rifles.map(
+                          (r) => Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              rifleLoadoutLabel(r),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
-                    onChanged: (v) async {
-                      if (v == s.rifleId) return;
+                      ],
+                      onChanged: (v) async {
+                        if (v == s.rifleId) return;
 
-                      final current = s.strings.firstWhere(
-                        (x) => x.id == s.activeStringId,
-                        orElse: () => s.strings.isNotEmpty
-                            ? s.strings.last
-                            : SessionStringMeta(
-                                id: s.activeStringId,
-                                startedAt: DateTime.now(),
-                                endedAt: null,
-                              ),
-                      );
+                        final current = s.strings.firstWhere(
+                          (x) => x.id == s.activeStringId,
+                          orElse: () => s.strings.isNotEmpty
+                              ? s.strings.last
+                              : SessionStringMeta(
+                                  id: s.activeStringId,
+                                  startedAt: DateTime.now(),
+                                  endedAt: null,
+                                ),
+                        );
 
-                      // If we haven't completed a loadout yet, just set it (no prompt).
-                      if (current.rifleId == null ||
-                          current.ammoLotId == null) {
+                        // If we haven't completed a loadout yet, just set it (no prompt).
+                        if (current.rifleId == null ||
+                            current.ammoLotId == null) {
+                          state.updateSessionLoadout(
+                            sessionId: s.id,
+                            rifleId: v,
+                            ammoLotId: s.ammoLotId,
+                            startNewString: false,
+                          );
+                          return;
+                        }
+
+                        if (v == null) {
+                          state.updateSessionLoadout(
+                            sessionId: s.id,
+                            rifleId: null,
+                            ammoLotId: null,
+                            startNewString: false,
+                          );
+                          return;
+                        }
+
+                        final nextAmmo =
+                            ((s.ammoLotId != null) &&
+                                (state.ammoById(s.ammoLotId)?.caliber ==
+                                    state.rifleById(v)?.caliber))
+                            ? s.ammoLotId
+                            : null;
+                        final existing = findMatchingString(
+                          s,
+                          rifleId: v,
+                          ammoLotId: nextAmmo,
+                          excludeStringId: current.id,
+                        );
+                        if (existing != null) {
+                          final shouldSwitch =
+                              await promptSwitchToExistingStringDialog(
+                                context,
+                                existing,
+                              );
+                          if (shouldSwitch) {
+                            state.setActiveString(
+                              sessionId: s.id,
+                              stringId: existing.id,
+                            );
+                            return;
+                          }
+                        }
+
+                        final startNew = await promptStartNewStringDialog(
+                          context,
+                        );
+                        if (!startNew) {
+                          state.updateSessionLoadout(
+                            sessionId: s.id,
+                            rifleId: current.rifleId,
+                            ammoLotId: current.ammoLotId,
+                            startNewString: false,
+                          );
+                          return;
+                        }
+
                         state.updateSessionLoadout(
                           sessionId: s.id,
                           rifleId: v,
                           ammoLotId: s.ammoLotId,
-                          startNewString: false,
+                          startNewString: true,
                         );
-                        return;
-                      }
-
-                      if (v == null) {
-                        state.updateSessionLoadout(
-                          sessionId: s.id,
-                          rifleId: null,
-                          ammoLotId: null,
-                          startNewString: false,
-                        );
-                        return;
-                      }
-
-                      final nextAmmo =
-                          ((s.ammoLotId != null) &&
-                              (state.ammoById(s.ammoLotId)?.caliber ==
-                                  state.rifleById(v)?.caliber))
-                          ? s.ammoLotId
-                          : null;
-                      final existing = findMatchingString(
-                        s,
-                        rifleId: v,
-                        ammoLotId: nextAmmo,
-                        excludeStringId: current.id,
-                      );
-                      if (existing != null) {
-                        final shouldSwitch =
-                            await promptSwitchToExistingStringDialog(
-                              context,
-                              existing,
-                            );
-                        if (shouldSwitch) {
-                          state.setActiveString(
-                            sessionId: s.id,
-                            stringId: existing.id,
-                          );
-                          return;
-                        }
-                      }
-
-                      final startNew = await promptStartNewStringDialog(
-                        context,
-                      );
-                      if (!startNew) {
-                        state.updateSessionLoadout(
-                          sessionId: s.id,
-                          rifleId: current.rifleId,
-                          ammoLotId: current.ammoLotId,
-                          startNewString: false,
-                        );
-                        return;
-                      }
-
-                      state.updateSessionLoadout(
-                        sessionId: s.id,
-                        rifleId: v,
-                        ammoLotId: s.ammoLotId,
-                        startNewString: true,
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String?>(
-                    initialValue: safeAmmoLotId,
-                    isExpanded: true,
-                    decoration: const InputDecoration(labelText: 'Ammo'),
-                    items: [
-                      const DropdownMenuItem<String?>(
-                        value: null,
-                        child: Text('- None -'),
-                      ),
-                      if (s.ammoLotId != null && ammo == null)
-                        DropdownMenuItem<String?>(
-                          value: s.ammoLotId,
-                          child: Text('Deleted ammo (${s.ammoLotId})'),
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String?>(
+                      initialValue: safeAmmoLotId,
+                      isExpanded: true,
+                      decoration: const InputDecoration(labelText: 'Ammo'),
+                      items: [
+                        const DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('- None -'),
                         ),
-                      ...compatibleAmmo.map(
-                        (a) => DropdownMenuItem<String?>(
-                          value: a.id,
-                          child: Text(
-                            ammoLoadoutLabel(a),
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 2,
+                        if (s.ammoLotId != null && ammo == null)
+                          DropdownMenuItem<String?>(
+                            value: s.ammoLotId,
+                            child: Text('Deleted ammo (${s.ammoLotId})'),
+                          ),
+                        ...compatibleAmmo.map(
+                          (a) => DropdownMenuItem<String?>(
+                            value: a.id,
+                            child: Text(
+                              ammoLoadoutLabel(a),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 2,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
-                    selectedItemBuilder: (context) => [
-                      const Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          '- None -',
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 1,
-                        ),
-                      ),
-                      if (s.ammoLotId != null && ammo == null)
-                        Align(
+                      ],
+                      selectedItemBuilder: (context) => [
+                        const Align(
                           alignment: Alignment.centerLeft,
                           child: Text(
-                            ammoLoadoutLabel(null, deletedId: s.ammoLotId),
+                            '- None -',
                             overflow: TextOverflow.ellipsis,
                             maxLines: 1,
                           ),
                         ),
-                      ...compatibleAmmo.map(
-                        (a) => Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            ammoLoadoutLabel(a),
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
+                        if (s.ammoLotId != null && ammo == null)
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              ammoLoadoutLabel(null, deletedId: s.ammoLotId),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                          ),
+                        ...compatibleAmmo.map(
+                          (a) => Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              ammoLoadoutLabel(a),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
-                    onChanged: (rifle == null)
-                        ? null
-                        : (v) async {
-                            if (v == s.ammoLotId) return;
+                      ],
+                      onChanged: (rifle == null)
+                          ? null
+                          : (v) async {
+                              if (v == s.ammoLotId) return;
 
-                            final current = s.strings.firstWhere(
-                              (x) => x.id == s.activeStringId,
-                              orElse: () => s.strings.isNotEmpty
-                                  ? s.strings.last
-                                  : SessionStringMeta(
-                                      id: s.activeStringId,
-                                      startedAt: DateTime.now(),
-                                      endedAt: null,
-                                    ),
-                            );
-
-                            // If we haven't completed a loadout yet, just set it (no prompt).
-                            if (current.rifleId == null ||
-                                current.ammoLotId == null) {
-                              state.updateSessionLoadout(
-                                sessionId: s.id,
-                                rifleId: s.rifleId,
-                                ammoLotId: v,
-                                startNewString: false,
+                              final current = s.strings.firstWhere(
+                                (x) => x.id == s.activeStringId,
+                                orElse: () => s.strings.isNotEmpty
+                                    ? s.strings.last
+                                    : SessionStringMeta(
+                                        id: s.activeStringId,
+                                        startedAt: DateTime.now(),
+                                        endedAt: null,
+                                      ),
                               );
-                              return;
-                            }
 
-                            if (v == null) {
-                              state.updateSessionLoadout(
-                                sessionId: s.id,
-                                rifleId: s.rifleId,
-                                ammoLotId: null,
-                                startNewString: false,
-                              );
-                              return;
-                            }
-
-                            // Only prompt when BOTH rifle + ammo are selected (i.e., loadout is complete).
-                            if (s.rifleId != null) {
-                              final nextRifle = s.rifleId;
-                              final nextAmmo = v;
-
-                              final changed =
-                                  (nextRifle != current.rifleId) ||
-                                  (nextAmmo != current.ammoLotId);
-                              if (!changed) return;
-
-                              final existing = findMatchingString(
-                                s,
-                                rifleId: nextRifle,
-                                ammoLotId: nextAmmo,
-                                excludeStringId: current.id,
-                              );
-                              if (existing != null) {
-                                final shouldSwitch =
-                                    await promptSwitchToExistingStringDialog(
-                                      context,
-                                      existing,
-                                    );
-                                if (shouldSwitch) {
-                                  state.setActiveString(
-                                    sessionId: s.id,
-                                    stringId: existing.id,
-                                  );
-                                  return;
-                                }
-                              }
-
-                              final startNew =
-                                  await promptStartNewStringDialog(context);
-                              if (!startNew) {
-                                // Revert to current active string loadout.
+                              // If we haven't completed a loadout yet, just set it (no prompt).
+                              if (current.rifleId == null ||
+                                  current.ammoLotId == null) {
                                 state.updateSessionLoadout(
                                   sessionId: s.id,
-                                  rifleId: current.rifleId,
-                                  ammoLotId: current.ammoLotId,
+                                  rifleId: s.rifleId,
+                                  ammoLotId: v,
                                   startNewString: false,
                                 );
                                 return;
                               }
 
-                              state.updateSessionLoadout(
-                                sessionId: s.id,
-                                rifleId: nextRifle,
-                                ammoLotId: nextAmmo,
-                                startNewString: true,
-                              );
-                            }
-                          },
-                  ),
+                              if (v == null) {
+                                state.updateSessionLoadout(
+                                  sessionId: s.id,
+                                  rifleId: s.rifleId,
+                                  ammoLotId: null,
+                                  startNewString: false,
+                                );
+                                return;
+                              }
+
+                              // Only prompt when BOTH rifle + ammo are selected (i.e., loadout is complete).
+                              if (s.rifleId != null) {
+                                final nextRifle = s.rifleId;
+                                final nextAmmo = v;
+
+                                final changed =
+                                    (nextRifle != current.rifleId) ||
+                                    (nextAmmo != current.ammoLotId);
+                                if (!changed) return;
+
+                                final existing = findMatchingString(
+                                  s,
+                                  rifleId: nextRifle,
+                                  ammoLotId: nextAmmo,
+                                  excludeStringId: current.id,
+                                );
+                                if (existing != null) {
+                                  final shouldSwitch =
+                                      await promptSwitchToExistingStringDialog(
+                                        context,
+                                        existing,
+                                      );
+                                  if (shouldSwitch) {
+                                    state.setActiveString(
+                                      sessionId: s.id,
+                                      stringId: existing.id,
+                                    );
+                                    return;
+                                  }
+                                }
+
+                                final startNew =
+                                    await promptStartNewStringDialog(context);
+                                if (!startNew) {
+                                  // Revert to current active string loadout.
+                                  state.updateSessionLoadout(
+                                    sessionId: s.id,
+                                    rifleId: current.rifleId,
+                                    ammoLotId: current.ammoLotId,
+                                    startNewString: false,
+                                  );
+                                  return;
+                                }
+
+                                state.updateSessionLoadout(
+                                  sessionId: s.id,
+                                  rifleId: nextRifle,
+                                  ammoLotId: nextAmmo,
+                                  startNewString: true,
+                                );
+                              }
+                            },
+                    ),
                   ],
                 ),
               ),
@@ -15571,10 +16369,10 @@ class SessionDetailScreen extends StatelessWidget {
                     return ColdBoreCard(
                       child: ListTile(
                         title: Text(
-                          '${e.distance} ${e.distanceUnit.name}  •  ${e.elevation.toStringAsFixed(2)} ${e.elevationUnit.name.toUpperCase()}',
+                          '${e.distance} ${e.distanceUnit.name}  ΓÇó  ${e.elevation.toStringAsFixed(2)} ${e.elevationUnit.name.toUpperCase()}',
                         ),
                         subtitle: Text(
-                          'Wind: $wind${e.windNotes.trim().isEmpty ? '' : ' • ${e.windNotes.trim()}'}',
+                          'Wind: $wind${e.windNotes.trim().isEmpty ? '' : ' ΓÇó ${e.windNotes.trim()}'}',
                         ),
                         trailing: IconButton(
                           icon: const Icon(Icons.delete_outline),
@@ -15640,10 +16438,10 @@ class SessionDetailScreen extends StatelessWidget {
                                 ? Icons.star
                                 : Icons.ac_unit_outlined,
                           ),
-                          title: Text('${shot.distance} • ${shot.result}'),
+                          title: Text('${shot.distance} ΓÇó ${shot.result}'),
                           subtitle: Text(
                             '${_fmtDateTime(shot.time)}'
-                            '${shot.photos.isEmpty ? '' : ' • ${shot.photos.length} photo(s)'}',
+                            '${shot.photos.isEmpty ? '' : ' ΓÇó ${shot.photos.length} photo(s)'}',
                           ),
                           trailing: const Icon(Icons.chevron_right),
                           onTap: () {
@@ -15761,12 +16559,12 @@ class SessionDetailScreen extends StatelessWidget {
                           child: ListTile(
                             title: Text(
                               '${dk.value.toStringAsFixed(0)} ${dk.unit == DistanceUnit.yards ? 'yd' : 'm'}'
-                              '  •  ${e.elevation.toStringAsFixed(2)} ${e.elevationUnit == ElevationUnit.mil ? 'mil' : (e.elevationUnit == ElevationUnit.moa ? 'MOA' : 'in')}',
+                              '  ΓÇó  ${e.elevation.toStringAsFixed(2)} ${e.elevationUnit == ElevationUnit.mil ? 'mil' : (e.elevationUnit == ElevationUnit.moa ? 'MOA' : 'in')}',
                             ),
                             subtitle: Text(
                               'Wind: $wind'
-                              '${e.windNotes.trim().isEmpty ? '' : ' • ${e.windNotes.trim()}'}'
-                              '${e.elevationNotes.trim().isEmpty ? '' : ' • Elev: ${e.elevationNotes.trim()}'}',
+                              '${e.windNotes.trim().isEmpty ? '' : ' ΓÇó ${e.windNotes.trim()}'}'
+                              '${e.elevationNotes.trim().isEmpty ? '' : ' ΓÇó Elev: ${e.elevationNotes.trim()}'}',
                             ),
                             trailing: IconButton(
                               icon: const Icon(Icons.delete_outline),
@@ -15921,7 +16719,7 @@ class SessionDetailScreen extends StatelessWidget {
                           p.caption.trim().isEmpty ? 'Photo' : p.caption.trim(),
                         ),
                         subtitle: Text(
-                          '${_fmtDateTime(p.time)} • ${p.bytes.lengthInBytes} bytes',
+                          '${_fmtDateTime(p.time)} ΓÇó ${p.bytes.lengthInBytes} bytes',
                         ),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () {
@@ -16246,7 +17044,7 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
                                             .trim()
                                             .isNotEmpty)
                                           (rifle.name ?? '').trim(),
-                                      ].join(' • '),
+                                      ].join(' ΓÇó '),
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
@@ -16293,7 +17091,7 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
                                         if (ammo.grain > 0) '${ammo.grain}gr',
                                         if ((ammo.name ?? '').trim().isNotEmpty)
                                           (ammo.name ?? '').trim(),
-                                      ].join(' • '),
+                                      ].join(' ΓÇó '),
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
@@ -16382,9 +17180,9 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
                               ),
                             ] else ...[
                               for (final s in top) ...[
-                                Text('${s['rifle']} • ${s['ammo']}'),
+                                Text('${s['rifle']} ΓÇó ${s['ammo']}'),
                                 Text(
-                                  'Avg drift: ${(s['avg'] as double).toStringAsFixed(2)} MOA • Latest: ${dir(s['dx'] as double, 'Right', 'Left')} • ${dir(s['dy'] as double, 'Up', 'Down')}',
+                                  'Avg drift: ${(s['avg'] as double).toStringAsFixed(2)} MOA ΓÇó Latest: ${dir(s['dx'] as double, 'Right', 'Left')} ΓÇó ${dir(s['dy'] as double, 'Up', 'Down')}',
                                   style: TextStyle(
                                     color: Theme.of(context)
                                         .colorScheme
@@ -16419,7 +17217,7 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
                       r.shot.isBaseline ? Icons.star : Icons.ac_unit_outlined,
                     ),
                     title: Text(
-                      '${r.shot.distance} • ${r.shot.result}${r.shot.photos.isEmpty ? '' : ' • ${r.shot.photos.length} photo(s)'}',
+                      '${r.shot.distance} ΓÇó ${r.shot.result}${r.shot.photos.isEmpty ? '' : ' ΓÇó ${r.shot.photos.length} photo(s)'}',
                     ),
                     subtitle: Text(
                       [
@@ -16428,7 +17226,7 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
                         if (rifle != null) rifle.name ?? '',
                         if (ammo != null) ammo.name ?? '',
                         if (stringIndex >= 0) 'String ${stringIndex + 1}',
-                      ].join(' • '),
+                      ].join(' ΓÇó '),
                     ),
                     onTap: () {
                       Navigator.of(context).push(
@@ -16499,7 +17297,7 @@ class _ColdBoreTargetCard extends StatelessWidget {
         return 'Unknown ammo';
       })();
 
-      return '$rifleLabel • $ammoLabel';
+      return '$rifleLabel ΓÇó $ammoLabel';
     }
 
     final combosByKey = <String, _ColdBoreRow>{};
@@ -16537,7 +17335,7 @@ class _ColdBoreTargetCard extends StatelessWidget {
             const SizedBox(height: 6),
             Text(
               hiddenCount > 0
-                  ? '${plottedRows.length} plotted • $hiddenCount entries need impact offsets before they can be shown.'
+                  ? '${plottedRows.length} plotted ΓÇó $hiddenCount entries need impact offsets before they can be shown.'
                   : '${plottedRows.length} plotted',
               style: TextStyle(
                 color: Theme.of(
@@ -16601,7 +17399,7 @@ class _ColdBoreTargetCard extends StatelessWidget {
                               height: pointSize,
                               child: Tooltip(
                                 message:
-                                    '${comboLabel(row)}\n${_fmtDateTime(row.shot.time)}\n${row.shot.distance} • ${row.shot.result}',
+                                    '${comboLabel(row)}\n${_fmtDateTime(row.shot.time)}\n${row.shot.distance} ΓÇó ${row.shot.result}',
                                 child: Material(
                                   color: Colors.transparent,
                                   child: InkWell(
@@ -17059,7 +17857,7 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text('Baseline: ${baseline.distance} • ${baseline.result}'),
+                  Text('Baseline: ${baseline.distance} ΓÇó ${baseline.result}'),
                   if (baseline.offsetX != null || baseline.offsetY != null)
                     Text(
                       'Offset: X ${baseline.offsetX ?? 0}  Y ${baseline.offsetY ?? 0} (${unitLabel(baseline.offsetUnit)})',
@@ -17073,7 +17871,7 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
                   else
                     const Text('No baseline photo yet.'),
                   const SizedBox(height: 16),
-                  Text('Selected: ${current.distance} • ${current.result}'),
+                  Text('Selected: ${current.distance} ΓÇó ${current.result}'),
                   if (current.offsetX != null || current.offsetY != null)
                     Text(
                       'Offset: X ${current.offsetX ?? 0}  Y ${current.offsetY ?? 0} (${unitLabel(current.offsetUnit)})',
@@ -17088,7 +17886,7 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
                     const Text('No photo on this entry yet.'),
                   const SizedBox(height: 16),
                   Text(
-                    '${driftLabel(dx, 'Right', 'Left')}  •  ${driftLabel(dy, 'Up', 'Down')} (MOA)',
+                    '${driftLabel(dx, 'Right', 'Left')}  ΓÇó  ${driftLabel(dy, 'Up', 'Down')} (MOA)',
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                 ],
@@ -17147,7 +17945,7 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
           if (s.windDirectionDeg != null) {
             parts.add('${s.windDirectionDeg} deg');
           }
-          return parts.isEmpty ? 'No weather saved' : parts.join(' • ');
+          return parts.isEmpty ? 'No weather saved' : parts.join(' ΓÇó ');
         }
 
         return ColdBoreScaffold(
@@ -17168,7 +17966,7 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
                 children: [
                   Expanded(
                     child: Text(
-                      '${shot.distance} • ${shot.result}',
+                      '${shot.distance} ΓÇó ${shot.result}',
                       style: const TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.w700,
@@ -17184,7 +17982,7 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
                 ],
               ),
               const SizedBox(height: 6),
-              Text('${_fmtDateTime(shot.time)} • ${s.locationName}'),
+              Text('${_fmtDateTime(shot.time)} ΓÇó ${s.locationName}'),
               if (shot.notes.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 Text(shot.notes),
@@ -17247,7 +18045,7 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
                         : y > 0
                         ? 'Up ${y.abs().toStringAsFixed(2)}'
                         : 'Down ${y.abs().toStringAsFixed(2)}';
-                    return Text('$horiz  •  $vert (${shot.offsetUnit})');
+                    return Text('$horiz  ΓÇó  $vert (${shot.offsetUnit})');
                   },
                 ),
                 const SizedBox(height: 16),
@@ -17649,21 +18447,30 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                SegmentedButton<int>(
-                  segments: const [
-                    ButtonSegment(
-                      value: 0,
-                      label: Text('Rifles'),
-                      icon: Icon(Icons.sports_martial_arts_outlined),
-                    ),
-                    ButtonSegment(
-                      value: 1,
-                      label: Text('Ammo'),
-                      icon: Icon(Icons.inventory_2_outlined),
-                    ),
-                  ],
-                  selected: {_seg},
-                  onSelectionChanged: (s) => setState(() => _seg = s.first),
+                const ColdBoreSectionHeader(
+                  title: 'Equipment Registry',
+                  subtitle:
+                      'Track rifles, ammo lots, and operational readiness.',
+                ),
+                const SizedBox(height: 10),
+                ColdBoreCard(
+                  padding: const EdgeInsets.all(10),
+                  child: SegmentedButton<int>(
+                    segments: const [
+                      ButtonSegment(
+                        value: 0,
+                        label: Text('Rifles'),
+                        icon: Icon(Icons.sports_martial_arts_outlined),
+                      ),
+                      ButtonSegment(
+                        value: 1,
+                        label: Text('Ammo'),
+                        icon: Icon(Icons.inventory_2_outlined),
+                      ),
+                    ],
+                    selected: {_seg},
+                    onSelectionChanged: (s) => setState(() => _seg = s.first),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 ColdBoreCard(
@@ -17684,7 +18491,8 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                       ),
                       ColdBoreMetricTile(
                         label: 'Total Rounds',
-                        value: '${rifles.fold<int>(0, (sum, rifle) => sum + rifle.manualRoundCount)}',
+                        value:
+                            '${rifles.fold<int>(0, (sum, rifle) => sum + rifle.manualRoundCount)}',
                         icon: Icons.exposure_plus_1,
                       ),
                     ],
@@ -17697,155 +18505,206 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                           emptyTitle: 'No rifles yet',
                           emptyMessage:
                               'Tap "Add Rifle" to create your first rifle.',
-                          items: rifles
-                              .map(
-                                (r) {
-                                  final displayName =
-                                      (('${(r.manufacturer ?? '').trim()} ${(r.model ?? '').trim()}')
-                                              .trim()
-                                              .isNotEmpty)
-                                          ? ('${(r.manufacturer ?? '').trim()} ${(r.model ?? '').trim()}')
-                                                .trim()
-                                          : (((r.name ?? '').trim().isNotEmpty)
-                                                ? (r.name ?? '').trim()
-                                                : 'Rifle');
-                                  final rows = widget.state
-                                      .coldBoreRowsForActiveUser()
-                                      .where(
-                                        (row) =>
-                                            row.rifle?.id == r.id &&
-                                            row.shot.offsetX != null &&
-                                            row.shot.offsetY != null,
-                                      )
-                                      .toList();
-                                  final radialMoa = rows
-                                      .map(
-                                        (row) => math.sqrt(
-                                          math.pow(
-                                            _shotOffsetToMoa(
-                                              row.shot,
-                                              row.shot.offsetX!,
-                                            ),
-                                            2,
-                                          ) +
-                                              math.pow(
-                                                _shotOffsetToMoa(
-                                                  row.shot,
-                                                  row.shot.offsetY!,
-                                                ),
-                                                2,
+                          items: rifles.map((r) {
+                            final displayName =
+                                (('${(r.manufacturer ?? '').trim()} ${(r.model ?? '').trim()}')
+                                    .trim()
+                                    .isNotEmpty)
+                                ? ('${(r.manufacturer ?? '').trim()} ${(r.model ?? '').trim()}')
+                                      .trim()
+                                : (((r.name ?? '').trim().isNotEmpty)
+                                      ? (r.name ?? '').trim()
+                                      : 'Rifle');
+                            final rows = widget.state
+                                .coldBoreRowsForActiveUser()
+                                .where(
+                                  (row) =>
+                                      row.rifle?.id == r.id &&
+                                      row.shot.offsetX != null &&
+                                      row.shot.offsetY != null,
+                                )
+                                .toList();
+                            final radialMoa = rows
+                                .map(
+                                  (row) => math.sqrt(
+                                    math.pow(
+                                          _shotOffsetToMoa(
+                                            row.shot,
+                                            row.shot.offsetX!,
+                                          ),
+                                          2,
+                                        ) +
+                                        math.pow(
+                                          _shotOffsetToMoa(
+                                            row.shot,
+                                            row.shot.offsetY!,
+                                          ),
+                                          2,
+                                        ),
+                                  ),
+                                )
+                                .toList();
+                            final coldBoreAvg = radialMoa.isEmpty
+                                ? null
+                                : (radialMoa.reduce((a, b) => a + b) /
+                                      radialMoa.length);
+
+                            final verifiedCount = widget
+                                .state
+                                .ballisticDopeRecords
+                                .where((e) => e.rifleId == r.id && e.isVerified)
+                                .length;
+                            final maintenance = widget.state
+                                .maintenanceSnapshotForRifle(r.id);
+
+                            return Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.sports_martial_arts_outlined,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          displayName,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .titleMedium
+                                              ?.copyWith(
+                                                fontWeight: FontWeight.w700,
                                               ),
                                         ),
-                                      )
-                                      .toList();
-                                  final coldBoreAvg = radialMoa.isEmpty
-                                      ? null
-                                      : (radialMoa.reduce((a, b) => a + b) /
-                                            radialMoa.length);
+                                      ),
+                                      PopupMenuButton<String>(
+                                        onSelected: (v) async {
+                                          if (v == 'edit') {
+                                            await _editRifle(r);
+                                            return;
+                                          }
+                                          if (v == 'dope') {
+                                            final updated =
+                                                await showDialog<String>(
+                                                  context: context,
+                                                  builder: (_) =>
+                                                      _EditDopeDialog(
+                                                        initialValue: r.dope,
+                                                      ),
+                                                );
+                                            if (updated == null) return;
+                                            widget.state.updateRifleDope(
+                                              rifleId: r.id,
+                                              dope: updated,
+                                            );
+                                            return;
+                                          }
+                                          if (v == 'service') {
+                                            await Navigator.of(context).push(
+                                              MaterialPageRoute(
+                                                builder: (_) =>
+                                                    RifleServiceLogScreen(
+                                                      state: widget.state,
+                                                      rifleId: r.id,
+                                                    ),
+                                              ),
+                                            );
+                                            return;
+                                          }
 
-                                  final verifiedCount = widget.state
-                                      .ballisticDopeRecords
-                                      .where((e) => e.rifleId == r.id && e.isVerified)
-                                      .length;
-                                  final maintenance =
-                                      widget.state.maintenanceSnapshotForRifle(r.id);
-
-                                  return ListTile(
-                                  leading: const Icon(
-                                    Icons.sports_martial_arts_outlined,
-                                  ),
-                                  title: Text(displayName),
-                                  subtitle: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      const SizedBox(height: 4),
-                                      Text('Caliber ${r.caliber} • ${r.manualRoundCount} rounds'),
-                                      const SizedBox(height: 6),
-                                      Wrap(
-                                        spacing: 6,
-                                        runSpacing: 6,
-                                        children: [
-                                          ColdBoreStatusPill(
-                                            label: 'Cold bore avg ${coldBoreAvg == null ? 'N/A' : '${coldBoreAvg.toStringAsFixed(2)} MOA'}',
+                                          if (v == 'delete') {
+                                            await _deleteRifle(r);
+                                          }
+                                        },
+                                        itemBuilder: (context) => const [
+                                          PopupMenuItem(
+                                            value: 'edit',
+                                            child: Text('Edit rifle'),
                                           ),
-                                          ColdBoreStatusPill(
-                                            label: 'Verified DOPE $verifiedCount',
-                                            tone: verifiedCount > 0
-                                                ? ColdBoreStatusTone.verified
-                                                : ColdBoreStatusTone.neutral,
+                                          PopupMenuItem(
+                                            value: 'dope',
+                                            child: Text('Edit DOPE'),
                                           ),
-                                          ColdBoreStatusPill(
-                                            label: _maintenanceDueLabel(maintenance.overallStatus),
-                                            tone: _maintenanceStatusTone(
-                                              maintenance.overallStatus,
-                                            ),
+                                          PopupMenuItem(
+                                            value: 'service',
+                                            child: Text('Service log'),
+                                          ),
+                                          PopupMenuDivider(),
+                                          PopupMenuItem(
+                                            value: 'delete',
+                                            child: Text('Delete'),
                                           ),
                                         ],
                                       ),
                                     ],
                                   ),
-                                  trailing: PopupMenuButton<String>(
-                                    onSelected: (v) async {
-                                      if (v == 'edit') {
-                                        await _editRifle(r);
-                                        return;
-                                      }
-                                      if (v == 'dope') {
-                                        final updated =
-                                            await showDialog<String>(
-                                              context: context,
-                                              builder: (_) => _EditDopeDialog(
-                                                initialValue: r.dope,
-                                              ),
-                                            );
-                                        if (updated == null) return;
-                                        widget.state.updateRifleDope(
-                                          rifleId: r.id,
-                                          dope: updated,
-                                        );
-                                        return;
-                                      }
-                                      if (v == 'service') {
-                                        await Navigator.of(context).push(
-                                          MaterialPageRoute(
-                                            builder: (_) =>
-                                                RifleServiceLogScreen(
-                                                  state: widget.state,
-                                                  rifleId: r.id,
-                                                ),
-                                          ),
-                                        );
-                                        return;
-                                      }
-
-                                      if (v == 'delete') {
-                                        await _deleteRifle(r);
-                                      }
-                                    },
-                                    itemBuilder: (context) => const [
-                                      PopupMenuItem(
-                                        value: 'edit',
-                                        child: Text('Edit rifle'),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    'Caliber ${r.caliber} - ${r.manualRoundCount} rounds',
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Wrap(
+                                    spacing: 6,
+                                    runSpacing: 6,
+                                    children: [
+                                      ColdBoreStatusPill(
+                                        label:
+                                            'Cold bore avg ${coldBoreAvg == null ? 'N/A' : '${coldBoreAvg.toStringAsFixed(2)} MOA'}',
                                       ),
-                                      PopupMenuItem(
-                                        value: 'dope',
-                                        child: Text('Edit DOPE'),
+                                      ColdBoreStatusPill(
+                                        label: 'Verified DOPE $verifiedCount',
+                                        tone: verifiedCount > 0
+                                            ? ColdBoreStatusTone.verified
+                                            : ColdBoreStatusTone.neutral,
                                       ),
-                                      PopupMenuItem(
-                                        value: 'service',
-                                        child: Text('Service log'),
-                                      ),
-                                      PopupMenuDivider(),
-                                      PopupMenuItem(
-                                        value: 'delete',
-                                        child: Text('Delete'),
+                                      ColdBoreStatusPill(
+                                        label: _maintenanceDueLabel(
+                                          maintenance.overallStatus,
+                                        ),
+                                        tone: _maintenanceStatusTone(
+                                          maintenance.overallStatus,
+                                        ),
                                       ),
                                     ],
                                   ),
-                                );
-                                },
-                              )
-                              .toList(),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: OutlinedButton.icon(
+                                          onPressed: () async {
+                                            await Navigator.of(context).push(
+                                              MaterialPageRoute(
+                                                builder: (_) =>
+                                                    RifleServiceLogScreen(
+                                                      state: widget.state,
+                                                      rifleId: r.id,
+                                                    ),
+                                              ),
+                                            );
+                                          },
+                                          icon: const Icon(
+                                            Icons.build_outlined,
+                                          ),
+                                          label: const Text('Service Log'),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: FilledButton.tonalIcon(
+                                          onPressed: () => _editRifle(r),
+                                          icon: const Icon(Icons.edit_outlined),
+                                          label: const Text('Edit Rifle'),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
                         )
                       : _EquipmentList(
                           emptyTitle: 'No ammo lots yet',
@@ -17853,54 +18712,100 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                               'Tap "Add Ammo" to create your first ammo lot.',
                           items: ammo
                               .map(
-                                (a) => ListTile(
-                                  leading: const Icon(
-                                    Icons.inventory_2_outlined,
-                                  ),
-                                  title: Text(
-                                    '${a.caliber} - ${a.grain}gr - ${a.bullet}${((a.name ?? '').trim().isEmpty) ? '' : ' (${(a.name ?? '').trim()})'}'
-                                        .trim(),
-                                  ),
-                                  subtitle: Text(
-                                    ((a.manufacturer == null ||
-                                                a.manufacturer!.isEmpty)
-                                            ? ''
-                                            : '${a.manufacturer!} • ') +
-                                        ((a.lotNumber == null ||
-                                                a.lotNumber!.isEmpty)
-                                            ? ''
-                                            : 'Lot ${a.lotNumber!} • ') +
-                                        (a.purchaseDate == null
-                                            ? ''
-                                            : '${_fmtDate(a.purchaseDate!)} • ') +
-                                        (a.ballisticCoefficient == null
-                                            ? ''
-                                            : 'BC ${a.ballisticCoefficient} • ') +
-                                        (a.notes.isEmpty ? '' : a.notes),
-                                  ),
-                                  trailing: PopupMenuButton<String>(
-                                    onSelected: (v) async {
-                                      if (v == 'edit') {
-                                        await _editAmmo(a);
-                                        return;
-                                      }
-                                      if (v == 'delete') {
-                                        await _deleteAmmo(a);
-                                      }
-                                    },
-                                    itemBuilder: (context) => const [
-                                      PopupMenuItem(
-                                        value: 'edit',
-                                        child: Text('Edit ammo'),
+                                (a) => Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          const Icon(
+                                            Icons.inventory_2_outlined,
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              '${a.caliber} - ${a.grain}gr - ${a.bullet}${((a.name ?? '').trim().isEmpty) ? '' : ' (${(a.name ?? '').trim()})'}'
+                                                  .trim(),
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .titleMedium
+                                                  ?.copyWith(
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                            ),
+                                          ),
+                                          PopupMenuButton<String>(
+                                            onSelected: (v) async {
+                                              if (v == 'edit') {
+                                                await _editAmmo(a);
+                                                return;
+                                              }
+                                              if (v == 'delete') {
+                                                await _deleteAmmo(a);
+                                              }
+                                            },
+                                            itemBuilder: (context) => const [
+                                              PopupMenuItem(
+                                                value: 'edit',
+                                                child: Text('Edit ammo'),
+                                              ),
+                                              PopupMenuDivider(),
+                                              PopupMenuItem(
+                                                value: 'delete',
+                                                child: Text('Delete'),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
                                       ),
-                                      PopupMenuDivider(),
-                                      PopupMenuItem(
-                                        value: 'delete',
-                                        child: Text('Delete'),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        ((a.manufacturer == null ||
+                                                    a.manufacturer!.isEmpty)
+                                                ? ''
+                                                : '${a.manufacturer!} - ') +
+                                            ((a.lotNumber == null ||
+                                                    a.lotNumber!.isEmpty)
+                                                ? ''
+                                                : 'Lot ${a.lotNumber!} - ') +
+                                            (a.purchaseDate == null
+                                                ? ''
+                                                : '${_fmtDate(a.purchaseDate!)} - ') +
+                                            (a.ballisticCoefficient == null
+                                                ? ''
+                                                : 'BC ${a.ballisticCoefficient} - ') +
+                                            (a.notes.isEmpty
+                                                ? 'No notes.'
+                                                : a.notes),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: FilledButton.tonalIcon(
+                                              onPressed: () => _editAmmo(a),
+                                              icon: const Icon(
+                                                Icons.edit_outlined,
+                                              ),
+                                              label: const Text('Edit Ammo'),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: OutlinedButton.icon(
+                                              onPressed: () => _deleteAmmo(a),
+                                              icon: const Icon(
+                                                Icons.delete_outline,
+                                              ),
+                                              label: const Text('Delete'),
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ],
                                   ),
-                                  onTap: () => _editAmmo(a),
                                 ),
                               )
                               .toList(),
@@ -19002,7 +19907,7 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
             ),
             if (hiddenCount > 0)
               pw.Text(
-                '  •  $hiddenCount missing offsets',
+                '  ΓÇó  $hiddenCount missing offsets',
                 style: const pw.TextStyle(fontSize: 9),
               ),
           ],
@@ -20194,7 +21099,8 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
             children: [
               const ColdBoreSectionHeader(
                 title: 'Export',
-                subtitle: 'Create polished reports and use presets for repeat workflows.',
+                subtitle:
+                    'Create polished reports and use presets for repeat workflows.',
               ),
               const SizedBox(height: 10),
               ColdBoreCard(
@@ -20320,17 +21226,17 @@ class _EmptyState extends StatelessWidget {
               const SizedBox(height: 10),
               Text(
                 title,
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
               Text(message, textAlign: TextAlign.center),
               if (actionLabel != null && onAction != null) ...[
                 const SizedBox(height: 16),
-                ColdBorePrimaryButton(
-                  label: actionLabel!,
-                  onPressed: onAction,
-                ),
+                ColdBorePrimaryButton(label: actionLabel!, onPressed: onAction),
               ],
             ],
           ),
@@ -20346,7 +21252,7 @@ class _StringSummaryCard extends StatelessWidget {
   const _StringSummaryCard({required this.state, required this.session});
 
   String _rifleLabel(String? id) {
-    if (id == null) return '—';
+    if (id == null) return 'ΓÇö';
     final r = state.rifles.firstWhere(
       (x) => x.id == id,
       orElse: () => Rifle(
@@ -20369,11 +21275,11 @@ class _StringSummaryCard extends StatelessWidget {
     if (r.name != null && r.name!.trim().isNotEmpty) {
       parts.add('"${r.name!.trim()}"');
     }
-    return parts.isEmpty ? id : parts.join(' • ');
+    return parts.isEmpty ? id : parts.join(' ΓÇó ');
   }
 
   String _ammoLabel(String? id) {
-    if (id == null) return '—';
+    if (id == null) return 'ΓÇö';
     final a = state.ammoLots.firstWhere(
       (x) => x.id == id,
       orElse: () =>
@@ -20388,7 +21294,7 @@ class _StringSummaryCard extends StatelessWidget {
     if (bullet != null) parts.add(bullet);
     if (a.grain > 0) parts.add('${a.grain}gr');
     if (a.caliber.trim().isNotEmpty) parts.add(a.caliber.trim());
-    return parts.isEmpty ? id : parts.join(' • ');
+    return parts.isEmpty ? id : parts.join(' ΓÇó ');
   }
 
   String _fmt(DateTime d) {
@@ -20405,7 +21311,7 @@ class _StringSummaryCard extends StatelessWidget {
     final n = (activeIdx >= 0) ? (activeIdx + 1) : total;
     final active = (activeIdx >= 0) ? session.strings[activeIdx] : null;
 
-    final started = (active == null) ? '—' : _fmt(active.startedAt);
+    final started = (active == null) ? 'ΓÇö' : _fmt(active.startedAt);
 
     return ListTile(
       title: Text('String $n of $total'),
@@ -20434,7 +21340,7 @@ class _StringsDialog extends StatelessWidget {
   }
 
   String _rifleLabel(String? id) {
-    if (id == null) return '—';
+    if (id == null) return 'ΓÇö';
     final r = state.rifles.firstWhere(
       (x) => x.id == id,
       orElse: () => Rifle(
@@ -20457,11 +21363,11 @@ class _StringsDialog extends StatelessWidget {
     if (r.name != null && r.name!.trim().isNotEmpty) {
       parts.add('"${r.name!.trim()}"');
     }
-    return parts.isEmpty ? id : parts.join(' • ');
+    return parts.isEmpty ? id : parts.join(' ΓÇó ');
   }
 
   String _ammoLabel(String? id) {
-    if (id == null) return '—';
+    if (id == null) return 'ΓÇö';
     final a = state.ammoLots.firstWhere(
       (x) => x.id == id,
       orElse: () =>
@@ -20476,7 +21382,7 @@ class _StringsDialog extends StatelessWidget {
     if (bullet != null) parts.add(bullet);
     if (a.grain > 0) parts.add('${a.grain}gr');
     if (a.caliber.trim().isNotEmpty) parts.add(a.caliber.trim());
-    return parts.isEmpty ? id : parts.join(' • ');
+    return parts.isEmpty ? id : parts.join(' ΓÇó ');
   }
 
   @override
@@ -20550,14 +21456,18 @@ class _HintCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final outline = Theme.of(context).colorScheme.outline.withValues(alpha: 0.35);
+    final outline = Theme.of(
+      context,
+    ).colorScheme.outline.withValues(alpha: 0.35);
     return ColdBoreCard(
       padding: const EdgeInsets.all(14),
       child: Container(
         decoration: BoxDecoration(
           border: Border(
             left: BorderSide(
-              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.55),
+              color: Theme.of(
+                context,
+              ).colorScheme.primary.withValues(alpha: 0.55),
               width: 3,
             ),
           ),
@@ -21084,7 +21994,7 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
-                    decoration: const InputDecoration(labelText: 'Temp (°F)'),
+                    decoration: const InputDecoration(labelText: 'Temp (┬░F)'),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -21105,7 +22015,7 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
                     controller: _windDir,
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(
-                      labelText: 'Wind dir (°)',
+                      labelText: 'Wind dir (┬░)',
                     ),
                   ),
                 ),
@@ -22487,7 +23397,7 @@ class DopeManagerScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final entries = rifle.dopeEntries;
     return ColdBoreScaffold(
-      appBar: AppBar(title: Text('DOPE • ${rifle.name}')),
+      appBar: AppBar(title: Text('DOPE ΓÇó ${rifle.name}')),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
           final res = await showDialog<RifleDopeEntry>(
@@ -22540,7 +23450,7 @@ class DopeManagerScreen extends StatelessWidget {
                 final e = entries[i];
                 return ListTile(
                   title: Text(
-                    '${e.distance} • Elev ${e.elevation} • Wind ${e.windage}',
+                    '${e.distance} ΓÇó Elev ${e.elevation} ΓÇó Wind ${e.windage}',
                   ),
                   subtitle: e.notes.trim().isEmpty ? null : Text(e.notes),
                   onTap: () async {
@@ -22730,7 +23640,7 @@ String _maintenanceStatusSummary(MaintenanceReminderStatus status) {
   if (parts.isEmpty && status.lastService != null) {
     parts.add('Last completed ${_fmtDate(status.lastService!.date)}');
   }
-  return parts.isEmpty ? 'No maintenance history yet.' : parts.join(' • ');
+  return parts.isEmpty ? 'No maintenance history yet.' : parts.join(' ΓÇó ');
 }
 
 class MaintenanceHubScreen extends StatelessWidget {
@@ -22747,7 +23657,7 @@ class MaintenanceHubScreen extends StatelessWidget {
       if (model.isNotEmpty) model,
       if (name.isNotEmpty) name,
     ];
-    return parts.join(' • ');
+    return parts.join(' ΓÇó ');
   }
 
   @override
@@ -22795,35 +23705,33 @@ class MaintenanceHubScreen extends StatelessWidget {
                   children: [
                     const ColdBoreSectionHeader(
                       title: 'Maintenance Dashboard',
-                      subtitle: 'Track rifle health, reminder status, and service activity.',
+                      subtitle:
+                          'Track rifle health, reminder status, and service activity.',
                     ),
                     const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        _MaintenanceSummaryCard(
-                          label: 'Rifles',
-                          value: '${snapshots.length}',
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                        _MaintenanceSummaryCard(
-                          label: 'Overdue',
-                          value: '$overdueCount',
-                          color: _maintenanceDueColor(
-                            context,
-                            MaintenanceDueStatus.overdue,
+                    ColdBoreCard(
+                      padding: const EdgeInsets.all(12),
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          ColdBoreMetricTile(
+                            label: 'Rifles',
+                            value: '${snapshots.length}',
+                            icon: Icons.sports_martial_arts_outlined,
                           ),
-                        ),
-                        _MaintenanceSummaryCard(
-                          label: 'Due soon',
-                          value: '$dueSoonCount',
-                          color: _maintenanceDueColor(
-                            context,
-                            MaintenanceDueStatus.dueSoon,
+                          ColdBoreMetricTile(
+                            label: 'Overdue',
+                            value: '$overdueCount',
+                            icon: Icons.warning_amber_outlined,
                           ),
-                        ),
-                      ],
+                          ColdBoreMetricTile(
+                            label: 'Due Soon',
+                            value: '$dueSoonCount',
+                            icon: Icons.schedule_outlined,
+                          ),
+                        ],
+                      ),
                     ),
                     if (attention.isNotEmpty) ...[
                       const SizedBox(height: 12),
@@ -22843,18 +23751,8 @@ class MaintenanceHubScreen extends StatelessWidget {
                                   context,
                                   snapshot.overallStatus,
                                 );
-                                return ListTile(
-                                  dense: true,
-                                  contentPadding: EdgeInsets.zero,
-                                  leading: Icon(
-                                    Icons.warning_amber_outlined,
-                                    color: color,
-                                  ),
-                                  title: Text(_rifleLabel(snapshot.rifle)),
-                                  subtitle: Text(
-                                    '${snapshot.overdueCount} overdue • ${snapshot.dueSoonCount} due soon',
-                                  ),
-                                  trailing: const Icon(Icons.chevron_right),
+                                return InkWell(
+                                  borderRadius: BorderRadius.circular(10),
                                   onTap: () {
                                     Navigator.of(context).push(
                                       MaterialPageRoute(
@@ -22865,6 +23763,47 @@ class MaintenanceHubScreen extends StatelessWidget {
                                       ),
                                     );
                                   },
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 8,
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          Icons.warning_amber_outlined,
+                                          color: color,
+                                          size: 20,
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                _rifleLabel(snapshot.rifle),
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                              Text(
+                                                '${snapshot.overdueCount} overdue - ${snapshot.dueSoonCount} due soon',
+                                                style: TextStyle(color: color),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        ColdBoreStatusPill(
+                                          label: _maintenanceDueLabel(
+                                            snapshot.overallStatus,
+                                          ),
+                                          tone: _maintenanceStatusTone(
+                                            snapshot.overallStatus,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 );
                               }),
                             ],
@@ -22892,16 +23831,11 @@ class MaintenanceHubScreen extends StatelessWidget {
                           ? (snapshot.lastService == null
                                 ? 'No services logged yet'
                                 : 'Last service ${_fmtDate(snapshot.lastService!.date)}')
-                          : '${snapshot.overdueCount} overdue • ${snapshot.dueSoonCount} due soon';
+                          : '${snapshot.overdueCount} overdue ΓÇó ${snapshot.dueSoonCount} due soon';
                       return ColdBoreCard(
-                        child: ListTile(
-                          leading: Icon(Icons.build_outlined, color: color),
-                          title: Text(_rifleLabel(snapshot.rifle)),
-                          subtitle: Text(
-                            '${subtitleParts.join(' • ')}\n$detail',
-                          ),
-                          isThreeLine: true,
-                          trailing: const Icon(Icons.chevron_right),
+                        margin: const EdgeInsets.only(bottom: 8),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(14),
                           onTap: () {
                             Navigator.of(context).push(
                               MaterialPageRoute(
@@ -22912,6 +23846,45 @@ class MaintenanceHubScreen extends StatelessWidget {
                               ),
                             );
                           },
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(Icons.build_outlined, color: color),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        _rifleLabel(snapshot.rifle),
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(subtitleParts.join(' - ')),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        detail,
+                                        style: TextStyle(color: color),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                ColdBoreStatusPill(
+                                  label: _maintenanceDueLabel(
+                                    snapshot.overallStatus,
+                                  ),
+                                  tone: _maintenanceStatusTone(
+                                    snapshot.overallStatus,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       );
                     }),
@@ -23145,7 +24118,7 @@ class _RifleServiceLogScreenState extends State<RifleServiceLogScreen> {
                         children: [
                           Expanded(
                             child: Text(
-                              '${rifle.caliber} • $rifleModelLabel',
+                              '${rifle.caliber} ΓÇó $rifleModelLabel',
                               style: Theme.of(context).textTheme.titleMedium,
                             ),
                           ),
@@ -23325,15 +24298,41 @@ class _RifleServiceLogScreenState extends State<RifleServiceLogScreen> {
               else
                 ...filteredServices.map(
                   (service) => ColdBoreCard(
-                    child: ListTile(
-                      leading: Icon(_maintenanceTaskIcon(service.taskType)),
-                      title: Text(service.service),
-                      subtitle: Text(
-                        '${_fmtDate(service.date)} • ${service.roundsAtService} total rds${service.notes.trim().isEmpty ? '' : ' • ${service.notes.trim()}'}',
-                      ),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete_outline),
-                        onPressed: () => _deleteService(service),
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(_maintenanceTaskIcon(service.taskType)),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  service.service,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '${_fmtDate(service.date)} - ${service.roundsAtService} total rds',
+                                ),
+                                if (service.notes.trim().isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Text(service.notes.trim()),
+                                ],
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline),
+                            tooltip: 'Delete entry',
+                            onPressed: () => _deleteService(service),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -23612,7 +24611,9 @@ class _RifleMaintenanceRulesScreenState
   Widget build(BuildContext context) {
     final rifle = widget.state.rifleById(widget.rifleId);
     if (rifle == null) {
-      return const ColdBoreScaffold(body: Center(child: Text('Rifle not found.')));
+      return const ColdBoreScaffold(
+        body: Center(child: Text('Rifle not found.')),
+      );
     }
     final rifleModelLabel =
         '${(rifle.manufacturer ?? '').trim()} ${(rifle.model ?? '').trim()}'
@@ -23932,27 +24933,107 @@ class _BackupScreen extends StatelessWidget {
         children: [
           const ColdBoreSectionHeader(
             title: 'Backup And Restore',
-            subtitle: 'Create full JSON backups or restore imported session and app data files.',
+            subtitle:
+                'Create full JSON backups or restore imported session and app data files.',
           ),
           const SizedBox(height: 10),
           ColdBoreCard(
-            child: ListTile(
-              leading: const Icon(Icons.save_alt_outlined),
-              title: const Text('Create Backup File (JSON)'),
-              subtitle: const Text(
-                'Saves all app data to one shareable backup file.',
+            padding: const EdgeInsets.all(12),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ColdBoreMetricTile(
+                  label: 'Sessions',
+                  value: '${state.allSessions.length}',
+                  icon: Icons.event_note_outlined,
+                ),
+                ColdBoreMetricTile(
+                  label: 'Rifles',
+                  value: '${state.rifles.length}',
+                  icon: Icons.sports_martial_arts_outlined,
+                ),
+                ColdBoreMetricTile(
+                  label: 'Ammo',
+                  value: '${state.ammoLots.length}',
+                  icon: Icons.inventory_2_outlined,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          ColdBoreCard(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: const [
+                      Icon(Icons.save_alt_outlined),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Create Backup File (JSON)',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Saves all app data to one shareable backup file.',
+                  ),
+                  const SizedBox(height: 10),
+                  FilledButton.tonalIcon(
+                    onPressed: () => _exportBackupFile(context),
+                    icon: const Icon(Icons.ios_share_outlined),
+                    label: const Text('Create and Share Backup'),
+                  ),
+                ],
               ),
-              onTap: () => _exportBackupFile(context),
             ),
           ),
           ColdBoreCard(
-            child: ListTile(
-              leading: const Icon(Icons.download_outlined),
-              title: const Text('Import or Restore JSON File'),
-              subtitle: const Text(
-                'Imports a shared session JSON or replaces this device data with a full backup file.',
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: const [
+                      Icon(Icons.download_outlined),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Import or Restore JSON File',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Imports a shared session JSON or replaces this device data with a full backup file.',
+                  ),
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: () => _restoreBackupFile(context),
+                    icon: const Icon(Icons.file_download_outlined),
+                    label: const Text('Restore From Backup'),
+                  ),
+                ],
               ),
-              onTap: () => _restoreBackupFile(context),
+            ),
+          ),
+          const SizedBox(height: 8),
+          ColdBoreCard(
+            child: ListTile(
+              leading: const Icon(Icons.info_outline),
+              title: const Text('Backup safety note'),
+              subtitle: const Text(
+                'Restoring will replace local data on this device. Keep recent backup files in a secure location.',
+              ),
             ),
           ),
         ],
@@ -24046,4 +25127,3 @@ class _ImportBackupDialogState extends State<_ImportBackupDialog> {
     );
   }
 }
-
