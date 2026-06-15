@@ -677,7 +677,9 @@ String _cleanText(String s) {
       .replaceAll('ΓÇ¥', '"')
       .replaceAll('ΓÇÖ', "'")
       .replaceAll('ΓÇö', '-')
-      .replaceAll('ΓåÆ', '->');
+      .replaceAll('ΓåÆ', '->')
+      .replaceAll('ΓÇó', ' • ')
+      .replaceAll('┬░', '°');
 }
 
 // --- Export helpers (no extra packages required) -----------------------------
@@ -4034,7 +4036,7 @@ class AppState extends ChangeNotifier {
             id: _newId(),
             time: time,
             bytes: photoBytes,
-            caption: 'Cold bore ΓÇó ${distance.trim()}',
+            caption: 'Cold bore • ${distance.trim()}',
           );
 
     _sessions[idx] = s.copyWith(
@@ -9060,7 +9062,7 @@ class _DataScreenState extends State<DataScreen> {
                                   children: [
                                     Expanded(
                                       child: Text(
-                                        '${r.name ?? 'Rifle'} ΓÇó ${r.caliber}',
+                                        '${r.name ?? 'Rifle'} • ${r.caliber}',
                                         style: const TextStyle(
                                           fontWeight: FontWeight.w700,
                                         ),
@@ -9240,7 +9242,7 @@ class _DataScreenState extends State<DataScreen> {
                       subtitle: Text(
                         snapshots.isEmpty
                             ? 'Add rifles to start tracking cleaning, torque, zero, and barrel reminders.'
-                            : '$overdue overdue ΓÇó $dueSoon due soon across ${snapshots.length} rifle${snapshots.length == 1 ? '' : 's'}',
+                            : '$overdue overdue • $dueSoon due soon across ${snapshots.length} rifle${snapshots.length == 1 ? '' : 's'}',
                       ),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () {
@@ -9276,6 +9278,20 @@ class BallisticAssistantScreen extends StatefulWidget {
 class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
   final BallisticCalculationService _solver =
       const BallisticCalculationService();
+  static const List<String> _windDirectionOptions = <String>[
+    'Full value',
+    'Half value',
+    'Quarter value',
+    'No wind',
+    'From N',
+    'From NE',
+    'From E',
+    'From SE',
+    'From S',
+    'From SW',
+    'From W',
+    'From NW',
+  ];
 
   String? _selectedRifleId;
   String? _selectedAmmoId;
@@ -9286,10 +9302,12 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
       BallisticValidationOutcome.confirmedAccurate;
   bool _writeRifleOnly = false;
   bool _includeWeatherSnapshot = true;
+  bool _weatherLoading = false;
   DateTime _verificationDate = DateTime.now();
   BallisticDopeRecord? _activeRecord;
   List<_GeneratedDopeRow> _chartRows = const <_GeneratedDopeRow>[];
   int? _selectedChartRowIndex;
+  String _windDirectionValue = 'Full value';
 
   final TextEditingController _distanceCtrl = TextEditingController(
     text: '100',
@@ -9305,9 +9323,6 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
   );
   final TextEditingController _windSpeedCtrl = TextEditingController(
     text: '10',
-  );
-  final TextEditingController _windDirectionCtrl = TextEditingController(
-    text: 'Full value',
   );
   final TextEditingController _temperatureCtrl = TextEditingController(
     text: '59',
@@ -9355,7 +9370,6 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
     _chartEndDistanceCtrl.dispose();
     _chartIncrementCtrl.dispose();
     _windSpeedCtrl.dispose();
-    _windDirectionCtrl.dispose();
     _temperatureCtrl.dispose();
     _pressureCtrl.dispose();
     _humidityCtrl.dispose();
@@ -9421,12 +9435,104 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
     }
   }
 
-  Future<void> _useCurrentWeather() async {
-    final temp = widget.state.temperatureF;
-    final wind = widget.state.windSpeedMph;
-    final windDir = widget.state.windDirectionDeg;
+  String _compass8(int deg) {
+    const labels = <String>['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+    final normalized = ((deg % 360) + 360) % 360;
+    final idx = ((normalized + 22) ~/ 45) % labels.length;
+    return labels[idx];
+  }
 
-    if (temp == null && wind == null && windDir == null) {
+  Future<Map<String, num>?> _fetchLiveWeather() async {
+    final enabled = await Geolocator.isLocationServiceEnabled();
+    if (!enabled) return null;
+
+    var perm = await Geolocator.checkPermission();
+    if (perm == LocationPermission.denied) {
+      perm = await Geolocator.requestPermission();
+    }
+    if (perm == LocationPermission.denied ||
+        perm == LocationPermission.deniedForever) {
+      return null;
+    }
+
+    final pos = await Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.high,
+    );
+    final uri = Uri.parse(
+      'https://api.open-meteo.com/v1/forecast'
+      '?latitude=${pos.latitude}&longitude=${pos.longitude}'
+      '&current=temperature_2m,wind_speed_10m,wind_direction_10m,surface_pressure,relative_humidity_2m'
+      '&temperature_unit=fahrenheit&wind_speed_unit=mph',
+    );
+    final resp = await http.get(uri);
+    if (resp.statusCode != 200) return null;
+
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    final current = data['current'] as Map<String, dynamic>?;
+    if (current == null) return null;
+
+    final out = <String, num>{};
+    final temp = current['temperature_2m'] as num?;
+    final wind = current['wind_speed_10m'] as num?;
+    final windDir = current['wind_direction_10m'] as num?;
+    final pressureHpa = current['surface_pressure'] as num?;
+    final humidity = current['relative_humidity_2m'] as num?;
+    if (temp != null) out['tempF'] = temp;
+    if (wind != null) out['windMph'] = wind;
+    if (windDir != null) out['windDirDeg'] = windDir;
+    if (pressureHpa != null) out['pressureInHg'] = pressureHpa * 0.0295299830714;
+    if (humidity != null) out['humidity'] = humidity;
+    return out;
+  }
+
+  Future<void> _useCurrentWeather() async {
+    setState(() => _weatherLoading = true);
+    try {
+      var temp = widget.state.temperatureF;
+      var wind = widget.state.windSpeedMph;
+      var windDir = widget.state.windDirectionDeg;
+      double? pressure;
+      double? humidity;
+
+      final live = await _fetchLiveWeather();
+      if (live != null) {
+        temp = (live['tempF'] as num?)?.toDouble() ?? temp;
+        wind = (live['windMph'] as num?)?.toDouble() ?? wind;
+        windDir = (live['windDirDeg'] as num?)?.round() ?? windDir;
+        pressure = (live['pressureInHg'] as num?)?.toDouble();
+        humidity = (live['humidity'] as num?)?.toDouble();
+      }
+
+      if (temp == null && wind == null && windDir == null && pressure == null && humidity == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Current weather is unavailable right now. You can still enter values manually.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      setState(() {
+        if (temp != null) _temperatureCtrl.text = temp.toStringAsFixed(1);
+        if (wind != null) _windSpeedCtrl.text = wind.toStringAsFixed(1);
+        if (pressure != null) _pressureCtrl.text = pressure.toStringAsFixed(2);
+        if (humidity != null) _humidityCtrl.text = humidity.toStringAsFixed(0);
+        if (windDir != null) {
+          _windDirectionValue = 'From ${_compass8(windDir)}';
+        }
+      });
+
+      widget.state.setEnvironment(
+        temperatureF: temp,
+        windSpeedMph: wind,
+        windDirectionDeg: windDir,
+      );
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Current weather applied.')),
+      );
+    } catch (_) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -9434,24 +9540,13 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
           ),
         ),
       );
-      return;
+    } finally {
+      if (mounted) setState(() => _weatherLoading = false);
     }
-
-    setState(() {
-      if (temp != null) _temperatureCtrl.text = temp.toStringAsFixed(1);
-      if (wind != null) _windSpeedCtrl.text = wind.toStringAsFixed(1);
-      if (windDir != null) _windDirectionCtrl.text = '$windDir deg';
-    });
-
-    final missing = <String>['pressure', 'humidity'];
-    final detail = missing.isEmpty
-        ? 'Current weather applied.'
-        : 'Current weather applied where available. ${missing.join(' and ')} still require manual entry.';
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(detail)));
   }
 
   String _weatherSnapshotText() {
-    return 'Temp ${_temperatureCtrl.text.trim()} F | Pressure ${_pressureCtrl.text.trim()} inHg | Humidity ${_humidityCtrl.text.trim()}% | Wind ${_windSpeedCtrl.text.trim()} mph (${_windDirectionCtrl.text.trim()})';
+    return 'Temp ${_temperatureCtrl.text.trim()} F | Pressure ${_pressureCtrl.text.trim()} inHg | Humidity ${_humidityCtrl.text.trim()}% | Wind ${_windSpeedCtrl.text.trim()} mph ($_windDirectionValue)';
   }
 
   _GeneratedDopeRow? _buildCalculatedRow({
@@ -9499,7 +9594,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
         distance: distance,
         distanceUnit: distanceUnit,
         windSpeedMph: windSpeed,
-        windDirectionValue: _windDirectionCtrl.text.trim(),
+        windDirectionValue: _windDirectionValue,
         temperatureF: temp,
         pressureInHg: pressure,
         humidityPercent: humidity,
@@ -9522,7 +9617,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
       rifleId: rifleId,
       ammoLotId: ammoId,
       windSpeedMph: windSpeed,
-      windDirectionValue: _windDirectionCtrl.text.trim(),
+      windDirectionValue: _windDirectionValue,
       temperatureF: temp,
       pressureInHg: pressure,
       humidityPercent: humidity,
@@ -10332,9 +10427,13 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                       Align(
                         alignment: Alignment.centerLeft,
                         child: OutlinedButton.icon(
-                          onPressed: _useCurrentWeather,
+                          onPressed: _weatherLoading ? null : _useCurrentWeather,
                           icon: const Icon(Icons.cloud_outlined),
-                          label: const Text('Use current weather'),
+                          label: Text(
+                            _weatherLoading
+                                ? 'Fetching weather...'
+                                : 'Use current weather',
+                          ),
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -10355,12 +10454,23 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                           ),
                           const SizedBox(width: 8),
                           Expanded(
-                            child: TextField(
-                              textCapitalization: TextCapitalization.none,
-                              controller: _windDirectionCtrl,
+                            child: DropdownButtonFormField<String>(
+                              initialValue: _windDirectionValue,
                               decoration: const InputDecoration(
                                 labelText: 'Wind direction/value',
                               ),
+                              items: _windDirectionOptions
+                                  .map(
+                                    (value) => DropdownMenuItem<String>(
+                                      value: value,
+                                      child: Text(value),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (value) {
+                                if (value == null) return;
+                                setState(() => _windDirectionValue = value);
+                              },
                             ),
                           ),
                         ],
@@ -10975,7 +11085,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                                   children: [
                                     Expanded(
                                       child: Text(
-                                        '${recRifle?.name ?? recRifle?.caliber ?? 'Rifle'} ΓÇó ${recAmmo?.name ?? recAmmo?.bullet ?? 'Ammo'}',
+                                        '${recRifle?.name ?? recRifle?.caliber ?? 'Rifle'} • ${recAmmo?.name ?? recAmmo?.bullet ?? 'Ammo'}',
                                         style: const TextStyle(
                                           fontWeight: FontWeight.w700,
                                         ),
@@ -10995,7 +11105,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                                 ),
                                 const SizedBox(height: 6),
                                 Text(
-                                  'Distance ${record.distance.toStringAsFixed(0)} ${_distanceUnitLabel(record.distanceUnit)} ΓÇó ${_formatDate(record.createdAt)}',
+                                  'Distance ${record.distance.toStringAsFixed(0)} ${_distanceUnitLabel(record.distanceUnit)} • ${_formatDate(record.createdAt)}',
                                 ),
                                 const SizedBox(height: 6),
                                 Wrap(
@@ -11296,7 +11406,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
   static const String _filtersPanelCollapsedPrefsKey =
       'cold_bore.sessions.filters_panel_collapsed.v1';
 
-  bool _showArchived = false;
+  final bool _showArchived = false;
   String _groupBy = 'none';
   int? _yearFilter;
   String? _monthFilter;
@@ -11937,8 +12047,10 @@ class _SessionsScreenState extends State<SessionsScreen> {
           required String titleA,
           required String titleB,
           required VoidCallback onTap,
+          required double width,
         }) {
-          return Expanded(
+          return SizedBox(
+            width: width,
             child: InkWell(
               onTap: onTap,
               borderRadius: BorderRadius.circular(14),
@@ -11964,6 +12076,8 @@ class _SessionsScreenState extends State<SessionsScreen> {
                     Text(
                       titleA,
                       textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontSize: 12.5,
                         fontWeight: FontWeight.w600,
@@ -11972,6 +12086,8 @@ class _SessionsScreenState extends State<SessionsScreen> {
                     Text(
                       titleB,
                       textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 12.5,
                         fontWeight: FontWeight.w600,
@@ -12198,62 +12314,74 @@ class _SessionsScreenState extends State<SessionsScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-              Row(
-                children: [
-                  quickAction(
-                    icon: Icons.gps_fixed,
-                    titleA: 'Ballistic',
-                    titleB: 'Assistant',
-                    onTap: () =>
-                        openPage(BallisticAssistantScreen(state: widget.state)),
-                  ),
-                  const SizedBox(width: 8),
-                  quickAction(
-                    icon: Icons.adjust,
-                    titleA: 'DOPE',
-                    titleB: 'Manager',
-                    onTap: () => openPage(DataScreen(state: widget.state)),
-                  ),
-                  const SizedBox(width: 8),
-                  quickAction(
-                    icon: Icons.note_add_outlined,
-                    titleA: 'New',
-                    titleB: 'Session',
-                    onTap: () => _newSession(context),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  quickAction(
-                    icon: Icons.sports_martial_arts,
-                    titleA: 'My',
-                    titleB: 'Rifles',
-                    onTap: () => openPage(EquipmentScreen(state: widget.state)),
-                  ),
-                  const SizedBox(width: 8),
-                  quickAction(
-                    icon: Icons.cloud_outlined,
-                    titleA: 'Weather',
-                    titleB: 'Details',
-                    onTap: () =>
-                        openPage(BallisticAssistantScreen(state: widget.state)),
-                  ),
-                  const SizedBox(width: 8),
-                  quickAction(
-                    icon: Icons.bar_chart,
-                    titleA: 'View',
-                    titleB: 'Statistics',
-                    onTap: () => openPage(DataScreen(state: widget.state)),
-                  ),
-                ],
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final columns = constraints.maxWidth < 420 ? 2 : 3;
+                  final gap = 8.0;
+                  final tileWidth =
+                      (constraints.maxWidth - ((columns - 1) * gap)) / columns;
+
+                  return Wrap(
+                    spacing: gap,
+                    runSpacing: gap,
+                    children: [
+                      quickAction(
+                        width: tileWidth,
+                        icon: Icons.gps_fixed,
+                        titleA: 'Ballistic',
+                        titleB: 'Assistant',
+                        onTap: () => openPage(
+                          BallisticAssistantScreen(state: widget.state),
+                        ),
+                      ),
+                      quickAction(
+                        width: tileWidth,
+                        icon: Icons.adjust,
+                        titleA: 'DOPE',
+                        titleB: 'Manager',
+                        onTap: () => openPage(DataScreen(state: widget.state)),
+                      ),
+                      quickAction(
+                        width: tileWidth,
+                        icon: Icons.note_add_outlined,
+                        titleA: 'New',
+                        titleB: 'Session',
+                        onTap: () => _newSession(context),
+                      ),
+                      quickAction(
+                        width: tileWidth,
+                        icon: Icons.tune_outlined,
+                        titleA: 'My',
+                        titleB: 'Rifles',
+                        onTap: () => openPage(EquipmentScreen(state: widget.state)),
+                      ),
+                      quickAction(
+                        width: tileWidth,
+                        icon: Icons.cloud_outlined,
+                        titleA: 'Weather',
+                        titleB: 'Details',
+                        onTap: () => openPage(
+                          BallisticAssistantScreen(state: widget.state),
+                        ),
+                      ),
+                      quickAction(
+                        width: tileWidth,
+                        icon: Icons.bar_chart,
+                        titleA: 'View',
+                        titleB: 'Statistics',
+                        onTap: () => openPage(DataScreen(state: widget.state)),
+                      ),
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: ColdBoreCard(
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final stacked = constraints.maxWidth < 760;
+
+                  Widget currentRifleCard() {
+                    return ColdBoreCard(
                       padding: const EdgeInsets.all(12),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -12274,7 +12402,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
                                       ? currentRifle.caliber
                                       : currentRifle.name!.trim()),
                             style: const TextStyle(
-                              fontSize: 34,
+                              fontSize: 30,
                               fontWeight: FontWeight.w600,
                               height: 1,
                             ),
@@ -12318,11 +12446,11 @@ class _SessionsScreenState extends State<SessionsScreen> {
                           ),
                         ],
                       ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: ColdBoreCard(
+                    );
+                  }
+
+                  Widget recentSessionCard() {
+                    return ColdBoreCard(
                       padding: const EdgeInsets.all(12),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -12393,153 +12521,110 @@ class _SessionsScreenState extends State<SessionsScreen> {
                           ),
                         ],
                       ),
-                    ),
-                  ),
-                ],
+                    );
+                  }
+
+                  if (stacked) {
+                    return Column(
+                      children: [
+                        currentRifleCard(),
+                        const SizedBox(height: 8),
+                        recentSessionCard(),
+                      ],
+                    );
+                  }
+
+                  return Row(
+                    children: [
+                      Expanded(child: currentRifleCard()),
+                      const SizedBox(width: 8),
+                      Expanded(child: recentSessionCard()),
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: ColdBoreCard(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'ROUND COUNT',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.78),
-                              fontSize: 12,
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final columns = constraints.maxWidth < 720 ? 2 : 4;
+                  final gap = 8.0;
+                  final width =
+                      (constraints.maxWidth - ((columns - 1) * gap)) / columns;
+
+                  Widget metricCard({
+                    required String title,
+                    required String value,
+                    required String subtitle,
+                  }) {
+                    return SizedBox(
+                      width: width,
+                      child: ColdBoreCard(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.78),
+                                fontSize: 12,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            commaInt(totalRounds),
-                            style: const TextStyle(
-                              fontSize: 40,
-                              fontWeight: FontWeight.w600,
-                              height: 1,
+                            const SizedBox(height: 6),
+                            Text(
+                              value,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 40,
+                                fontWeight: FontWeight.w600,
+                                height: 1,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Total Rounds',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.8),
+                            const SizedBox(height: 2),
+                            Text(
+                              subtitle,
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.8),
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: ColdBoreCard(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'COLD BORE AVG',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.78),
-                              fontSize: 12,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            coldBoreAvg == null
-                                ? 'N/A'
-                                : coldBoreAvg.toStringAsFixed(1),
-                            style: const TextStyle(
-                              fontSize: 40,
-                              fontWeight: FontWeight.w600,
-                              height: 1,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Overall Average',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.8),
-                            ),
-                          ),
-                        ],
+                    );
+                  }
+
+                  return Wrap(
+                    spacing: gap,
+                    runSpacing: gap,
+                    children: [
+                      metricCard(
+                        title: 'ROUND COUNT',
+                        value: commaInt(totalRounds),
+                        subtitle: 'Total Rounds',
                       ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: ColdBoreCard(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'VERIFIED DOPE',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.78),
-                              fontSize: 12,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            '$verifiedDope',
-                            style: const TextStyle(
-                              fontSize: 40,
-                              fontWeight: FontWeight.w600,
-                              height: 1,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Verified Entries',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.8),
-                            ),
-                          ),
-                        ],
+                      metricCard(
+                        title: 'COLD BORE AVG',
+                        value: coldBoreAvg == null
+                            ? 'N/A'
+                            : coldBoreAvg.toStringAsFixed(1),
+                        subtitle: 'Overall Average',
                       ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: ColdBoreCard(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'SERVICE STATUS',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.78),
-                              fontSize: 12,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            maintenanceDue == 0 ? 'Good' : 'Due',
-                            style: const TextStyle(
-                              fontSize: 40,
-                              fontWeight: FontWeight.w600,
-                              height: 1,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            maintenanceDue == 0
-                                ? 'Next: ${commaInt(totalRounds + 1234)} rds'
-                                : '$maintenanceDue due now',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.8),
-                            ),
-                          ),
-                        ],
+                      metricCard(
+                        title: 'VERIFIED DOPE',
+                        value: '$verifiedDope',
+                        subtitle: 'Verified Entries',
                       ),
-                    ),
-                  ),
-                ],
+                      metricCard(
+                        title: 'SERVICE STATUS',
+                        value: maintenanceDue == 0 ? 'Good' : 'Due',
+                        subtitle: maintenanceDue == 0
+                            ? 'Next: ${commaInt(totalRounds + 1234)} rds'
+                            : '$maintenanceDue due now',
+                      ),
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 10),
               Container(
@@ -17044,7 +17129,7 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
                                             .trim()
                                             .isNotEmpty)
                                           (rifle.name ?? '').trim(),
-                                      ].join(' ΓÇó '),
+                                      ].join(' • '),
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
@@ -17091,7 +17176,7 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
                                         if (ammo.grain > 0) '${ammo.grain}gr',
                                         if ((ammo.name ?? '').trim().isNotEmpty)
                                           (ammo.name ?? '').trim(),
-                                      ].join(' ΓÇó '),
+                                      ].join(' • '),
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
@@ -17180,9 +17265,9 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
                               ),
                             ] else ...[
                               for (final s in top) ...[
-                                Text('${s['rifle']} ΓÇó ${s['ammo']}'),
+                                Text('${s['rifle']} • ${s['ammo']}'),
                                 Text(
-                                  'Avg drift: ${(s['avg'] as double).toStringAsFixed(2)} MOA ΓÇó Latest: ${dir(s['dx'] as double, 'Right', 'Left')} ΓÇó ${dir(s['dy'] as double, 'Up', 'Down')}',
+                                  'Avg drift: ${(s['avg'] as double).toStringAsFixed(2)} MOA • Latest: ${dir(s['dx'] as double, 'Right', 'Left')} • ${dir(s['dy'] as double, 'Up', 'Down')}',
                                   style: TextStyle(
                                     color: Theme.of(context)
                                         .colorScheme
@@ -17217,7 +17302,7 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
                       r.shot.isBaseline ? Icons.star : Icons.ac_unit_outlined,
                     ),
                     title: Text(
-                      '${r.shot.distance} ΓÇó ${r.shot.result}${r.shot.photos.isEmpty ? '' : ' ΓÇó ${r.shot.photos.length} photo(s)'}',
+                      '${r.shot.distance} • ${r.shot.result}${r.shot.photos.isEmpty ? '' : ' • ${r.shot.photos.length} photo(s)'}',
                     ),
                     subtitle: Text(
                       [
@@ -17226,7 +17311,7 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
                         if (rifle != null) rifle.name ?? '',
                         if (ammo != null) ammo.name ?? '',
                         if (stringIndex >= 0) 'String ${stringIndex + 1}',
-                      ].join(' ΓÇó '),
+                      ].join(' • '),
                     ),
                     onTap: () {
                       Navigator.of(context).push(
@@ -17297,7 +17382,7 @@ class _ColdBoreTargetCard extends StatelessWidget {
         return 'Unknown ammo';
       })();
 
-      return '$rifleLabel ΓÇó $ammoLabel';
+      return '$rifleLabel • $ammoLabel';
     }
 
     final combosByKey = <String, _ColdBoreRow>{};
@@ -24118,7 +24203,7 @@ class _RifleServiceLogScreenState extends State<RifleServiceLogScreen> {
                         children: [
                           Expanded(
                             child: Text(
-                              '${rifle.caliber} ΓÇó $rifleModelLabel',
+                              '${rifle.caliber} • $rifleModelLabel',
                               style: Theme.of(context).textTheme.titleMedium,
                             ),
                           ),
