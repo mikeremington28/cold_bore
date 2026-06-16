@@ -8674,7 +8674,7 @@ class _DataScreenState extends State<DataScreen> {
                         label: _rifleOnly ? 'Rifle Only' : 'Rifle + Ammo',
                         tone: _rifleOnly
                             ? ColdBoreStatusTone.verified
-                            : ColdBoreStatusTone.calculated,
+                            : ColdBoreStatusTone.neutral,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -10696,14 +10696,19 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                           child: SingleChildScrollView(
                             scrollDirection: Axis.horizontal,
                             child: DataTable(
+                              showCheckboxColumn: false,
+                              columnSpacing: 14,
+                              horizontalMargin: 10,
+                              headingRowHeight: 38,
                               headingTextStyle: const TextStyle(
-                                fontSize: 11,
+                                fontSize: 10,
                                 letterSpacing: 0.8,
                                 color: cbMuted,
                                 fontWeight: FontWeight.w700,
                               ),
-                              dataRowMinHeight: 50,
-                              dataRowMaxHeight: 56,
+                              dataTextStyle: const TextStyle(fontSize: 12),
+                              dataRowMinHeight: 42,
+                              dataRowMaxHeight: 48,
                               columns: const [
                                 DataColumn(label: Text('DISTANCE')),
                                 DataColumn(label: Text('ELEVATION')),
@@ -11155,6 +11160,79 @@ class _GeneratedDopeRow {
       dragModel: dragModel,
       solverVersion: solverVersion,
       recordId: recordId ?? this.recordId,
+    );
+  }
+}
+
+class WeatherDetailsScreen extends StatelessWidget {
+  final AppState state;
+  const WeatherDetailsScreen({super.key, required this.state});
+
+  String _dirFromDeg(int deg) {
+    const labels = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+    final normalized = ((deg % 360) + 360) % 360;
+    final idx = ((normalized + 22) ~/ 45) % labels.length;
+    return labels[idx];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ColdBoreScaffold(
+      appBar: AppBar(title: const Text('Weather Details')),
+      body: AnimatedBuilder(
+        animation: state,
+        builder: (context, _) {
+          final temp = state.temperatureF;
+          final wind = state.windSpeedMph;
+          final windDeg = state.windDirectionDeg;
+          final lat = state.latitude;
+          final lon = state.longitude;
+
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              const ColdBoreSectionHeader(
+                title: 'Current Conditions',
+                subtitle: 'Source: Open-Meteo using your device location.',
+              ),
+              const SizedBox(height: 10),
+              ColdBoreCard(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      temp == null ? 'Temperature: --' : 'Temperature: ${temp.toStringAsFixed(1)}°F',
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      wind == null
+                          ? 'Wind: --'
+                          : 'Wind: ${wind.toStringAsFixed(1)} mph${windDeg == null ? '' : ' ${_dirFromDeg(windDeg)}'}',
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      (lat == null || lon == null)
+                          ? 'Location: unavailable'
+                          : 'Location: ${lat.toStringAsFixed(5)}, ${lon.toStringAsFixed(5)}',
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              FilledButton.tonalIcon(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => BallisticAssistantScreen(state: state),
+                  ),
+                ),
+                icon: const Icon(Icons.calculate_outlined),
+                label: const Text('Open Ballistic Assistant'),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 }
@@ -11984,6 +12062,17 @@ class _SessionsScreenState extends State<SessionsScreen> {
           Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
         }
 
+        void openPageWithAppBar(String title, Widget page) {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => ColdBoreScaffold(
+                appBar: AppBar(title: Text(title)),
+                body: page,
+              ),
+            ),
+          );
+        }
+
         Widget quickAction({
           required IconData icon,
           required String titleA,
@@ -12287,7 +12376,10 @@ class _SessionsScreenState extends State<SessionsScreen> {
                         icon: Icons.adjust,
                         titleA: 'DOPE',
                         titleB: 'Manager',
-                        onTap: () => openPage(DataScreen(state: widget.state)),
+                        onTap: () => openPageWithAppBar(
+                          'DOPE Manager',
+                          DataScreen(state: widget.state),
+                        ),
                       ),
                       quickAction(
                         width: tileWidth,
@@ -12298,26 +12390,29 @@ class _SessionsScreenState extends State<SessionsScreen> {
                       ),
                       quickAction(
                         width: tileWidth,
-                        icon: Icons.tune_outlined,
+                        icon: Icons.precision_manufacturing_outlined,
                         titleA: 'My',
                         titleB: 'Rifles',
-                        onTap: () => openPage(EquipmentScreen(state: widget.state)),
+                        onTap: () =>
+                            openPage(EquipmentScreen(state: widget.state, showAppBar: true)),
                       ),
                       quickAction(
                         width: tileWidth,
                         icon: Icons.cloud_outlined,
                         titleA: 'Weather',
                         titleB: 'Details',
-                        onTap: () => openPage(
-                          BallisticAssistantScreen(state: widget.state),
-                        ),
+                        onTap: () =>
+                            openPage(WeatherDetailsScreen(state: widget.state)),
                       ),
                       quickAction(
                         width: tileWidth,
                         icon: Icons.bar_chart,
                         titleA: 'View',
                         titleB: 'Statistics',
-                        onTap: () => openPage(DataScreen(state: widget.state)),
+                        onTap: () => openPageWithAppBar(
+                          'Statistics',
+                          ColdBoreScreen(state: widget.state),
+                        ),
                       ),
                     ],
                   );
@@ -18246,7 +18341,12 @@ class _EndSessionDialogState extends State<_EndSessionDialog> {
 
 class EquipmentScreen extends StatefulWidget {
   final AppState state;
-  const EquipmentScreen({super.key, required this.state});
+  final bool showAppBar;
+  const EquipmentScreen({
+    super.key,
+    required this.state,
+    this.showAppBar = false,
+  });
 
   @override
   State<EquipmentScreen> createState() => _EquipmentScreenState();
@@ -18418,6 +18518,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
         final ammo = widget.state.ammoLots;
 
         return ColdBoreScaffold(
+          appBar: widget.showAppBar ? AppBar(title: const Text('Equipment')) : null,
           floatingActionButton: FloatingActionButton.extended(
             onPressed: _seg == 0 ? _addRifle : _addAmmo,
             icon: const Icon(Icons.add),
@@ -23378,7 +23479,7 @@ class DopeManagerScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final entries = rifle.dopeEntries;
     return ColdBoreScaffold(
-      appBar: AppBar(title: Text('DOPE ΓÇó ${rifle.name}')),
+      appBar: AppBar(title: Text('DOPE • ${rifle.name}')),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
           final res = await showDialog<RifleDopeEntry>(
@@ -23431,7 +23532,7 @@ class DopeManagerScreen extends StatelessWidget {
                 final e = entries[i];
                 return ListTile(
                   title: Text(
-                    '${e.distance} ΓÇó Elev ${e.elevation} ΓÇó Wind ${e.windage}',
+                    '${e.distance} • Elev ${e.elevation} • Wind ${e.windage}',
                   ),
                   subtitle: e.notes.trim().isEmpty ? null : Text(e.notes),
                   onTap: () async {
