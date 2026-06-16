@@ -9496,11 +9496,11 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
 
       final live = await _fetchLiveWeather();
       if (live != null) {
-        temp = (live['tempF'] as num?)?.toDouble() ?? temp;
-        wind = (live['windMph'] as num?)?.toDouble() ?? wind;
-        windDir = (live['windDirDeg'] as num?)?.round() ?? windDir;
-        pressure = (live['pressureInHg'] as num?)?.toDouble();
-        humidity = (live['humidity'] as num?)?.toDouble();
+        temp = (live['tempF'])?.toDouble() ?? temp;
+        wind = (live['windMph'])?.toDouble() ?? wind;
+        windDir = (live['windDirDeg'])?.round() ?? windDir;
+        pressure = (live['pressureInHg'])?.toDouble();
+        humidity = (live['humidity'])?.toDouble();
       }
 
       if (temp == null && wind == null && windDir == null && pressure == null && humidity == null) {
@@ -10688,150 +10688,92 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                       if (_chartRows.isNotEmpty) ...[
                         const SizedBox(height: 8),
                         Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 8,
-                          ),
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(color: cbBorder),
-                            color: cbCardAlt.withValues(alpha: 0.55),
+                            color: cbCardAlt.withValues(alpha: 0.35),
                           ),
-                          child: Row(
-                            children: const [
-                              Expanded(
-                                flex: 2,
-                                child: Text(
-                                  'DISTANCE',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    letterSpacing: 0.8,
-                                    color: cbMuted,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: DataTable(
+                              headingTextStyle: const TextStyle(
+                                fontSize: 11,
+                                letterSpacing: 0.8,
+                                color: cbMuted,
+                                fontWeight: FontWeight.w700,
                               ),
-                              Expanded(
-                                flex: 2,
-                                child: Text(
-                                  'ELEVATION',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    letterSpacing: 0.8,
-                                    color: cbMuted,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                              Expanded(
-                                flex: 2,
-                                child: Text(
-                                  'WIND',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    letterSpacing: 0.8,
-                                    color: cbMuted,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                              Expanded(
-                                flex: 2,
-                                child: Text(
-                                  'STATUS',
-                                  textAlign: TextAlign.right,
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    letterSpacing: 0.8,
-                                    color: cbMuted,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                            ],
+                              dataRowMinHeight: 50,
+                              dataRowMaxHeight: 56,
+                              columns: const [
+                                DataColumn(label: Text('DISTANCE')),
+                                DataColumn(label: Text('ELEVATION')),
+                                DataColumn(label: Text('WIND')),
+                                DataColumn(label: Text('STATUS')),
+                              ],
+                              rows: _chartRows.asMap().entries.map((entry) {
+                                final idx = entry.key;
+                                final row = entry.value;
+                                final linked = row.recordId == null
+                                    ? null
+                                    : recordsById[row.recordId!];
+                                final isVerified = linked?.isVerified == true;
+                                final elevation = isVerified
+                                    ? linked!.verifiedElevation
+                                    : row.calculatedElevation;
+                                final wind = isVerified
+                                    ? linked!.verifiedWind
+                                    : row.calculatedWind;
+
+                                return DataRow(
+                                  selected: _selectedChartRowIndex == idx,
+                                  color: MaterialStateProperty.resolveWith((
+                                    states,
+                                  ) {
+                                    if (states.contains(MaterialState.selected)) {
+                                      return cbBlue.withValues(alpha: 0.14);
+                                    }
+                                    return Colors.transparent;
+                                  }),
+                                  onSelectChanged: (_) {
+                                    setState(() => _selectedChartRowIndex = idx);
+                                    _validateChartRow(idx);
+                                  },
+                                  cells: [
+                                    DataCell(
+                                      Text(
+                                        '${row.distance.toStringAsFixed(0)} ${_distanceUnitLabel(row.distanceUnit)}',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                    DataCell(
+                                      Text(
+                                        '${elevation.toStringAsFixed(2)} ${_elevationUnitLabel(row.outputUnit)}',
+                                      ),
+                                    ),
+                                    DataCell(
+                                      Text(
+                                        '${wind.toStringAsFixed(2)} ${_elevationUnitLabel(row.outputUnit)}',
+                                      ),
+                                    ),
+                                    DataCell(
+                                      Text(
+                                        isVerified ? 'Verified' : 'Calculated',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          color: isVerified
+                                              ? cbGreen
+                                              : cbAmber,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              }).toList(),
+                            ),
                           ),
                         ),
-                        const SizedBox(height: 6),
-                        ..._chartRows.asMap().entries.map((entry) {
-                          final idx = entry.key;
-                          final row = entry.value;
-                          final linked = row.recordId == null
-                              ? null
-                              : recordsById[row.recordId!];
-                          final isVerified = linked?.isVerified == true;
-                          final elevation = isVerified
-                              ? linked!.verifiedElevation
-                              : row.calculatedElevation;
-                          final wind = isVerified
-                              ? linked!.verifiedWind
-                              : row.calculatedWind;
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 6),
-                            child: Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(14),
-                                onTap: () {
-                                  setState(() => _selectedChartRowIndex = idx);
-                                  _validateChartRow(idx);
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.all(10),
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(14),
-                                    border: Border.all(
-                                      color: _selectedChartRowIndex == idx
-                                          ? cbBlue
-                                          : cbBorder,
-                                    ),
-                                    color: _selectedChartRowIndex == idx
-                                        ? cbBlue.withValues(alpha: 0.12)
-                                        : cbCard.withValues(alpha: 0.6),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Expanded(
-                                        flex: 2,
-                                        child: Text(
-                                          '${row.distance.toStringAsFixed(0)} ${_distanceUnitLabel(row.distanceUnit)}',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                      ),
-                                      Expanded(
-                                        flex: 2,
-                                        child: Text(
-                                          '${elevation.toStringAsFixed(2)} ${_elevationUnitLabel(row.outputUnit)}',
-                                        ),
-                                      ),
-                                      Expanded(
-                                        flex: 2,
-                                        child: Text(
-                                          '${wind.toStringAsFixed(2)} ${_elevationUnitLabel(row.outputUnit)}',
-                                        ),
-                                      ),
-                                      Expanded(
-                                        flex: 2,
-                                        child: Align(
-                                          alignment: Alignment.centerRight,
-                                          child: ColdBoreStatusPill(
-                                            label: isVerified
-                                                ? 'Verified DOPE'
-                                                : 'Calculated estimate',
-                                            tone: isVerified
-                                                ? ColdBoreStatusTone.verified
-                                                : ColdBoreStatusTone.calculated,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          );
-                        }),
                         const SizedBox(height: 10),
                         Wrap(
                           spacing: 8,
@@ -12227,12 +12169,18 @@ class _SessionsScreenState extends State<SessionsScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                '${tempF.toStringAsFixed(0)}\u00B0F',
-                                style: const TextStyle(
-                                  fontSize: 52,
-                                  fontWeight: FontWeight.w600,
-                                  height: 0.95,
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  '${tempF.toStringAsFixed(0)}\u00B0F',
+                                  maxLines: 1,
+                                  softWrap: false,
+                                  style: const TextStyle(
+                                    fontSize: 52,
+                                    fontWeight: FontWeight.w600,
+                                    height: 0.95,
+                                  ),
                                 ),
                               ),
                               const SizedBox(height: 3),
@@ -12625,58 +12573,6 @@ class _SessionsScreenState extends State<SessionsScreen> {
                     ],
                   );
                 },
-              ),
-              const SizedBox(height: 10),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 12,
-                ),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.08),
-                  ),
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF0A162A), Color(0xFF071022)],
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.calendar_month_outlined,
-                      color: Color(0xFF2F8BFF),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'NEXT SESSION REMINDER',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            recentSession == null
-                                ? 'Schedule your next range session'
-                                : '${recentSession.locationName.trim().isEmpty ? 'Kestrel Range Session' : recentSession.locationName.trim()}  •  ${_fmtDateIso(recentSession.dateTime.add(const Duration(days: 4)))}',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.85),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: () => _newSession(context),
-                      child: const Text('Edit'),
-                    ),
-                  ],
-                ),
               ),
             ],
           ),
