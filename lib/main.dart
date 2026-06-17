@@ -2640,8 +2640,22 @@ class AppState extends ChangeNotifier {
   }
 
   List<UserProfile> get users => List.unmodifiable(_users);
-  List<Rifle> get rifles => List.unmodifiable(_rifles);
-  List<AmmoLot> get ammoLots => List.unmodifiable(_ammoLots);
+
+  List<Rifle> get rifles {
+    final activeUserId = _activeUser?.id;
+    if (activeUserId == null) return const <Rifle>[];
+    return List.unmodifiable(
+      _rifles.where((r) => (r.ownerUserId ?? '').trim() == activeUserId),
+    );
+  }
+
+  List<AmmoLot> get ammoLots {
+    final activeUserId = _activeUser?.id;
+    if (activeUserId == null) return const <AmmoLot>[];
+    return List.unmodifiable(
+      _ammoLots.where((a) => (a.ownerUserId ?? '').trim() == activeUserId),
+    );
+  }
 
   List<TrainingSession> get sessions => List.unmodifiable(
     _sessions.where((s) => s.memberUserIds.contains(_activeUser?.id)),
@@ -2876,6 +2890,34 @@ class AppState extends ChangeNotifier {
     }
     _activeUser = active ?? (_users.isNotEmpty ? _users.first : null);
 
+    // Legacy equipment without ownership should default to the active user.
+    final activeId = _activeUser?.id;
+    if (activeId != null && activeId.trim().isNotEmpty) {
+      for (var i = 0; i < _rifles.length; i++) {
+        final rifle = _rifles[i];
+        if ((rifle.ownerUserId ?? '').trim().isNotEmpty) continue;
+        _rifles[i] = rifle.copyWith(ownerUserId: activeId);
+      }
+      for (var i = 0; i < _ammoLots.length; i++) {
+        final ammo = _ammoLots[i];
+        if ((ammo.ownerUserId ?? '').trim().isNotEmpty) continue;
+        _ammoLots[i] = AmmoLot(
+          id: ammo.id,
+          ownerUserId: activeId,
+          name: ammo.name,
+          caliber: ammo.caliber,
+          grain: ammo.grain,
+          bullet: ammo.bullet,
+          notes: ammo.notes,
+          manufacturer: ammo.manufacturer,
+          lotNumber: ammo.lotNumber,
+          purchaseDate: ammo.purchaseDate,
+          purchasePrice: ammo.purchasePrice,
+          ballisticCoefficient: ammo.ballisticCoefficient,
+        );
+      }
+    }
+
     // Legacy backups may miss memberUserIds, which hides sessions in current views.
     // Ensure each restored session is visible to at least one valid user.
     final validUserIds = _users.map((u) => u.id).toSet();
@@ -3054,6 +3096,7 @@ class AppState extends ChangeNotifier {
     _rifles.add(
       Rifle(
         id: _newId(),
+        ownerUserId: _activeUser?.id,
         scopeUnit: scopeUnit ?? ScopeUnit.mil,
         manualRoundCount: manualRoundCount,
         barrelRoundCount: barrelRoundCount ?? manualRoundCount,
@@ -3247,6 +3290,7 @@ class AppState extends ChangeNotifier {
     _ammoLots.add(
       AmmoLot(
         id: _newId(),
+        ownerUserId: _activeUser?.id,
         name: (name == null || name.trim().isEmpty) ? null : name.trim(),
         caliber: caliber.trim(),
         grain: grain,
@@ -3283,6 +3327,7 @@ class AppState extends ChangeNotifier {
     if (idx < 0) return;
     _ammoLots[idx] = AmmoLot(
       id: _ammoLots[idx].id,
+      ownerUserId: _ammoLots[idx].ownerUserId,
       name: (name?.trim().isEmpty == true ? null : name?.trim()),
       caliber: caliber.trim(),
       grain: grain,
@@ -5485,6 +5530,7 @@ UserProfile _userFromMap(Map<String, dynamic> map) => UserProfile(
 
 Map<String, dynamic> _rifleToMap(Rifle rifle) => <String, dynamic>{
   'id': rifle.id,
+  'ownerUserId': rifle.ownerUserId,
   'name': rifle.name,
   'caliber': rifle.caliber,
   'notes': rifle.notes,
@@ -5515,6 +5561,7 @@ Map<String, dynamic> _rifleToMap(Rifle rifle) => <String, dynamic>{
 
 Rifle _rifleFromMap(Map<String, dynamic> map) => Rifle(
   id: (map['id'] ?? '').toString(),
+  ownerUserId: map['ownerUserId']?.toString(),
   name: map['name']?.toString(),
   caliber: (map['caliber'] ?? '').toString(),
   notes: (map['notes'] ?? '').toString(),
@@ -5568,6 +5615,7 @@ Rifle _rifleFromMap(Map<String, dynamic> map) => Rifle(
 
 Map<String, dynamic> _ammoLotToMap(AmmoLot ammo) => <String, dynamic>{
   'id': ammo.id,
+  'ownerUserId': ammo.ownerUserId,
   'name': ammo.name,
   'caliber': ammo.caliber,
   'grain': ammo.grain,
@@ -5582,6 +5630,7 @@ Map<String, dynamic> _ammoLotToMap(AmmoLot ammo) => <String, dynamic>{
 
 AmmoLot _ammoLotFromMap(Map<String, dynamic> map) => AmmoLot(
   id: (map['id'] ?? '').toString(),
+  ownerUserId: map['ownerUserId']?.toString(),
   name: map['name']?.toString(),
   caliber: (map['caliber'] ?? '').toString(),
   grain: _toNullableInt(map['grain']) ?? 0,
@@ -6224,6 +6273,7 @@ class RifleMaintenanceSnapshot {
 
 class Rifle {
   final String id;
+  final String? ownerUserId;
   final String? name;
   final String caliber;
 
@@ -6260,6 +6310,7 @@ class Rifle {
 
   Rifle({
     required this.id,
+    this.ownerUserId,
     this.name,
     required this.caliber,
     this.notes = '',
@@ -6290,6 +6341,7 @@ class Rifle {
 
   Rifle copyWith({
     String? id,
+    String? ownerUserId,
     String? name,
     String? caliber,
     String? notes,
@@ -6319,6 +6371,7 @@ class Rifle {
   }) {
     return Rifle(
       id: id ?? this.id,
+      ownerUserId: ownerUserId ?? this.ownerUserId,
       name: name ?? this.name,
       caliber: caliber ?? this.caliber,
       notes: notes ?? this.notes,
@@ -6411,6 +6464,7 @@ class RifleServiceEntry {
 
 class AmmoLot {
   final String id;
+  final String? ownerUserId;
   final String? name;
   final String caliber;
   final int grain;
@@ -6428,6 +6482,7 @@ class AmmoLot {
 
   AmmoLot({
     required this.id,
+    this.ownerUserId,
     this.name,
     required this.caliber,
     required this.grain,
@@ -11303,6 +11358,24 @@ class UsersScreen extends StatefulWidget {
 }
 
 class _UsersScreenState extends State<UsersScreen> {
+  Future<void> _editUserName(UserProfile user) async {
+    final res = await showDialog<String>(
+      context: context,
+      builder: (_) => _EditUserNameDialog(initialName: user.name),
+    );
+    if (res == null) return;
+    widget.state.updateUserProfile(
+      userId: user.id,
+      name: res,
+      identifier: user.identifier,
+    );
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('User name updated.')));
+  }
+
   Future<void> _addUser() async {
     final res = await showDialog<_NewUserResult>(
       context: context,
@@ -11431,6 +11504,11 @@ class _UsersScreenState extends State<UsersScreen> {
                             label: 'Active',
                             tone: ColdBoreStatusTone.verified,
                           ),
+                        IconButton(
+                          tooltip: 'Edit name',
+                          onPressed: () => _editUserName(u),
+                          icon: const Icon(Icons.edit_outlined),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 10),
@@ -12059,8 +12137,10 @@ class _SessionsScreenState extends State<SessionsScreen> {
         final pressureAltitudeFt = ((29.92 - pressureInHg) * 1000).round();
         final tempC = (tempF - 32) * 5 / 9;
         final isaTempC = 15 - (pressureAltitudeFt / 1000) * 1.98;
-        final densityAltitudeFt =
-            (pressureAltitudeFt + (120 * (tempC - isaTempC))).round();
+        final densityAltitudeFt = math.max(
+          0,
+          (pressureAltitudeFt + (120 * (tempC - isaTempC))).round(),
+        );
 
         final totalRounds = widget.state.rifles.fold<int>(
           0,
@@ -21901,6 +21981,58 @@ class _NewSessionResult {
     this.windSpeedMph,
     this.windDirectionDeg,
   });
+}
+
+class _EditUserNameDialog extends StatefulWidget {
+  final String? initialName;
+
+  const _EditUserNameDialog({this.initialName});
+
+  @override
+  State<_EditUserNameDialog> createState() => _EditUserNameDialogState();
+}
+
+class _EditUserNameDialogState extends State<_EditUserNameDialog> {
+  late final TextEditingController _name;
+
+  @override
+  void initState() {
+    super.initState();
+    _name = TextEditingController(text: widget.initialName ?? '');
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Edit user name'),
+      content: TextField(
+        textCapitalization: TextCapitalization.words,
+        controller: _name,
+        decoration: const InputDecoration(
+          labelText: 'Display name',
+          hintText: 'Optional',
+        ),
+        textInputAction: TextInputAction.done,
+        onSubmitted: (_) => Navigator.of(context).pop(_name.text.trim()),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_name.text.trim()),
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
 }
 
 class _NewSessionDialog extends StatefulWidget {
