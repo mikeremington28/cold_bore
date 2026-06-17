@@ -2252,10 +2252,11 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
   }
 }
 
-// ΓöÇΓöÇ Subscription gate helper ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// Subscription gate helper
 /// Returns true if the action should proceed.
 /// If not entitled, shows the paywall and returns false.
 Future<bool> _guardWrite(BuildContext context) async {
+  if (kDebugMode) return true;
   if (SubscriptionService().isEntitled) return true;
   await Navigator.of(
     context,
@@ -2263,7 +2264,7 @@ Future<bool> _guardWrite(BuildContext context) async {
   return false;
 }
 
-// ΓöÇΓöÇ Paywall screen ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// Paywall screen
 class _PaywallScreen extends StatefulWidget {
   const _PaywallScreen();
   @override
@@ -2295,7 +2296,7 @@ class _PaywallScreenState extends State<_PaywallScreen> {
   @override
   Widget build(BuildContext context) {
     final product = _sub.product;
-    final priceText = product?.price ?? 'ΓÇö';
+    final priceText = product?.price ?? '-';
     final trialDays = _sub.trialDaysRemaining;
     final inTrial = trialDays > 0;
     final isIos = defaultTargetPlatform == TargetPlatform.iOS;
@@ -2417,7 +2418,7 @@ class _PaywallScreenState extends State<_PaywallScreen> {
                         width: 20,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : Text('Subscribe ΓÇö $priceText / year'),
+                    : Text('Subscribe - $priceText / year'),
               ),
               const SizedBox(height: 12),
               OutlinedButton(
@@ -2427,7 +2428,7 @@ class _PaywallScreenState extends State<_PaywallScreen> {
               const SizedBox(height: 8),
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Not now ΓÇö view my data'),
+                child: const Text('Not now - view my data'),
               ),
               const SizedBox(height: 8),
               Text(
@@ -7248,52 +7249,52 @@ class _HomeShellState extends State<HomeShell> {
   static const List<_GuidedTourStep> _tourSteps = [
     _GuidedTourStep(
       tabIndex: 0,
+      icon: Icons.home_outlined,
+      title: 'Main',
+      description:
+          'View weather, current rifle, and quick actions from the landing page.',
+    ),
+    _GuidedTourStep(
+      tabIndex: 1,
       icon: Icons.event_note_outlined,
       title: 'Sessions',
       description:
           'Create, organize, and review sessions. You can now edit session start/end date and time from the session screen if you forgot to close one.',
     ),
     _GuidedTourStep(
-      tabIndex: 1,
+      tabIndex: 2,
       icon: Icons.ac_unit_outlined,
       title: 'Cold Bore',
       description:
           'Track first-shot performance, baseline cold-bore shots, and attached photos to monitor zero confidence over time.',
     ),
     _GuidedTourStep(
-      tabIndex: 2,
+      tabIndex: 3,
       icon: Icons.timer_outlined,
       title: 'Shot Timer',
       description:
           'Run drills with delayed start and timing controls for pacing and consistency.',
     ),
     _GuidedTourStep(
-      tabIndex: 3,
+      tabIndex: 4,
       icon: Icons.mic_outlined,
       title: 'Audio Counter',
       description:
           'Detect shots by sound and apply counted rounds to your selected rifle automatically or on demand.',
     ),
     _GuidedTourStep(
-      tabIndex: 4,
+      tabIndex: 5,
       icon: Icons.build_outlined,
       title: 'Gear',
       description:
           'Manage rifles, ammo lots, and maintenance reminders so analytics stay accurate.',
     ),
     _GuidedTourStep(
-      tabIndex: 5,
+      tabIndex: 6,
       icon: Icons.list_alt_outlined,
       title: 'Data',
       description:
           'Review quick-reference DOPE (rifle-only + rifle+ammo), working DOPE, and maintenance status in one place.',
-    ),
-    _GuidedTourStep(
-      tabIndex: 6,
-      icon: Icons.ios_share_outlined,
-      title: 'Export',
-      description:
-          'Create PDF reports and share sessions with per-field privacy controls (notes, DOPE, location, photos, shots, timer). Shared sessions auto-populate to devices with matching user identifiers, and recipients get a first-time prompt to choose which shared fields they accept per session.',
     ),
     _GuidedTourStep(
       tabIndex: 0,
@@ -7901,19 +7902,26 @@ class _HomeShellState extends State<HomeShell> {
   @override
   Widget build(BuildContext context) {
     final pages = <Widget>[
-      SessionsScreen(state: widget.state),
+      SessionsScreen(
+        state: widget.state,
+        showDashboard: true,
+        showSessionList: false,
+      ),
+      SessionsScreen(
+        state: widget.state,
+        showDashboard: false,
+        showSessionList: true,
+      ),
       ColdBoreScreen(state: widget.state),
       ShotTimerToolScreen(state: widget.state),
       AudioCounterScreen(state: widget.state),
       EquipmentScreen(state: widget.state),
       DataScreen(state: widget.state),
-      ExportPlaceholderScreen(state: widget.state),
     ];
 
     return AnimatedBuilder(
       animation: Listenable.merge([widget.state, widget.cloud]),
       builder: (context, _) {
-        final user = widget.state.activeUser;
         final cloudReady = widget.cloud.canSync;
         final cloudError = widget.cloud.lastError;
 
@@ -7945,16 +7953,6 @@ class _HomeShellState extends State<HomeShell> {
                       ),
                     ),
                   ),
-                  if (user != null && !_isSeedUserIdentifier(user.identifier))
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: Center(
-                        child: Text(
-                          user.identifier,
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                    ),
                   IconButton(
                     tooltip: 'Tutorial',
                     onPressed: _startGuidedTour,
@@ -7973,12 +7971,16 @@ class _HomeShellState extends State<HomeShell> {
                 onDestinationSelected: (i) => setState(() => _tab = i),
                 destinations: const [
                   NavigationDestination(
+                    icon: Icon(Icons.home_outlined),
+                    label: 'Main',
+                  ),
+                  NavigationDestination(
                     icon: Icon(Icons.event_note_outlined),
-                    label: 'Session',
+                    label: 'Sessions',
                   ),
                   NavigationDestination(
                     icon: Icon(Icons.ac_unit_outlined),
-                    label: 'Bore',
+                    label: 'Cold Bore',
                   ),
                   NavigationDestination(
                     icon: Icon(Icons.timer_outlined),
@@ -7995,10 +7997,6 @@ class _HomeShellState extends State<HomeShell> {
                   NavigationDestination(
                     icon: Icon(Icons.list_alt_outlined),
                     label: 'Data',
-                  ),
-                  NavigationDestination(
-                    icon: Icon(Icons.ios_share_outlined),
-                    label: 'Export',
                   ),
                 ],
               ),
@@ -8515,6 +8513,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) => _BackupScreen(state: widget.state),
+                  ),
+                );
+              },
+            ),
+          ),
+          ColdBoreCard(
+            child: ListTile(
+              leading: const Icon(Icons.picture_as_pdf_outlined),
+              title: const Text('Export reports'),
+              subtitle: const Text(
+                'Create PDF exports and share selected data.',
+              ),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ExportPlaceholderScreen(state: widget.state),
                   ),
                 );
               },
@@ -11565,7 +11579,15 @@ class _UsersScreenState extends State<UsersScreen> {
 
 class SessionsScreen extends StatefulWidget {
   final AppState state;
-  const SessionsScreen({super.key, required this.state});
+  final bool showDashboard;
+  final bool showSessionList;
+
+  const SessionsScreen({
+    super.key,
+    required this.state,
+    this.showDashboard = true,
+    this.showSessionList = true,
+  });
 
   @override
   State<SessionsScreen> createState() => _SessionsScreenState();
@@ -11580,7 +11602,9 @@ class _SessionsScreenState extends State<SessionsScreen> {
   int? _yearFilter;
   String? _monthFilter;
   String? _folderFilter;
+  bool _sessionsNewestFirst = true;
   bool _filtersPanelCollapsed = true;
+  bool _homeWeatherRefreshing = false;
   final Set<String> _collapsedGroups = <String>{};
   final Set<String> _initializedCollapsedGroups = <String>{};
 
@@ -12105,6 +12129,88 @@ class _SessionsScreenState extends State<SessionsScreen> {
     );
   }
 
+  Future<void> _refreshHomeWeather() async {
+    if (_homeWeatherRefreshing) return;
+    setState(() => _homeWeatherRefreshing = true);
+    try {
+      final enabled = await Geolocator.isLocationServiceEnabled();
+      if (!enabled) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Location Services are off.')),
+        );
+        return;
+      }
+
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.denied ||
+          perm == LocationPermission.deniedForever) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Location permission denied.')),
+        );
+        return;
+      }
+
+      final pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      final uri = Uri.parse(
+        'https://api.open-meteo.com/v1/forecast'
+        '?latitude=${pos.latitude}&longitude=${pos.longitude}'
+        '&current=temperature_2m,wind_speed_10m,wind_direction_10m,surface_pressure,relative_humidity_2m'
+        '&temperature_unit=fahrenheit&wind_speed_unit=mph',
+      );
+      final resp = await http.get(uri);
+      if (resp.statusCode != 200) {
+        throw Exception('HTTP ${resp.statusCode}');
+      }
+
+      final data = jsonDecode(resp.body) as Map<String, dynamic>;
+      final current = data['current'] as Map<String, dynamic>?;
+      if (current == null) {
+        throw Exception('No current weather data.');
+      }
+
+        final tempF = (current['temperature_2m'] as num?)?.toDouble();
+        final windMph = (current['wind_speed_10m'] as num?)?.toDouble();
+        final windDir = (current['wind_direction_10m'] as num?)?.round();
+        final pressureHpa = (current['surface_pressure'] as num?)?.toDouble();
+        final pressureInHg =
+          pressureHpa == null ? null : pressureHpa * 0.0295299830714;
+      final humidity = (current['relative_humidity_2m'] as num?)?.toDouble();
+
+      widget.state.setEnvironment(
+        latitude: pos.latitude,
+        longitude: pos.longitude,
+        temperatureF: tempF ?? widget.state.temperatureF,
+        windSpeedMph: windMph ?? widget.state.windSpeedMph,
+        windDirectionDeg: windDir ?? widget.state.windDirectionDeg,
+        pressureInHg: pressureInHg ?? widget.state.pressureInHg,
+        humidityPercent: humidity ?? widget.state.humidityPercent,
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Weather refreshed.')));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Current weather is unavailable right now. You can try again.',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _homeWeatherRefreshing = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -12113,12 +12219,86 @@ class _SessionsScreenState extends State<SessionsScreen> {
         final user = widget.state.activeUser;
         final sessions = [...widget.state.sessions]
           ..sort((a, b) => b.dateTime.compareTo(a.dateTime));
+        final sessionsForList = _sessionsNewestFirst
+            ? sessions
+            : sessions.reversed.toList();
 
         if (user == null) {
           return const _EmptyState(
             icon: Icons.person_outline,
             title: 'No active user',
             message: 'Create or select a user to start logging sessions.',
+          );
+        }
+
+        if (!widget.showDashboard && widget.showSessionList) {
+          return Container(
+            decoration: const BoxDecoration(
+              gradient: RadialGradient(
+                center: Alignment(-0.1, -1.1),
+                radius: 1.2,
+                colors: [
+                  Color(0xFF0C2A55),
+                  Color(0xFF050914),
+                  Color(0xFF02050C),
+                ],
+                stops: [0.0, 0.58, 1.0],
+              ),
+            ),
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              children: [
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'SESSIONS',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
+                    FilledButton.tonalIcon(
+                      onPressed: () => _newSession(context),
+                      icon: const Icon(Icons.note_add_outlined),
+                      label: const Text('New Session'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: SegmentedButton<bool>(
+                    segments: const [
+                      ButtonSegment<bool>(
+                        value: true,
+                        label: Text('Newest'),
+                      ),
+                      ButtonSegment<bool>(
+                        value: false,
+                        label: Text('Oldest'),
+                      ),
+                    ],
+                    selected: {_sessionsNewestFirst},
+                    onSelectionChanged: (value) {
+                      if (value.isEmpty) return;
+                      setState(() => _sessionsNewestFirst = value.first);
+                    },
+                  ),
+                ),
+                const SizedBox(height: 10),
+                if (sessions.isEmpty)
+                  const _EmptyState(
+                    icon: Icons.event_note_outlined,
+                    title: 'No sessions yet',
+                    message: 'Create your first session to start tracking.',
+                  )
+                else
+                  ...sessionsForList.map((s) => _sessionTile(context, s)),
+              ],
+            ),
           );
         }
 
@@ -12146,6 +12326,8 @@ class _SessionsScreenState extends State<SessionsScreen> {
             widget.state.windDirectionDeg ??
             recentSession?.windDirectionDeg ??
             225;
+        final lat = widget.state.latitude;
+        final lon = widget.state.longitude;
         final pressureInHg = widget.state.pressureInHg ?? 29.92;
         final humidity = widget.state.humidityPercent ?? 45.0;
         final pressureAltitudeFt = ((29.92 - pressureInHg) * 1000).round();
@@ -12342,11 +12524,13 @@ class _SessionsScreenState extends State<SessionsScreen> {
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
-                              'All Systems Operational',
+                            Text(
+                              'SYNC CONNECTED',
                               style: TextStyle(
                                 fontSize: 12.5,
-                                fontWeight: FontWeight.w600,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.5,
+                                color: Colors.white.withValues(alpha: 0.82),
                               ),
                             ),
                             Text(
@@ -12388,14 +12572,32 @@ class _SessionsScreenState extends State<SessionsScreen> {
                           color: Colors.white70,
                         ),
                         const SizedBox(width: 8),
-                        Text(
-                          'PARTLY CLOUDY',
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.5,
-                            color: Colors.white.withValues(alpha: 0.82),
+                        Expanded(
+                          child: Text(
+                            'PARTLY CLOUDY',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.5,
+                              color: Colors.white.withValues(alpha: 0.82),
+                            ),
                           ),
+                        ),
+                        IconButton(
+                          tooltip: 'Refresh weather',
+                          onPressed: _homeWeatherRefreshing
+                              ? null
+                              : _refreshHomeWeather,
+                          icon: _homeWeatherRefreshing
+                              ? SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white.withValues(alpha: 0.9),
+                                  ),
+                                )
+                              : const Icon(Icons.refresh, size: 18),
                         ),
                       ],
                     ),
@@ -12439,6 +12641,11 @@ class _SessionsScreenState extends State<SessionsScreen> {
                                   ),
                                   Text(
                                     'Pressure  ${pressureInHg.toStringAsFixed(2)} inHg',
+                                  ),
+                                  Text(
+                                    lat == null || lon == null
+                                        ? 'Location unavailable'
+                                        : 'Location  ${lat.toStringAsFixed(4)}, ${lon.toStringAsFixed(4)}',
                                   ),
                                 ],
                               ),
@@ -12818,6 +13025,37 @@ class _SessionsScreenState extends State<SessionsScreen> {
                   );
                 },
               ),
+              if (widget.showSessionList) ...[
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Text(
+                      'SESSIONS',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.5,
+                        color: Colors.white.withValues(alpha: 0.8),
+                      ),
+                    ),
+                    const Spacer(),
+                    FilledButton.tonalIcon(
+                      onPressed: () => _newSession(context),
+                      icon: const Icon(Icons.note_add_outlined),
+                      label: const Text('New Session'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                if (sessions.isEmpty)
+                  const _EmptyState(
+                    icon: Icons.event_note_outlined,
+                    title: 'No sessions yet',
+                    message: 'Create your first session to start tracking.',
+                  )
+                else
+                  ...sessionsForList.map((s) => _sessionTile(context, s)),
+              ],
             ],
           ),
         );
