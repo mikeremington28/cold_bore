@@ -61,6 +61,12 @@ class SubscriptionService extends ChangeNotifier {
   /// The product to display in the paywall (may be null until loaded).
   ProductDetails? get product => _product;
 
+  /// True when the native IAP store is reachable on this device.
+  bool get storeAvailable => _available;
+
+  /// True when purchases can be attempted (store available + product loaded).
+  bool get canPurchase => _available && _product != null;
+
   /// Set when a purchase/restore fails.
   String? get lastError => _lastError;
 
@@ -113,10 +119,19 @@ class SubscriptionService extends ChangeNotifier {
       final response = await _iap.queryProductDetails({kSubscriptionProductId});
       if (response.productDetails.isNotEmpty) {
         _product = response.productDetails.first;
+        _lastError = null;
+        notifyListeners();
+        return;
+      }
+      if (response.notFoundIDs.isNotEmpty) {
+        _lastError =
+            'Subscription product is not available yet. Please try again shortly.';
         notifyListeners();
       }
     } catch (e) {
       debugPrint('SubscriptionService: product load failed: $e');
+      _lastError = 'Subscription store is currently unavailable.';
+      notifyListeners();
     }
   }
 

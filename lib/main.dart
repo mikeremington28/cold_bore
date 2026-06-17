@@ -2257,7 +2257,18 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
 /// If not entitled, shows the paywall and returns false.
 Future<bool> _guardWrite(BuildContext context) async {
   if (kDebugMode) return true;
-  if (SubscriptionService().isEntitled) return true;
+  final sub = SubscriptionService();
+  if (sub.isEntitled) return true;
+  if (!sub.canPurchase) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Subscription store is temporarily unavailable. Write access is allowed for now.',
+        ),
+      ),
+    );
+    return true;
+  }
   await Navigator.of(
     context,
   ).push(MaterialPageRoute(builder: (_) => const _PaywallScreen()));
@@ -2411,18 +2422,26 @@ class _PaywallScreenState extends State<_PaywallScreen> {
                   ),
                 ),
               FilledButton(
-                onPressed: _sub.loading ? null : () => _sub.purchase(),
+                onPressed: _sub.loading || !_sub.canPurchase
+                    ? null
+                    : () => _sub.purchase(),
                 child: _sub.loading
                     ? const SizedBox(
                         height: 20,
                         width: 20,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : Text('Subscribe - $priceText / year'),
+                    : Text(
+                        _sub.canPurchase
+                            ? 'Subscribe - $priceText / year'
+                            : 'Subscribe (price unavailable)',
+                      ),
               ),
               const SizedBox(height: 12),
               OutlinedButton(
-                onPressed: _sub.loading ? null : () => _sub.restorePurchases(),
+                onPressed: _sub.loading || !_sub.storeAvailable
+                    ? null
+                    : () => _sub.restorePurchases(),
                 child: const Text('Restore purchases'),
               ),
               const SizedBox(height: 8),
@@ -2931,6 +2950,8 @@ class AppState extends ChangeNotifier {
       }
     }
 
+    _recoverEquipmentOwnershipForUser(_activeUser?.id);
+
     // Legacy backups may miss memberUserIds, which hides sessions in current views.
     // Ensure each restored session is visible to at least one valid user.
     final validUserIds = _users.map((u) => u.id).toSet();
@@ -3035,7 +3056,78 @@ class AppState extends ChangeNotifier {
 
   void switchUser(UserProfile user) {
     _activeUser = user;
+    _recoverEquipmentOwnershipForUser(user.id);
     notifyListeners();
+  }
+
+  void _recoverEquipmentOwnershipForUser(String? userId) {
+    final normalizedUserId = (userId ?? '').trim();
+    if (normalizedUserId.isEmpty) return;
+
+    final hasRiflesForUser =
+        _rifles.any((r) => (r.ownerUserId ?? '').trim() == normalizedUserId);
+    final hasAmmoForUser =
+        _ammoLots.any((a) => (a.ownerUserId ?? '').trim() == normalizedUserId);
+    if (hasRiflesForUser && hasAmmoForUser) return;
+
+    final validUserIds = _users.map((u) => u.id.trim()).toSet();
+    final referencedRifleIds = <String>{};
+    final referencedAmmoIds = <String>{};
+    for (final session in _sessions) {
+      final isRelevant =
+          session.userId.trim() == normalizedUserId ||
+          session.memberUserIds.any((id) => id.trim() == normalizedUserId);
+      if (!isRelevant) continue;
+      final rifleId = session.rifleId?.trim();
+      final ammoId = session.ammoLotId?.trim();
+      if (rifleId != null && rifleId.isNotEmpty) referencedRifleIds.add(rifleId);
+      if (ammoId != null && ammoId.isNotEmpty) referencedAmmoIds.add(ammoId);
+      for (final stringMeta in session.strings) {
+        final stringRifleId = stringMeta.rifleId?.trim();
+        final stringAmmoId = stringMeta.ammoLotId?.trim();
+        if (stringRifleId != null && stringRifleId.isNotEmpty) {
+          referencedRifleIds.add(stringRifleId);
+        }
+        if (stringAmmoId != null && stringAmmoId.isNotEmpty) {
+          referencedAmmoIds.add(stringAmmoId);
+        }
+      }
+    }
+
+    for (var i = 0; i < _rifles.length; i++) {
+      final rifle = _rifles[i];
+      final ownerId = (rifle.ownerUserId ?? '').trim();
+      final ownerMissing = ownerId.isEmpty || !validUserIds.contains(ownerId);
+      final shouldReassign =
+          ownerMissing || (!hasRiflesForUser && referencedRifleIds.contains(rifle.id));
+      if (shouldReassign && ownerId != normalizedUserId) {
+        _rifles[i] = rifle.copyWith(ownerUserId: normalizedUserId);
+      }
+    }
+
+    for (var i = 0; i < _ammoLots.length; i++) {
+      final ammo = _ammoLots[i];
+      final ownerId = (ammo.ownerUserId ?? '').trim();
+      final ownerMissing = ownerId.isEmpty || !validUserIds.contains(ownerId);
+      final shouldReassign =
+          ownerMissing || (!hasAmmoForUser && referencedAmmoIds.contains(ammo.id));
+      if (shouldReassign && ownerId != normalizedUserId) {
+        _ammoLots[i] = AmmoLot(
+          id: ammo.id,
+          ownerUserId: normalizedUserId,
+          name: ammo.name,
+          caliber: ammo.caliber,
+          grain: ammo.grain,
+          bullet: ammo.bullet,
+          notes: ammo.notes,
+          manufacturer: ammo.manufacturer,
+          lotNumber: ammo.lotNumber,
+          purchaseDate: ammo.purchaseDate,
+          purchasePrice: ammo.purchasePrice,
+          ballisticCoefficient: ammo.ballisticCoefficient,
+        );
+      }
+    }
   }
 
   bool deleteUser({required String userId}) {
@@ -12232,6 +12324,241 @@ class _SessionsScreenState extends State<SessionsScreen> {
         }
 
         if (!widget.showDashboard && widget.showSessionList) {
+          final years = sessions
+              .map((s) => s.dateTime.year)
+              .toSet()
+              .toList()
+            ..sort((a, b) => b.compareTo(a));
+          final months = sessions
+              .map((s) => _monthKey(s.dateTime))
+              .toSet()
+              .toList()
+            ..sort((a, b) => b.compareTo(a));
+          final folders = sessions
+              .map((s) => s.folderName.trim())
+              .where((name) => name.isNotEmpty)
+              .toSet()
+              .toList()
+            ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+
+          var filtered = sessions.where((s) {
+            if (!_showArchived && s.archived) return false;
+            if (_yearFilter != null && s.dateTime.year != _yearFilter) {
+              return false;
+            }
+            if (_monthFilter != null && _monthKey(s.dateTime) != _monthFilter) {
+              return false;
+            }
+            if (_folderFilter != null) {
+              final folderName = s.folderName.trim();
+              if (_folderFilter == '__unfiled__') {
+                if (folderName.isNotEmpty) return false;
+              } else if (folderName != _folderFilter) {
+                return false;
+              }
+            }
+            return true;
+          }).toList();
+
+          if (!_sessionsNewestFirst) {
+            filtered = filtered.reversed.toList();
+          }
+
+          Future<void> openFilterDialog() async {
+            await showModalBottomSheet<void>(
+              context: context,
+              isScrollControlled: true,
+              builder: (sheetCtx) {
+                var localGroupBy = _groupBy;
+                var localYear = _yearFilter;
+                var localMonth = _monthFilter;
+                var localFolder = _folderFilter;
+                return StatefulBuilder(
+                  builder: (context, setLocalState) => Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      16,
+                      16,
+                      16 + MediaQuery.of(sheetCtx).viewInsets.bottom,
+                    ),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Session filters',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          DropdownButtonFormField<String>(
+                            value: localGroupBy,
+                            decoration: const InputDecoration(
+                              labelText: 'Group by',
+                            ),
+                            items: const [
+                              DropdownMenuItem(
+                                value: 'none',
+                                child: Text('Newest first'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'year',
+                                child: Text('Year'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'month',
+                                child: Text('Month'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'folder',
+                                child: Text('Folder'),
+                              ),
+                            ],
+                            onChanged: (value) =>
+                                setLocalState(() => localGroupBy = value ?? 'none'),
+                          ),
+                          const SizedBox(height: 10),
+                          DropdownButtonFormField<int?>(
+                            value: localYear,
+                            decoration: const InputDecoration(labelText: 'Year'),
+                            items: [
+                              const DropdownMenuItem<int?>(
+                                value: null,
+                                child: Text('All years'),
+                              ),
+                              ...years.map(
+                                (year) => DropdownMenuItem<int?>(
+                                  value: year,
+                                  child: Text('$year'),
+                                ),
+                              ),
+                            ],
+                            onChanged: (value) => setLocalState(() => localYear = value),
+                          ),
+                          const SizedBox(height: 10),
+                          DropdownButtonFormField<String?>(
+                            value: localMonth,
+                            decoration: const InputDecoration(labelText: 'Month'),
+                            items: [
+                              const DropdownMenuItem<String?>(
+                                value: null,
+                                child: Text('All months'),
+                              ),
+                              ...months.map(
+                                (monthKey) => DropdownMenuItem<String?>(
+                                  value: monthKey,
+                                  child: Text(_monthLabel(monthKey)),
+                                ),
+                              ),
+                            ],
+                            onChanged: (value) => setLocalState(() => localMonth = value),
+                          ),
+                          const SizedBox(height: 10),
+                          DropdownButtonFormField<String?>(
+                            value: localFolder,
+                            decoration: const InputDecoration(labelText: 'Folder'),
+                            items: [
+                              const DropdownMenuItem<String?>(
+                                value: null,
+                                child: Text('All folders'),
+                              ),
+                              const DropdownMenuItem<String?>(
+                                value: '__unfiled__',
+                                child: Text('Unfiled only'),
+                              ),
+                              ...folders.map(
+                                (folder) => DropdownMenuItem<String?>(
+                                  value: folder,
+                                  child: Text(folder),
+                                ),
+                              ),
+                            ],
+                            onChanged: (value) => setLocalState(() => localFolder = value),
+                          ),
+                          const SizedBox(height: 14),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: () {
+                                    setState(() {
+                                      _groupBy = 'none';
+                                      _yearFilter = null;
+                                      _monthFilter = null;
+                                      _folderFilter = null;
+                                    });
+                                    Navigator.of(sheetCtx).pop();
+                                  },
+                                  child: const Text('Clear'),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: FilledButton(
+                                  onPressed: () {
+                                    setState(() {
+                                      _groupBy = localGroupBy;
+                                      _yearFilter = localYear;
+                                      _monthFilter = localMonth;
+                                      _folderFilter = localFolder;
+                                    });
+                                    Navigator.of(sheetCtx).pop();
+                                  },
+                                  child: const Text('Apply'),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            );
+          }
+
+          final grouped = <String, List<TrainingSession>>{};
+          if (_groupBy == 'none') {
+            grouped['__all__'] = filtered;
+          } else {
+            for (final session in filtered) {
+              final key = switch (_groupBy) {
+                'year' => '${session.dateTime.year}',
+                'month' => _monthKey(session.dateTime),
+                'folder' =>
+                  session.folderName.trim().isEmpty
+                      ? '__unfiled__'
+                      : session.folderName.trim(),
+                _ => '__all__',
+              };
+              grouped.putIfAbsent(key, () => <TrainingSession>[]).add(session);
+            }
+          }
+
+          final groupKeys = grouped.keys.toList();
+          if (_groupBy == 'folder') {
+            groupKeys.sort((a, b) {
+              if (a == '__unfiled__') return 1;
+              if (b == '__unfiled__') return -1;
+              return a.toLowerCase().compareTo(b.toLowerCase());
+            });
+          } else if (_groupBy != 'none') {
+            groupKeys.sort((a, b) => b.compareTo(a));
+          }
+
+          String groupLabel(String key) {
+            if (_groupBy == 'year') return key;
+            if (_groupBy == 'month') return _monthLabel(key);
+            if (_groupBy == 'folder') {
+              return key == '__unfiled__' ? 'Unfiled' : key;
+            }
+            return 'All sessions';
+          }
+
           return Container(
             decoration: const BoxDecoration(
               gradient: RadialGradient(
@@ -12259,6 +12586,57 @@ class _SessionsScreenState extends State<SessionsScreen> {
                           letterSpacing: 0.5,
                         ),
                       ),
+                    ),
+                    PopupMenuButton<String>(
+                      tooltip: 'Session actions',
+                      onSelected: (value) async {
+                        if (value == 'filters') {
+                          await openFilterDialog();
+                          return;
+                        }
+                        if (value == 'clearFilters') {
+                          setState(() {
+                            _groupBy = 'none';
+                            _yearFilter = null;
+                            _monthFilter = null;
+                            _folderFilter = null;
+                          });
+                          return;
+                        }
+                        if (value == 'moveFiltered') {
+                          await _bulkMoveToFolder(context, filtered);
+                          return;
+                        }
+                        if (value == 'archiveFiltered') {
+                          await _bulkArchive(context, filtered, true);
+                          return;
+                        }
+                        if (value == 'unarchiveFiltered') {
+                          await _bulkArchive(context, filtered, false);
+                        }
+                      },
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(
+                          value: 'filters',
+                          child: Text('Filters & grouping'),
+                        ),
+                        PopupMenuItem(
+                          value: 'clearFilters',
+                          child: Text('Clear filters'),
+                        ),
+                        PopupMenuItem(
+                          value: 'moveFiltered',
+                          child: Text('Move filtered to folder'),
+                        ),
+                        PopupMenuItem(
+                          value: 'archiveFiltered',
+                          child: Text('Archive filtered'),
+                        ),
+                        PopupMenuItem(
+                          value: 'unarchiveFiltered',
+                          child: Text('Unarchive filtered'),
+                        ),
+                      ],
                     ),
                     FilledButton.tonalIcon(
                       onPressed: () => _newSession(context),
@@ -12288,15 +12666,63 @@ class _SessionsScreenState extends State<SessionsScreen> {
                     },
                   ),
                 ),
+                const SizedBox(height: 6),
+                Text(
+                  _cleanText(_filtersSummary(filtered.length)),
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.74),
+                  ),
+                ),
                 const SizedBox(height: 10),
-                if (sessions.isEmpty)
+                if (filtered.isEmpty)
                   const _EmptyState(
                     icon: Icons.event_note_outlined,
                     title: 'No sessions yet',
                     message: 'Create your first session to start tracking.',
                   )
+                else if (_groupBy == 'none')
+                  ...filtered.map((s) => _sessionTile(context, s))
                 else
-                  ...sessionsForList.map((s) => _sessionTile(context, s)),
+                  ...groupKeys.expand((key) {
+                    final collapsedKey = _groupStorageKey(_groupBy, key);
+                    final collapsed = _collapsedGroups.contains(collapsedKey);
+                    final items = grouped[key] ?? const <TrainingSession>[];
+                    return <Widget>[
+                      ColdBoreCard(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () => _toggleGroupCollapsed(_groupBy, key),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  collapsed
+                                      ? Icons.chevron_right
+                                      : Icons.expand_more,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    '${groupLabel(key)} (${items.length})',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      if (!collapsed)
+                        ...items.map((s) => _sessionTile(context, s)),
+                    ];
+                  }),
               ],
             ),
           );
