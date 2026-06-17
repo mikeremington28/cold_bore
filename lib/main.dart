@@ -7848,7 +7848,7 @@ class _HomeShellState extends State<HomeShell> {
                           ? 'Sync error: $cloudError'
                           : (cloudReady
                                 ? 'Cloud sync connected'
-                                : 'Cloud sync not configured'),
+                            : 'Sync not connected yet. Sync activates when Firebase is configured and a user identifier is available.'),
                       child: Icon(
                         cloudError != null && cloudError.trim().isNotEmpty
                             ? Icons.cloud_off_outlined
@@ -8256,7 +8256,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       label: 'Sync',
                       value: cloudError
                           ? 'Error'
-                          : (cloudConnected ? 'Online' : 'Offline'),
+                        : (cloudConnected ? 'Online' : 'Setup needed'),
                       icon: cloudError
                           ? Icons.cloud_off_outlined
                           : (cloudConnected
@@ -9316,9 +9316,9 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
   final BallisticCalculationService _solver =
       const BallisticCalculationService();
   static const List<String> _windDirectionOptions = <String>[
-    'Full value',
-    'Half value',
-    'Quarter value',
+    'Full crosswind',
+    'Half crosswind',
+    'Quarter crosswind',
     'No wind',
     'From N',
     'From NE',
@@ -9344,7 +9344,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
   BallisticDopeRecord? _activeRecord;
   List<_GeneratedDopeRow> _chartRows = const <_GeneratedDopeRow>[];
   int? _selectedChartRowIndex;
-  String _windDirectionValue = 'Full value';
+  String _windDirectionValue = 'Full crosswind';
 
   final TextEditingController _distanceCtrl = TextEditingController(
     text: '100',
@@ -10498,7 +10498,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                             child: DropdownButtonFormField<String>(
                               initialValue: _windDirectionValue,
                               decoration: const InputDecoration(
-                                labelText: 'Wind direction/value',
+                                labelText: 'Wind direction/factor',
                               ),
                               items: _windDirectionOptions
                                   .map(
@@ -18598,32 +18598,6 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                     ],
                     selected: {_seg},
                     onSelectionChanged: (s) => setState(() => _seg = s.first),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                ColdBoreCard(
-                  padding: const EdgeInsets.all(12),
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      ColdBoreMetricTile(
-                        label: 'Rifles',
-                        value: '${rifles.length}',
-                        icon: Icons.sports_martial_arts_outlined,
-                      ),
-                      ColdBoreMetricTile(
-                        label: 'Ammo Lots',
-                        value: '${ammo.length}',
-                        icon: Icons.inventory_2_outlined,
-                      ),
-                      ColdBoreMetricTile(
-                        label: 'Total Rounds',
-                        value:
-                            '${rifles.fold<int>(0, (sum, rifle) => sum + rifle.manualRoundCount)}',
-                        icon: Icons.exposure_plus_1,
-                      ),
-                    ],
                   ),
                 ),
                 const SizedBox(height: 8),
