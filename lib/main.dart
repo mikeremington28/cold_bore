@@ -12431,7 +12431,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
                       ),
                       quickAction(
                         width: tileWidth,
-                        icon: Icons.sports_martial_arts_outlined,
+                        icon: Icons.my_location_outlined,
                         titleA: 'My',
                         titleB: 'Rifles',
                         onTap: () =>
@@ -18588,7 +18588,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                       ButtonSegment(
                         value: 0,
                         label: Text('Rifles'),
-                        icon: Icon(Icons.sports_martial_arts_outlined),
+                        icon: Icon(Icons.center_focus_strong),
                       ),
                       ButtonSegment(
                         value: 1,
@@ -23846,7 +23846,7 @@ class MaintenanceHubScreen extends StatelessWidget {
                           ColdBoreMetricTile(
                             label: 'Rifles',
                             value: '${snapshots.length}',
-                            icon: Icons.sports_martial_arts_outlined,
+                            icon: Icons.center_focus_strong,
                           ),
                           ColdBoreMetricTile(
                             label: 'Overdue',
