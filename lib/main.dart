@@ -2546,12 +2546,16 @@ class AppState extends ChangeNotifier {
   double? _temperatureF;
   double? _windSpeedMph;
   int? _windDirectionDeg;
+  double? _pressureInHg;
+  double? _humidityPercent;
 
   double? get latitude => _latitude;
   double? get longitude => _longitude;
   double? get temperatureF => _temperatureF;
   double? get windSpeedMph => _windSpeedMph;
   int? get windDirectionDeg => _windDirectionDeg;
+  double? get pressureInHg => _pressureInHg;
+  double? get humidityPercent => _humidityPercent;
 
   @override
   void dispose() {
@@ -2630,12 +2634,16 @@ class AppState extends ChangeNotifier {
     double? temperatureF,
     double? windSpeedMph,
     int? windDirectionDeg,
+    double? pressureInHg,
+    double? humidityPercent,
   }) {
     _latitude = latitude;
     _longitude = longitude;
     _temperatureF = temperatureF;
     _windSpeedMph = windSpeedMph;
     _windDirectionDeg = windDirectionDeg;
+    _pressureInHg = pressureInHg;
+    _humidityPercent = humidityPercent;
     notifyListeners();
   }
 
@@ -2752,6 +2760,8 @@ class AppState extends ChangeNotifier {
         'temperatureF': _temperatureF,
         'windSpeedMph': _windSpeedMph,
         'windDirectionDeg': _windDirectionDeg,
+        'pressureInHg': _pressureInHg,
+        'humidityPercent': _humidityPercent,
       },
       'shotTimerSettings': <String, dynamic>{
         'beepFrequencyHz': _shotTimerBeepFrequencyHz,
@@ -2850,6 +2860,8 @@ class AppState extends ChangeNotifier {
       _temperatureF = _toNullableDouble(envMap['temperatureF']);
       _windSpeedMph = _toNullableDouble(envMap['windSpeedMph']);
       _windDirectionDeg = _toNullableInt(envMap['windDirectionDeg']);
+      _pressureInHg = _toNullableDouble(envMap['pressureInHg']);
+      _humidityPercent = _toNullableDouble(envMap['humidityPercent']);
     }
 
     final shotTimerSettings = map['shotTimerSettings'];
@@ -9636,6 +9648,8 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
         temperatureF: temp,
         windSpeedMph: wind,
         windDirectionDeg: windDir,
+        pressureInHg: pressure,
+        humidityPercent: humidity,
       );
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Current weather applied.')),
@@ -12132,15 +12146,13 @@ class _SessionsScreenState extends State<SessionsScreen> {
             widget.state.windDirectionDeg ??
             recentSession?.windDirectionDeg ??
             225;
-        const pressureInHg = 29.92;
-        const humidity = 42;
+        final pressureInHg = widget.state.pressureInHg ?? 29.92;
+        final humidity = widget.state.humidityPercent ?? 45.0;
         final pressureAltitudeFt = ((29.92 - pressureInHg) * 1000).round();
         final tempC = (tempF - 32) * 5 / 9;
         final isaTempC = 15 - (pressureAltitudeFt / 1000) * 1.98;
-        final densityAltitudeFt = math.max(
-          0,
-          (pressureAltitudeFt + (120 * (tempC - isaTempC))).round(),
-        );
+        final densityAltitudeFt =
+            (pressureAltitudeFt + (120 * (tempC - isaTempC))).round();
 
         final totalRounds = widget.state.rifles.fold<int>(
           0,
