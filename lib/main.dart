@@ -2568,6 +2568,7 @@ class AppState extends ChangeNotifier {
   int? _windDirectionDeg;
   double? _pressureInHg;
   double? _humidityPercent;
+  String? _weatherLocationLabel;
 
   double? get latitude => _latitude;
   double? get longitude => _longitude;
@@ -2576,6 +2577,7 @@ class AppState extends ChangeNotifier {
   int? get windDirectionDeg => _windDirectionDeg;
   double? get pressureInHg => _pressureInHg;
   double? get humidityPercent => _humidityPercent;
+  String? get weatherLocationLabel => _weatherLocationLabel;
 
   @override
   void dispose() {
@@ -2656,6 +2658,7 @@ class AppState extends ChangeNotifier {
     int? windDirectionDeg,
     double? pressureInHg,
     double? humidityPercent,
+    String? weatherLocationLabel,
   }) {
     _latitude = latitude;
     _longitude = longitude;
@@ -2664,6 +2667,7 @@ class AppState extends ChangeNotifier {
     _windDirectionDeg = windDirectionDeg;
     _pressureInHg = pressureInHg;
     _humidityPercent = humidityPercent;
+    _weatherLocationLabel = weatherLocationLabel;
     notifyListeners();
   }
 
@@ -2782,6 +2786,7 @@ class AppState extends ChangeNotifier {
         'windDirectionDeg': _windDirectionDeg,
         'pressureInHg': _pressureInHg,
         'humidityPercent': _humidityPercent,
+        'weatherLocationLabel': _weatherLocationLabel,
       },
       'shotTimerSettings': <String, dynamic>{
         'beepFrequencyHz': _shotTimerBeepFrequencyHz,
@@ -2882,6 +2887,7 @@ class AppState extends ChangeNotifier {
       _windDirectionDeg = _toNullableInt(envMap['windDirectionDeg']);
       _pressureInHg = _toNullableDouble(envMap['pressureInHg']);
       _humidityPercent = _toNullableDouble(envMap['humidityPercent']);
+      _weatherLocationLabel = envMap['weatherLocationLabel']?.toString();
     }
 
     final shotTimerSettings = map['shotTimerSettings'];
@@ -8072,7 +8078,7 @@ class _HomeShellState extends State<HomeShell> {
                   ),
                   NavigationDestination(
                     icon: Icon(Icons.ac_unit_outlined),
-                    label: 'Cold Bore',
+                    label: 'Cold\nBore',
                   ),
                   NavigationDestination(
                     icon: Icon(Icons.timer_outlined),
@@ -8917,9 +8923,9 @@ class _DataScreenState extends State<DataScreen> {
                       child: const Row(
                         children: [
                           Expanded(
-                            flex: 2,
+                            flex: 3,
                             child: Text(
-                              'DIST',
+                              'DISTANCE',
                               style: TextStyle(
                                 fontSize: 11,
                                 letterSpacing: 0.8,
@@ -8941,22 +8947,9 @@ class _DataScreenState extends State<DataScreen> {
                             ),
                           ),
                           Expanded(
-                            flex: 3,
+                            flex: 4,
                             child: Text(
-                              'WIND / WDG',
-                              style: TextStyle(
-                                fontSize: 11,
-                                letterSpacing: 0.8,
-                                color: cbMuted,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                          Expanded(
-                            flex: 2,
-                            child: Text(
-                              'ACTIONS',
-                              textAlign: TextAlign.right,
+                              'WINDAGE',
                               style: TextStyle(
                                 fontSize: 11,
                                 letterSpacing: 0.8,
@@ -8974,183 +8967,159 @@ class _DataScreenState extends State<DataScreen> {
                       final elevationText = _cleanText(
                         '${e.elevation} ${e.elevationUnit.name.toUpperCase()}${e.elevationNotes.isNotEmpty ? ' · ${e.elevationNotes}' : ''}',
                       );
-                      final windText = _cleanText(
-                        '${e.windType.name}: ${e.windValue}${e.windNotes.isNotEmpty ? ' · ${e.windNotes}' : ''}',
-                      );
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 6),
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: cbBorder),
-                          color: cbCard.withValues(alpha: 0.62),
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              flex: 2,
-                              child: Text(
-                                '${dk.value.toStringAsFixed(0)} ${dk.unit == DistanceUnit.yards ? 'yd' : 'm'}',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
+                      final windageText = (() {
+                        final left = e.windageLeft;
+                        final right = e.windageRight;
+                        if (left > 0 && right <= 0) {
+                          return 'Left ${left.toStringAsFixed(2)}';
+                        }
+                        if (right > 0 && left <= 0) {
+                          return 'Right ${right.toStringAsFixed(2)}';
+                        }
+                        if (left > 0 && right > 0) {
+                          return 'Left ${left.toStringAsFixed(2)} / Right ${right.toStringAsFixed(2)}';
+                        }
+                        return 'Left 0.00';
+                      })();
+
+                      Future<void> editEntry() async {
+                        var targetRifleOnly = _rifleOnly;
+                        var targetBucketKey = key;
+
+                        if (_rifleOnly) {
+                          final explicitBucket = widget.state.workingDopeRifleOnly[key];
+                          final isExplicit = explicitBucket?.containsKey(dk) ?? false;
+                          if (!isExplicit) {
+                            final rid = e.rifleId;
+                            final aid = e.ammoLotId;
+                            if (rid != null && aid != null) {
+                              targetRifleOnly = false;
+                              targetBucketKey = '${rid}_$aid';
+                            } else {
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Could not resolve DOPE source for editing.',
+                                  ),
                                 ),
-                              ),
-                            ),
-                            Expanded(
-                              flex: 3,
-                              child: Text(
-                                elevationText,
-                                maxLines: 3,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            Expanded(
-                              flex: 3,
-                              child: Text(
-                                '$windText\nL ${e.windageLeft.toStringAsFixed(2)} / R ${e.windageRight.toStringAsFixed(2)}',
-                                maxLines: 3,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            Expanded(
-                              flex: 2,
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                children: [
-                                  IconButton(
-                                    icon: const Icon(Icons.edit_outlined),
-                                    tooltip: 'Edit working DOPE',
-                                    onPressed: () async {
-                                      var targetRifleOnly = _rifleOnly;
-                                      var targetBucketKey = key;
+                              );
+                              return;
+                            }
+                          }
+                        }
 
-                                      if (_rifleOnly) {
-                                        final explicitBucket = widget
-                                            .state
-                                            .workingDopeRifleOnly[key];
-                                        final isExplicit =
-                                            explicitBucket?.containsKey(dk) ??
-                                            false;
-                                        if (!isExplicit) {
-                                          final rid = e.rifleId;
-                                          final aid = e.ammoLotId;
-                                          if (rid != null && aid != null) {
-                                            targetRifleOnly = false;
-                                            targetBucketKey = '${rid}_$aid';
-                                          } else {
-                                            if (!context.mounted) return;
-                                            ScaffoldMessenger.of(
-                                              context,
-                                            ).showSnackBar(
-                                              const SnackBar(
-                                                content: Text(
-                                                  'Could not resolve DOPE source for editing.',
-                                                ),
-                                              ),
-                                            );
-                                            return;
-                                          }
-                                        }
-                                      }
+                        final edited = await showDialog<DopeEntry>(
+                          context: context,
+                          builder: (_) => _WorkingDopeEditDialog(initial: e),
+                        );
+                        if (edited == null) return;
 
-                                      final edited =
-                                          await showDialog<DopeEntry>(
-                                            context: context,
-                                            builder: (_) =>
-                                                _WorkingDopeEditDialog(
-                                                  initial: e,
-                                                ),
-                                          );
-                                      if (edited == null) return;
+                        final updated = widget.state.updateWorkingDopeEntry(
+                          rifleOnly: targetRifleOnly,
+                          bucketKey: targetBucketKey,
+                          oldDistanceKey: dk,
+                          entry: edited,
+                        );
+                        if (context.mounted && !updated) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Could not update that DOPE entry.'),
+                            ),
+                          );
+                        }
+                      }
 
-                                      final updated = widget.state
-                                          .updateWorkingDopeEntry(
-                                            rifleOnly: targetRifleOnly,
-                                            bucketKey: targetBucketKey,
-                                            oldDistanceKey: dk,
-                                            entry: edited,
-                                          );
-                                      if (context.mounted && !updated) {
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          const SnackBar(
-                                            content: Text(
-                                              'Could not update that DOPE entry.',
-                                            ),
-                                          ),
-                                        );
-                                      }
-                                    },
+                      Future<void> deleteEntry() async {
+                        final ok = await showDialog<bool>(
+                          context: context,
+                          builder: (_) => AlertDialog(
+                            title: const Text('Delete working DOPE entry?'),
+                            content: const Text('This cannot be undone.'),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context, false),
+                                child: const Text('Cancel'),
+                              ),
+                              FilledButton(
+                                onPressed: () => Navigator.pop(context, true),
+                                child: const Text('Delete'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (ok != true) return;
+
+                        var removed = widget.state.deleteWorkingDopeEntry(
+                          rifleOnly: _rifleOnly,
+                          bucketKey: key,
+                          distanceKey: dk,
+                        );
+
+                        if (!removed && _rifleOnly) {
+                          final rid = e.rifleId;
+                          final aid = e.ammoLotId;
+                          if (rid != null && aid != null) {
+                            removed = widget.state.deleteWorkingDopeEntry(
+                              rifleOnly: false,
+                              bucketKey: '${rid}_$aid',
+                              distanceKey: dk,
+                            );
+                          }
+                        }
+
+                        if (context.mounted && !removed) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Could not delete that DOPE entry.'),
+                            ),
+                          );
+                        }
+                      }
+
+                      return InkWell(
+                        borderRadius: BorderRadius.circular(14),
+                        onTap: editEntry,
+                        onLongPress: deleteEntry,
+                        child: Container(
+                            margin: const EdgeInsets.only(bottom: 6),
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: cbBorder),
+                              color: cbCard.withValues(alpha: 0.62),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  flex: 3,
+                                  child: Text(
+                                    '${dk.value.toStringAsFixed(0)} ${dk.unit == DistanceUnit.yards ? 'yd' : 'm'}',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                    ),
                                   ),
-                                  IconButton(
-                                    icon: const Icon(Icons.delete_outline),
-                                    tooltip: 'Delete working DOPE',
-                                    onPressed: () async {
-                                      final ok = await showDialog<bool>(
-                                        context: context,
-                                        builder: (_) => AlertDialog(
-                                          title: const Text(
-                                            'Delete working DOPE entry?',
-                                          ),
-                                          content: const Text(
-                                            'This cannot be undone.',
-                                          ),
-                                          actions: [
-                                            TextButton(
-                                              onPressed: () =>
-                                                  Navigator.pop(context, false),
-                                              child: const Text('Cancel'),
-                                            ),
-                                            FilledButton(
-                                              onPressed: () =>
-                                                  Navigator.pop(context, true),
-                                              child: const Text('Delete'),
-                                            ),
-                                          ],
-                                        ),
-                                      );
-                                      if (ok != true) return;
-
-                                      var removed = widget.state
-                                          .deleteWorkingDopeEntry(
-                                            rifleOnly: _rifleOnly,
-                                            bucketKey: key,
-                                            distanceKey: dk,
-                                          );
-
-                                      if (!removed && _rifleOnly) {
-                                        final rid = e.rifleId;
-                                        final aid = e.ammoLotId;
-                                        if (rid != null && aid != null) {
-                                          removed = widget.state
-                                              .deleteWorkingDopeEntry(
-                                                rifleOnly: false,
-                                                bucketKey: '${rid}_$aid',
-                                                distanceKey: dk,
-                                              );
-                                        }
-                                      }
-
-                                      if (context.mounted && !removed) {
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          const SnackBar(
-                                            content: Text(
-                                              'Could not find that DOPE entry to delete.',
-                                            ),
-                                          ),
-                                        );
-                                      }
-                                    },
+                                ),
+                                Expanded(
+                                  flex: 3,
+                                  child: Text(
+                                    elevationText,
+                                    maxLines: 3,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                ],
-                              ),
+                                ),
+                                Expanded(
+                                  flex: 4,
+                                  child: Text(
+                                    windageText,
+                                    maxLines: 3,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
+                          ),
                       );
                     }),
                   ],
@@ -12221,6 +12190,69 @@ class _SessionsScreenState extends State<SessionsScreen> {
     );
   }
 
+  Future<String?> _resolveWeatherLocationLabel({
+    required double latitude,
+    required double longitude,
+  }) async {
+    try {
+      final uri = Uri.parse(
+        'https://nominatim.openstreetmap.org/reverse'
+        '?format=jsonv2&lat=$latitude&lon=$longitude&addressdetails=1',
+      );
+      final resp = await http.get(
+        uri,
+        headers: const {
+          'User-Agent': 'ColdBore/1.0 (weather reverse geocode)',
+        },
+      );
+      if (resp.statusCode != 200) return null;
+      final data = jsonDecode(resp.body) as Map<String, dynamic>;
+      final address = data['address'] as Map<String, dynamic>?;
+      if (address == null) return null;
+
+      final placeName = (address['city'] ??
+              address['town'] ??
+              address['village'] ??
+              address['hamlet'] ??
+              address['municipality'] ??
+              address['county'])
+          ?.toString()
+          .trim();
+      final postcode = address['postcode']?.toString().trim();
+      final iso = address['ISO3166-2-lvl4']?.toString().trim();
+      String? stateCode;
+      if (iso != null && iso.contains('-')) {
+        stateCode = iso.split('-').last.trim();
+      }
+      final stateName = address['state']?.toString().trim();
+      final state = (stateCode != null && stateCode.isNotEmpty)
+          ? stateCode
+          : stateName;
+
+      final parts = <String>[];
+      if (placeName != null && placeName.isNotEmpty) {
+        parts.add(placeName);
+      }
+      final stateZip = [
+        if (state != null && state.isNotEmpty) state,
+        if (postcode != null && postcode.isNotEmpty) postcode,
+      ].join(' ');
+      if (stateZip.isNotEmpty) {
+        if (parts.isEmpty) {
+          parts.add(stateZip);
+        } else {
+          parts.add(stateZip);
+        }
+      }
+
+      if (parts.isEmpty) return null;
+      if (parts.length == 1) return parts.first;
+      return '${parts[0]}, ${parts[1]}';
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> _refreshHomeWeather() async {
     if (_homeWeatherRefreshing) return;
     setState(() => _homeWeatherRefreshing = true);
@@ -12250,6 +12282,10 @@ class _SessionsScreenState extends State<SessionsScreen> {
       final pos = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
+      final locationLabel = await _resolveWeatherLocationLabel(
+        latitude: pos.latitude,
+        longitude: pos.longitude,
+      );
       final uri = Uri.parse(
         'https://api.open-meteo.com/v1/forecast'
         '?latitude=${pos.latitude}&longitude=${pos.longitude}'
@@ -12267,11 +12303,11 @@ class _SessionsScreenState extends State<SessionsScreen> {
         throw Exception('No current weather data.');
       }
 
-        final tempF = (current['temperature_2m'] as num?)?.toDouble();
-        final windMph = (current['wind_speed_10m'] as num?)?.toDouble();
-        final windDir = (current['wind_direction_10m'] as num?)?.round();
-        final pressureHpa = (current['surface_pressure'] as num?)?.toDouble();
-        final pressureInHg =
+      final tempF = (current['temperature_2m'] as num?)?.toDouble();
+      final windMph = (current['wind_speed_10m'] as num?)?.toDouble();
+      final windDir = (current['wind_direction_10m'] as num?)?.round();
+      final pressureHpa = (current['surface_pressure'] as num?)?.toDouble();
+      final pressureInHg =
           pressureHpa == null ? null : pressureHpa * 0.0295299830714;
       final humidity = (current['relative_humidity_2m'] as num?)?.toDouble();
 
@@ -12283,6 +12319,8 @@ class _SessionsScreenState extends State<SessionsScreen> {
         windDirectionDeg: windDir ?? widget.state.windDirectionDeg,
         pressureInHg: pressureInHg ?? widget.state.pressureInHg,
         humidityPercent: humidity ?? widget.state.humidityPercent,
+        weatherLocationLabel:
+            locationLabel ?? widget.state.weatherLocationLabel,
       );
 
       if (!mounted) return;
@@ -12754,6 +12792,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
             225;
         final lat = widget.state.latitude;
         final lon = widget.state.longitude;
+        final weatherLocationLabel = widget.state.weatherLocationLabel;
         final pressureInHg = widget.state.pressureInHg ?? 29.92;
         final humidity = widget.state.humidityPercent ?? 45.0;
         final pressureAltitudeFt = ((29.92 - pressureInHg) * 1000).round();
@@ -13069,9 +13108,12 @@ class _SessionsScreenState extends State<SessionsScreen> {
                                     'Pressure  ${pressureInHg.toStringAsFixed(2)} inHg',
                                   ),
                                   Text(
-                                    lat == null || lon == null
-                                        ? 'Location unavailable'
-                                        : 'Location  ${lat.toStringAsFixed(4)}, ${lon.toStringAsFixed(4)}',
+                                    weatherLocationLabel != null &&
+                                            weatherLocationLabel.trim().isNotEmpty
+                                        ? 'Location  ${weatherLocationLabel.trim()}'
+                                        : (lat == null || lon == null
+                                              ? 'Location unavailable'
+                                              : 'Location unavailable'),
                                   ),
                                 ],
                               ),
@@ -19347,10 +19389,31 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const ColdBoreSectionHeader(
-                  title: 'Equipment Registry',
-                  subtitle:
-                      'Track rifles, ammo lots, and operational readiness.',
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Expanded(
+                      child: ColdBoreSectionHeader(
+                        title: 'Equipment Registry',
+                        subtitle:
+                            'Track rifles, ammo lots, and operational readiness.',
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        final didPop = await Navigator.of(context).maybePop();
+                        if (didPop || !context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Use the bottom tabs to switch pages.'),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.arrow_back),
+                      label: const Text('Back'),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 10),
                 ColdBoreCard(
