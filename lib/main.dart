@@ -19372,7 +19372,7 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 22),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
+               mainAxisSize: MainAxisSize.max,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
@@ -19380,8 +19380,13 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
                 ),
                 const SizedBox(height: 10),
-                if (_builtinPdfPresets.isNotEmpty ||
-                    _savedPdfPresets.isNotEmpty) ...[
+                 Expanded(
+                   child: SingleChildScrollView(
+                     child: Column(
+                       crossAxisAlignment: CrossAxisAlignment.start,
+                       children: [
+                         if (_builtinPdfPresets.isNotEmpty ||
+                             _savedPdfPresets.isNotEmpty) ...[
                   const Text(
                     'Presets',
                     style: TextStyle(fontWeight: FontWeight.w700),
@@ -19679,8 +19684,13 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                   onChanged: (value) =>
                       setLocalState(() => monthFilter = value),
                 ),
-                const SizedBox(height: 8),
-                Row(
+                         const SizedBox(height: 8),
+                       ],
+                     ),
+                   ),
+                 ),
+                 const SizedBox(height: 8),
+                 Row(
                   children: [
                     TextButton(
                       onPressed: () async {
