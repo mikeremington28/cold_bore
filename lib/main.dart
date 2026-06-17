@@ -7275,7 +7275,15 @@ class _HomeShellState extends State<HomeShell> {
     }
 
     final activeUser = widget.state.activeUser;
-    if (activeUser == null || !_isSeedUserIdentifier(activeUser.identifier)) {
+    if (activeUser == null) {
+      return;
+    }
+
+    final currentIdentifier = activeUser.identifier.trim();
+    final needsAutoIdentifier =
+        _isSeedUserIdentifier(currentIdentifier) ||
+        !_isValidUserIdentifierFormat(currentIdentifier);
+    if (!needsAutoIdentifier) {
       return;
     }
 
@@ -7290,7 +7298,7 @@ class _HomeShellState extends State<HomeShell> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Sync ready. Generated user identifier: $autoIdentifier',
+            'Sync ready. Assigned user identifier: $autoIdentifier',
           ),
         ),
       );
