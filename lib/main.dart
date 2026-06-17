@@ -111,6 +111,20 @@ Future<void> _playShotTimerBeep({
   await _shotTimerBeepPlayer.play(BytesSource(bytes, mimeType: 'audio/wav'));
 }
 
+void _dismissKeyboard(BuildContext context) {
+  FocusScope.of(context).unfocus();
+}
+
+Widget _keyboardDismissWrapper({
+  required BuildContext context,
+  required Widget child,
+}) {
+  return GestureDetector(
+    onTap: () => _dismissKeyboard(context),
+    child: child,
+  );
+}
+
 ThemeData _buildTacticalTheme() {
   const scheme = ColorScheme.dark(
     primary: cbBlue,
@@ -10055,6 +10069,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
+                        textInputAction: TextInputAction.next,
                         decoration: InputDecoration(
                           labelText:
                               'Actual elevation correction (${_elevationUnitLabel(savedRow.outputUnit)})',
@@ -10067,6 +10082,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
+                        textInputAction: TextInputAction.next,
                         decoration: InputDecoration(
                           labelText:
                               'Actual wind correction (${_elevationUnitLabel(savedRow.outputUnit)})',
@@ -10078,6 +10094,8 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                       textCapitalization: TextCapitalization.none,
                       controller: notesCtrl,
                       maxLines: 2,
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) => _dismissKeyboard(dialogCtx),
                       decoration: const InputDecoration(labelText: 'Notes'),
                     ),
                     const SizedBox(height: 8),
@@ -12413,7 +12431,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
                       ),
                       quickAction(
                         width: tileWidth,
-                        icon: Icons.precision_manufacturing_outlined,
+                        icon: Icons.sports_martial_arts_outlined,
                         titleA: 'My',
                         titleB: 'Rifles',
                         onTap: () =>
@@ -12421,11 +12439,11 @@ class _SessionsScreenState extends State<SessionsScreen> {
                       ),
                       quickAction(
                         width: tileWidth,
-                        icon: Icons.cloud_outlined,
-                        titleA: 'Weather',
-                        titleB: 'Details',
+                        icon: Icons.timer_outlined,
+                        titleA: 'Shot',
+                        titleB: 'Timer',
                         onTap: () =>
-                            openPage(WeatherDetailsScreen(state: widget.state)),
+                            openPage(ShotTimerToolScreen(state: widget.state)),
                       ),
                       quickAction(
                         width: tileWidth,
@@ -12819,6 +12837,7 @@ class _WorkingDopeEditDialogState extends State<_WorkingDopeEditDialog> {
             TextField(
               textCapitalization: TextCapitalization.none,
               controller: _elevationNotesCtrl,
+              textInputAction: TextInputAction.next,
               decoration: const InputDecoration(
                 labelText: 'Elevation notes (optional)',
               ),
@@ -13062,6 +13081,7 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
                 TextField(
                   textCapitalization: TextCapitalization.none,
                   controller: _elevationNotesCtrl,
+                  textInputAction: TextInputAction.next,
                   decoration: const InputDecoration(
                     labelText: 'Elevation notes (optional)',
                   ),
@@ -13101,6 +13121,7 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
                             keyboardType: const TextInputType.numberWithOptions(
                               decimal: true,
                             ),
+                            textInputAction: TextInputAction.next,
                             decoration: const InputDecoration(
                               labelText: 'Windage value',
                             ),
@@ -13111,6 +13132,7 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
                     TextField(
                       textCapitalization: TextCapitalization.none,
                       controller: _windValueCtrl,
+                      textInputAction: TextInputAction.next,
                       decoration: const InputDecoration(
                         labelText: 'Wind value (optional)',
                       ),
@@ -13118,6 +13140,7 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
                     TextField(
                       textCapitalization: TextCapitalization.none,
                       controller: _windNotesCtrl,
+                      textInputAction: TextInputAction.done,
                       decoration: const InputDecoration(
                         labelText: 'Wind notes (optional)',
                       ),
