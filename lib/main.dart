@@ -7969,6 +7969,9 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  static final Uri _featureRequestUrl = Uri.parse(
+    'https://docs.google.com/forms/d/e/1FAIpQLSe_lbrdHzikTANuxIFz-JVvSL8bfE-KFHp1wIcQ3uoXDPpdwA/viewform?usp=pp_url',
+  );
   final SubscriptionService _sub = SubscriptionService();
   final AppThemeController _theme = AppThemeController();
   final CloudSyncService _cloud = CloudSyncService();
@@ -8192,6 +8195,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _openFeatureRequestForm() async {
+    final ok = await launchUrl(
+      _featureRequestUrl,
+      mode: LaunchMode.externalApplication,
+    );
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open feature request form.')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final entitlementText = _sub.hasTesterAccess
@@ -8406,6 +8421,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 );
               },
+            ),
+          ),
+          ColdBoreCard(
+            child: ListTile(
+              leading: const Icon(Icons.lightbulb_outline),
+              title: const Text('Suggest a feature'),
+              subtitle: const Text('Share feedback and feature ideas.'),
+              onTap: _openFeatureRequestForm,
             ),
           ),
           ColdBoreCard(
