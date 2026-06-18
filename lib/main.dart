@@ -10463,9 +10463,21 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
         final records = widget.state.ballisticDopeRecords;
 
         String rifleLabel(Rifle r) {
-          final n = (r.name ?? '').trim();
-          if (n.isNotEmpty) return '$n ΓÇó ${r.caliber}';
-          return r.caliber;
+          final parts = <String>[];
+          final name = (r.name ?? '').trim();
+          final manufacturer = (r.manufacturer ?? '').trim();
+          final model = (r.model ?? '').trim();
+          final serial = (r.serialNumber ?? '').trim();
+          final caliber = r.caliber.trim();
+
+          if (name.isNotEmpty) parts.add(name);
+          final makeModel = [manufacturer, model].where((v) => v.isNotEmpty).join(' ');
+          if (makeModel.isNotEmpty) parts.add(makeModel);
+          if (caliber.isNotEmpty) parts.add(caliber);
+          if (serial.isNotEmpty) parts.add('SN $serial');
+
+          if (parts.isEmpty) return 'Rifle';
+          return parts.join(' ΓÇó ');
         }
 
         String ammoLabel(AmmoLot a) {
