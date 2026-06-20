@@ -31,6 +31,14 @@ import UIKit
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    let launchBackground = UIColor(
+      red: 23.0 / 255.0,
+      green: 26.0 / 255.0,
+      blue: 33.0 / 255.0,
+      alpha: 1.0
+    )
+    window?.backgroundColor = launchBackground
+
     GeneratedPluginRegistrant.register(with: self)
 
     let didFinish = super.application(application, didFinishLaunchingWithOptions: launchOptions)
@@ -39,6 +47,7 @@ import UIKit
     guard let controller = window?.rootViewController as? FlutterViewController else {
       return didFinish
     }
+    controller.view.backgroundColor = launchBackground
 
     let icloudChannel = FlutterMethodChannel(name: "com.remington.coldbore/icloud",
                                              binaryMessenger: controller.binaryMessenger)
