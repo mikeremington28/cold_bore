@@ -37,6 +37,7 @@ import UIKit
       blue: 33.0 / 255.0,
       alpha: 1.0
     )
+    window?.overrideUserInterfaceStyle = .dark
     window?.backgroundColor = launchBackground
 
     GeneratedPluginRegistrant.register(with: self)
@@ -47,7 +48,10 @@ import UIKit
     guard let controller = window?.rootViewController as? FlutterViewController else {
       return didFinish
     }
+    window?.backgroundColor = launchBackground
     controller.view.backgroundColor = launchBackground
+    controller.view.isOpaque = true
+    controller.splashScreenView?.backgroundColor = launchBackground
 
     let icloudChannel = FlutterMethodChannel(name: "com.remington.coldbore/icloud",
                                              binaryMessenger: controller.binaryMessenger)

@@ -7384,131 +7384,10 @@ class HomeShell extends StatefulWidget {
   State<HomeShell> createState() => _HomeShellState();
 }
 
-class _GuidedTourBallisticAssistantStepScreen extends StatelessWidget {
-  final AppState state;
-  final _GuidedTourStep step;
-  final int stepIndex;
-  final int stepCount;
-  final VoidCallback onSkipInTour;
-  final VoidCallback onBackInTour;
-  final VoidCallback onNextInTour;
-
-  const _GuidedTourBallisticAssistantStepScreen({
-    required this.state,
-    required this.step,
-    required this.stepIndex,
-    required this.stepCount,
-    required this.onSkipInTour,
-    required this.onBackInTour,
-    required this.onNextInTour,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        BallisticAssistantScreen(state: state),
-        Positioned.fill(
-          child: ColoredBox(
-            color: Colors.black.withValues(alpha: 0.55),
-            child: SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    const Spacer(),
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Icon(step.icon),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    'Guided Tour: ${step.title}',
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.titleMedium,
-                                  ),
-                                ),
-                                TextButton(
-                                  onPressed: () {
-                                    Navigator.of(context).pop();
-                                    onSkipInTour();
-                                  },
-                                  child: const Text('Skip'),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Text(step.description),
-                            const SizedBox(height: 12),
-                            Text(
-                              'Step ${stepIndex + 1} of $stepCount',
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                            const SizedBox(height: 8),
-                            LinearProgressIndicator(
-                              value: (stepIndex + 1) / stepCount,
-                            ),
-                            const SizedBox(height: 12),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: OutlinedButton.icon(
-                                    onPressed: () {
-                                      Navigator.of(context).pop();
-                                      onBackInTour();
-                                    },
-                                    icon: const Icon(Icons.arrow_back),
-                                    label: const Text('Back'),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: FilledButton.icon(
-                                    onPressed: () {
-                                      Navigator.of(context).pop();
-                                      onNextInTour();
-                                    },
-                                    icon: Icon(
-                                      stepIndex == stepCount - 1
-                                          ? Icons.check
-                                          : Icons.arrow_forward,
-                                    ),
-                                    label: Text(
-                                      stepIndex == stepCount - 1
-                                          ? 'Finish'
-                                          : 'Next',
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 class _HomeShellState extends State<HomeShell> {
   int _tab = 0;
   bool _tourActive = false;
   int _tourStepIndex = 0;
-  bool _openingTourRoute = false;
   bool _didAutoStartTour = false;
   bool _firstRunIdentifierPromptInFlight = false;
   bool _sharedAcceptancePromptInFlight = false;
@@ -7890,48 +7769,6 @@ class _HomeShellState extends State<HomeShell> {
       _tourStepIndex = index;
       _tab = step.tabIndex;
     });
-    _maybeOpenTourRouteForStep(index);
-  }
-
-  void _maybeOpenTourRouteForStep(int index, {bool force = false}) {
-    if (!_tourActive || index < 0 || index >= _tourSteps.length) return;
-    final step = _tourSteps[index];
-    if (!step.opensInTourRoute) return;
-    if (_openingTourRoute) return;
-
-    _openingTourRoute = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted) {
-        _openingTourRoute = false;
-        return;
-      }
-      if (!_tourActive || _tourStepIndex != index) {
-        _openingTourRoute = false;
-        return;
-      }
-      if (!force && ModalRoute.of(context)?.isCurrent != true) {
-        _openingTourRoute = false;
-        return;
-      }
-
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => _GuidedTourBallisticAssistantStepScreen(
-            state: widget.state,
-            step: step,
-            stepIndex: index,
-            stepCount: _tourSteps.length,
-            onSkipInTour: _stopGuidedTour,
-            onBackInTour: _prevTourStep,
-            onNextInTour: _nextTourStep,
-          ),
-        ),
-      );
-
-      _openingTourRoute = false;
-      if (!mounted || !_tourActive) return;
-      setState(() {});
-    });
   }
 
   void _stopGuidedTour() {
@@ -8183,20 +8020,6 @@ class _HomeShellState extends State<HomeShell> {
                         ),
                         const SizedBox(height: 8),
                         Text(step.description),
-                        if (step.opensInTourRoute) ...[
-                          const SizedBox(height: 10),
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: FilledButton.tonalIcon(
-                              onPressed: () => _maybeOpenTourRouteForStep(
-                                _tourStepIndex,
-                                force: true,
-                              ),
-                              icon: const Icon(Icons.open_in_new),
-                              label: const Text('Open Ballistic Assistant'),
-                            ),
-                          ),
-                        ],
                         const SizedBox(height: 12),
                         Text(
                           'Step ${_tourStepIndex + 1} of ${_tourSteps.length}',
@@ -8250,6 +8073,8 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
+    final showBallisticAssistantTourStep =
+        _tourActive && _tourSteps[_tourStepIndex].opensInTourRoute;
     final pages = <Widget>[
       SessionsScreen(
         state: widget.state,
@@ -8265,7 +8090,9 @@ class _HomeShellState extends State<HomeShell> {
       ShotTimerToolScreen(state: widget.state),
       AudioCounterScreen(state: widget.state),
       EquipmentScreen(state: widget.state),
-      DataScreen(state: widget.state),
+      showBallisticAssistantTourStep
+          ? BallisticAssistantScreen(state: widget.state)
+          : DataScreen(state: widget.state),
     ];
 
     return AnimatedBuilder(
