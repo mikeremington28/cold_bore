@@ -1660,13 +1660,14 @@ class _LaunchSplashGateState extends State<_LaunchSplashGate> {
   Widget build(BuildContext context) {
     if (!_showSplash) return widget.child;
     return Scaffold(
+      backgroundColor: const Color(0xFF171A21),
       body: Container(
         width: double.infinity,
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xFFE3E0D2), Color(0xFFF1EDDF)],
+            colors: [Color(0xFF1E2430), Color(0xFF141922)],
           ),
         ),
         child: Center(
@@ -1686,15 +1687,15 @@ class _LaunchSplashGateState extends State<_LaunchSplashGate> {
               const Text(
                 'Cold Bore',
                 style: TextStyle(
-                  color: Color(0xFF1E2019),
+                  color: Color(0xFFE8EDF7),
                   fontSize: 34,
                   fontWeight: FontWeight.w900,
                   letterSpacing: 0.6,
                   shadows: [
                     Shadow(
-                      color: Color(0x33000000),
-                      blurRadius: 2,
-                      offset: Offset(0, 1),
+                      color: Color(0x66000000),
+                      blurRadius: 4,
+                      offset: Offset(0, 2),
                     ),
                   ],
                 ),
