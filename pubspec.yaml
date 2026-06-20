@@ -1,13 +1,12 @@
 name: cold_bore
 description: A new Flutter project.
 publish_to: none
-version: 1.0.3+33
+version: 1.0.3+34
 environment:
   sdk: ^3.10.4
 dependencies:
   flutter:
     sdk: flutter
-  app_tracking_transparency: ^2.0.6+1
   facebook_app_events: ^0.27.2
   geolocator: ^13.0.2
   http: ^1.2.2

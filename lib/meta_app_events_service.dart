@@ -1,4 +1,3 @@
-import 'package:app_tracking_transparency/app_tracking_transparency.dart';
 import 'package:facebook_app_events/facebook_app_events.dart';
 import 'package:flutter/foundation.dart';
 
@@ -82,33 +81,15 @@ class MetaAppEventsService {
     if (_configured) return;
     _configured = true;
 
-    final isIos = !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
-    if (isIos) {
-      final status = await AppTrackingTransparency.trackingAuthorizationStatus;
-      if (status == TrackingStatus.notDetermined) {
-        await AppTrackingTransparency.requestTrackingAuthorization();
-      }
-    }
-
     await _events.setAutoLogAppEventsEnabled(true);
     await _applyTrackingSettings();
   }
 
   Future<void> _applyTrackingSettings() async {
-    final isTrackingAllowed = await _isTrackingAllowed();
     await _events.setAdvertiserTracking(
-      enabled: isTrackingAllowed,
-      collectId: isTrackingAllowed,
+      enabled: false,
+      collectId: false,
     );
-  }
-
-  Future<bool> _isTrackingAllowed() async {
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) {
-      return true;
-    }
-
-    final status = await AppTrackingTransparency.trackingAuthorizationStatus;
-    return status == TrackingStatus.authorized;
   }
 
   Future<void> logAppActivated() async {

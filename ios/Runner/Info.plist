@@ -37,9 +37,7 @@
 	<key>FacebookAutoLogAppEventsEnabled</key>
 	<true/>
 	<key>FacebookAdvertiserIDCollectionEnabled</key>
-	<true/>
-	<key>NSUserTrackingUsageDescription</key>
-	<string>We use device tracking permission to measure app installs, subscription conversions, and ad performance on Facebook and Instagram.</string>
+	<false/>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>fbapi</string>
