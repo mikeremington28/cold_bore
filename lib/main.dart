@@ -7346,12 +7346,14 @@ class _GuidedTourStep {
   final IconData icon;
   final String title;
   final String description;
+  final bool opensBallisticAssistant;
 
   const _GuidedTourStep({
     required this.tabIndex,
     required this.icon,
     required this.title,
     required this.description,
+    this.opensBallisticAssistant = false,
   });
 }
 
@@ -7464,6 +7466,7 @@ class _HomeShellState extends State<HomeShell> {
       title: 'Ballistic Assistant',
       description:
           'From Data, open Ballistic Assistant to build estimates, validate with live fire, and promote trusted values into Working DOPE.',
+      opensBallisticAssistant: true,
     ),
     _GuidedTourStep(
       tabIndex: 0,
@@ -7755,34 +7758,50 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   void _startGuidedTour() {
+    _setTourStep(0, forceActive: true);
+  }
+
+  Future<void> _setTourStep(int index, {bool forceActive = false}) async {
+    if (index < 0 || index >= _tourSteps.length) return;
+    final step = _tourSteps[index];
     setState(() {
-      _tourActive = true;
-      _tourStepIndex = 0;
-      _tab = _tourSteps.first.tabIndex;
+      if (forceActive) {
+        _tourActive = true;
+      }
+      _tourStepIndex = index;
+      _tab = step.tabIndex;
     });
+
+    if (!step.opensBallisticAssistant) return;
+
+    await Future<void>.delayed(Duration.zero);
+    if (!mounted || !_tourActive || _tourStepIndex != index) return;
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => BallisticAssistantScreen(state: widget.state),
+      ),
+    );
+
+    if (!mounted) return;
+    setState(() {});
   }
 
   void _stopGuidedTour() {
     setState(() => _tourActive = false);
   }
 
-  void _nextTourStep() {
+  Future<void> _nextTourStep() async {
     if (_tourStepIndex >= _tourSteps.length - 1) {
       _stopGuidedTour();
       return;
     }
-    setState(() {
-      _tourStepIndex += 1;
-      _tab = _tourSteps[_tourStepIndex].tabIndex;
-    });
+    await _setTourStep(_tourStepIndex + 1);
   }
 
-  void _prevTourStep() {
+  Future<void> _prevTourStep() async {
     if (_tourStepIndex == 0) return;
-    setState(() {
-      _tourStepIndex -= 1;
-      _tab = _tourSteps[_tourStepIndex].tabIndex;
-    });
+    await _setTourStep(_tourStepIndex - 1);
   }
 
   void _maybePromptForNewSharedSession() {
