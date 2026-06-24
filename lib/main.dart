@@ -2646,6 +2646,7 @@ class AppState extends ChangeNotifier {
 
   double? _latitude;
   double? _longitude;
+  double? _elevationFt;
   double? _temperatureF;
   double? _windSpeedMph;
   int? _windDirectionDeg;
@@ -2655,6 +2656,7 @@ class AppState extends ChangeNotifier {
 
   double? get latitude => _latitude;
   double? get longitude => _longitude;
+  double? get elevationFt => _elevationFt;
   double? get temperatureF => _temperatureF;
   double? get windSpeedMph => _windSpeedMph;
   int? get windDirectionDeg => _windDirectionDeg;
@@ -2736,6 +2738,7 @@ class AppState extends ChangeNotifier {
   void setEnvironment({
     double? latitude,
     double? longitude,
+    double? elevationFt,
     double? temperatureF,
     double? windSpeedMph,
     int? windDirectionDeg,
@@ -2745,6 +2748,7 @@ class AppState extends ChangeNotifier {
   }) {
     _latitude = latitude;
     _longitude = longitude;
+    _elevationFt = elevationFt;
     _temperatureF = temperatureF;
     _windSpeedMph = windSpeedMph;
     _windDirectionDeg = windDirectionDeg;
@@ -2864,6 +2868,7 @@ class AppState extends ChangeNotifier {
       'environment': <String, dynamic>{
         'latitude': _latitude,
         'longitude': _longitude,
+        'elevationFt': _elevationFt,
         'temperatureF': _temperatureF,
         'windSpeedMph': _windSpeedMph,
         'windDirectionDeg': _windDirectionDeg,
@@ -2965,6 +2970,7 @@ class AppState extends ChangeNotifier {
       final envMap = Map<String, dynamic>.from(env);
       _latitude = _toNullableDouble(envMap['latitude']);
       _longitude = _toNullableDouble(envMap['longitude']);
+      _elevationFt = _toNullableDouble(envMap['elevationFt']);
       _temperatureF = _toNullableDouble(envMap['temperatureF']);
       _windSpeedMph = _toNullableDouble(envMap['windSpeedMph']);
       _windDirectionDeg = _toNullableInt(envMap['windDirectionDeg']);
@@ -12405,10 +12411,14 @@ class _SessionsScreenState extends State<SessionsScreen> {
       final pressureInHg =
           pressureHpa == null ? null : pressureHpa * 0.0295299830714;
       final humidity = (current['relative_humidity_2m'] as num?)?.toDouble();
+      final elevationFt = pos.altitude.isFinite
+          ? pos.altitude * 3.280839895
+          : widget.state.elevationFt;
 
       widget.state.setEnvironment(
         latitude: pos.latitude,
         longitude: pos.longitude,
+        elevationFt: elevationFt,
         temperatureF: tempF ?? widget.state.temperatureF,
         windSpeedMph: windMph ?? widget.state.windSpeedMph,
         windDirectionDeg: windDir ?? widget.state.windDirectionDeg,
@@ -12887,10 +12897,12 @@ class _SessionsScreenState extends State<SessionsScreen> {
             225;
         final lat = widget.state.latitude;
         final lon = widget.state.longitude;
+        final elevationFt = widget.state.elevationFt;
         final weatherLocationLabel = widget.state.weatherLocationLabel;
         final pressureInHg = widget.state.pressureInHg ?? 29.92;
         final humidity = widget.state.humidityPercent ?? 45.0;
-        final pressureAltitudeFt = ((29.92 - pressureInHg) * 1000).round();
+        final pressureAltitudeFt =
+          (((elevationFt ?? 0) + ((29.92 - pressureInHg) * 1000))).round();
         final tempC = (tempF - 32) * 5 / 9;
         final isaTempC = 15 - (pressureAltitudeFt / 1000) * 1.98;
         final densityAltitudeFt =
@@ -13245,7 +13257,8 @@ class _SessionsScreenState extends State<SessionsScreen> {
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                '${commaInt(pressureAltitudeFt)} FT\nPressure Altitude',
+                                '${commaInt(pressureAltitudeFt)} FT\nPressure Altitude'
+                                '${elevationFt == null ? '' : '\n${commaInt(elevationFt.round())} FT Field Elevation'}',
                                 style: TextStyle(
                                   height: 1.25,
                                   color: Colors.white.withValues(alpha: 0.72),
