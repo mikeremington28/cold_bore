@@ -198,6 +198,11 @@ class SubscriptionService extends ChangeNotifier {
       final param = PurchaseParam(productDetails: _product!);
       // Auto-renewing subscriptions should use non-consumable purchase flow.
       await _iap.buyNonConsumable(purchaseParam: param);
+
+      // If the storefront is dismissed without a terminal purchase update,
+      // don't leave the paywall in a perpetual loading state.
+      _loading = false;
+      notifyListeners();
     } catch (e) {
       _lastError = 'Purchase failed. Please try again.';
       _loading = false;
@@ -216,6 +221,9 @@ class SubscriptionService extends ChangeNotifier {
     } catch (e) {
       if (!silent) {
         _lastError = 'Restore failed. Please try again.';
+      }
+    } finally {
+      if (!silent) {
         _loading = false;
         notifyListeners();
       }
@@ -239,6 +247,12 @@ class SubscriptionService extends ChangeNotifier {
       if (purchase.status == PurchaseStatus.error) {
         _lastError =
             purchase.error?.message ?? 'Purchase failed. Please try again.';
+        _loading = false;
+        notifyListeners();
+      }
+
+      if (purchase.status == PurchaseStatus.canceled) {
+        _lastError = null;
         _loading = false;
         notifyListeners();
       }
