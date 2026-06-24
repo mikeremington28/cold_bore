@@ -2351,6 +2351,15 @@ class _PaywallScreenState extends State<_PaywallScreen> {
   final SubscriptionService _sub = SubscriptionService();
   late final VoidCallback _listener;
 
+  Future<void> _restorePurchasesFromPaywall() async {
+    await _sub.restorePurchases();
+    if (!mounted) return;
+    final message = _sub.isEntitled
+        ? 'Purchase restored. Full access enabled.'
+        : 'No active subscription found for this Apple ID.';
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
   @override
   void initState() {
     super.initState();
@@ -2522,7 +2531,7 @@ class _PaywallScreenState extends State<_PaywallScreen> {
                   OutlinedButton(
                     onPressed: _sub.loading || !_sub.storeAvailable
                         ? null
-                        : () => _sub.restorePurchases(),
+                        : _restorePurchasesFromPaywall,
                     child: const Text('Restore purchases'),
                   ),
                   const SizedBox(height: 8),
