@@ -85,7 +85,11 @@ class SubscriptionService extends ChangeNotifier {
     if (kIsWeb) return; // IAP not available on web.
 
     _available = await _iap.isAvailable();
-    if (!_available) return;
+    if (!_available) {
+      _lastError = 'Subscription store is currently unavailable.';
+      notifyListeners();
+      return;
+    }
 
     _purchaseSub = _iap.purchaseStream.listen(
       _onPurchaseUpdates,
@@ -97,6 +101,27 @@ class SubscriptionService extends ChangeNotifier {
 
     await _loadProduct();
     await restorePurchases(silent: true);
+  }
+
+  Future<void> refreshProductDetails() async {
+    if (kIsWeb) return;
+
+    try {
+      _available = await _iap.isAvailable();
+      if (!_available) {
+        _product = null;
+        _lastError = 'Subscription store is currently unavailable.';
+        notifyListeners();
+        return;
+      }
+
+      await _loadProduct();
+    } catch (e) {
+      _product = null;
+      _lastError = 'Subscription store is currently unavailable.';
+      debugPrint('SubscriptionService: refresh failed: $e');
+      notifyListeners();
+    }
   }
 
   Future<void> setCurrentUserIdentifier(String? identifier) async {
@@ -138,11 +163,19 @@ class SubscriptionService extends ChangeNotifier {
         return;
       }
       if (response.notFoundIDs.isNotEmpty) {
+        _product = null;
         _lastError =
-            'Subscription product is not available yet. Please try again shortly.';
+            'Subscription product not found in App Store (${response.notFoundIDs.join(', ')}).';
         notifyListeners();
+        return;
       }
+
+      _product = null;
+      _lastError =
+          'Subscription product is not available yet. Please try again shortly.';
+      notifyListeners();
     } catch (e) {
+      _product = null;
       debugPrint('SubscriptionService: product load failed: $e');
       _lastError = 'Subscription store is currently unavailable.';
       notifyListeners();

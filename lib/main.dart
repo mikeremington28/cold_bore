@@ -2361,6 +2361,7 @@ class _PaywallScreenState extends State<_PaywallScreen> {
       if (_sub.isEntitled && mounted) Navigator.of(context).pop();
     };
     _sub.addListener(_listener);
+    unawaited(_sub.refreshProductDetails());
   }
 
   @override
@@ -2506,6 +2507,18 @@ class _PaywallScreenState extends State<_PaywallScreen> {
                           ),
                   ),
                   const SizedBox(height: 12),
+                  if (!_sub.canPurchase)
+                    Align(
+                      alignment: Alignment.center,
+                      child: TextButton.icon(
+                        onPressed: _sub.loading
+                            ? null
+                            : () => _sub.refreshProductDetails(),
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Refresh price'),
+                      ),
+                    ),
+                  if (!_sub.canPurchase) const SizedBox(height: 8),
                   OutlinedButton(
                     onPressed: _sub.loading || !_sub.storeAvailable
                         ? null
