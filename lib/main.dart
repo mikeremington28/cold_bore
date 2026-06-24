@@ -2380,182 +2380,187 @@ class _PaywallScreenState extends State<_PaywallScreen> {
     return ColdBoreScaffold(
       appBar: AppBar(title: const Text('Cold Bore Pro')),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(height: 16),
-              if (inTrial) ...[
-                ColdBoreCard(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.hourglass_bottom_outlined,
-                        size: 20,
-                        color: cbBlue,
+        child: LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: 16),
+                  if (inTrial) ...[
+                    ColdBoreCard(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          '$trialDays ${trialDays == 1 ? 'day' : 'days'} left in your free trial',
-                          style: const TextStyle(
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.hourglass_bottom_outlined,
+                            size: 20,
                             color: cbBlue,
-                            fontWeight: FontWeight.w700,
                           ),
-                        ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              '$trialDays ${trialDays == 1 ? 'day' : 'days'} left in your free trial',
+                              style: const TextStyle(
+                                color: cbBlue,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-              ],
-              if (!inTrial) const Icon(Icons.lock_open_outlined, size: 56),
-              if (!inTrial) const SizedBox(height: 16),
-              Text(
-                inTrial
-                    ? 'Unlock Cold Bore Pro'
-                    : 'Subscribe to keep adding data',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 12),
-              Text(
-                inTrial
-                    ? 'Subscribe now to keep all features after your trial ends. '
-                          'Your data is always yours to view and export.'
-                    : 'Your existing data is always available to view and export. '
-                          'A Cold Bore Pro subscription lets you continue logging sessions, '
-                          'shots, gear, and maintenance records.',
-                textAlign: TextAlign.center,
-              ),
-              if (!inTrial && isIos) ...[
-                const SizedBox(height: 8),
-                Text(
-                  'On iPhone/iPad, free-trial eligibility is checked by the App Store using your Apple ID when you tap Subscribe.',
-                  style: Theme.of(context).textTheme.bodySmall,
-                  textAlign: TextAlign.center,
-                ),
-              ],
-              const SizedBox(height: 24),
-              ColdBoreCard(
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const ColdBoreSectionHeader(title: 'What you unlock'),
-                    const SizedBox(height: 8),
-                    _FeatureRow(
-                      icon: Icons.event_note_outlined,
-                      label: 'Add new shooting sessions',
                     ),
-                    _FeatureRow(
-                      icon: Icons.ac_unit_outlined,
-                      label: 'Log cold bore shots and strings',
-                    ),
-                    _FeatureRow(
-                      icon: Icons.build_outlined,
-                      label: 'Track gear and maintenance',
-                    ),
-                    _FeatureRow(
-                      icon: Icons.timer_outlined,
-                      label: 'Record timer runs',
-                    ),
-                    _FeatureRow(
-                      icon: Icons.picture_as_pdf_outlined,
-                      label: 'Export PDF reports (always free)',
-                    ),
+                    const SizedBox(height: 16),
                   ],
-                ),
-              ),
-              const Spacer(),
-              if (_sub.lastError != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(
-                    _sub.lastError!,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
+                  if (!inTrial) const Icon(Icons.lock_open_outlined, size: 56),
+                  if (!inTrial) const SizedBox(height: 16),
+                  Text(
+                    inTrial
+                        ? 'Unlock Cold Bore Pro'
+                        : 'Subscribe to keep adding data',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
                     ),
                     textAlign: TextAlign.center,
                   ),
-                ),
-              FilledButton(
-                onPressed: _sub.loading || !_sub.canPurchase
-                    ? null
-                    : () => _sub.purchase(),
-                child: _sub.loading
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Text(
-                        _sub.canPurchase
-                            ? 'Subscribe - $priceText / year'
-                            : 'Subscribe (price unavailable)',
-                      ),
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton(
-                onPressed: _sub.loading || !_sub.storeAvailable
-                    ? null
-                    : () => _sub.restorePurchases(),
-                child: const Text('Restore purchases'),
-              ),
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Not now - view my data'),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Subscription auto-renews yearly. Cancel anytime in Settings.',
-                style: Theme.of(context).textTheme.bodySmall,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  TextButton(
-                    onPressed: () async {
-                      final url = Uri.parse(
-                        'https://mikeremington28.github.io/ranch-hand-privacy/',
-                      );
-                      if (await canLaunchUrl(url)) {
-                        await launchUrl(
-                          url,
-                          mode: LaunchMode.externalApplication,
-                        );
-                      }
-                    },
-                    child: const Text('Privacy Policy'),
+                  const SizedBox(height: 12),
+                  Text(
+                    inTrial
+                        ? 'Subscribe now to keep all features after your trial ends. '
+                              'Your data is always yours to view and export.'
+                        : 'Your existing data is always available to view and export. '
+                              'A Cold Bore Pro subscription lets you continue logging sessions, '
+                              'shots, gear, and maintenance records.',
+                    textAlign: TextAlign.center,
                   ),
-                  const SizedBox(width: 12),
+                  if (!inTrial && isIos) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'On iPhone/iPad, free-trial eligibility is checked by the App Store using your Apple ID when you tap Subscribe.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                  const SizedBox(height: 24),
+                  ColdBoreCard(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const ColdBoreSectionHeader(title: 'What you unlock'),
+                        const SizedBox(height: 8),
+                        _FeatureRow(
+                          icon: Icons.event_note_outlined,
+                          label: 'Add new shooting sessions',
+                        ),
+                        _FeatureRow(
+                          icon: Icons.ac_unit_outlined,
+                          label: 'Log cold bore shots and strings',
+                        ),
+                        _FeatureRow(
+                          icon: Icons.build_outlined,
+                          label: 'Track gear and maintenance',
+                        ),
+                        _FeatureRow(
+                          icon: Icons.timer_outlined,
+                          label: 'Record timer runs',
+                        ),
+                        _FeatureRow(
+                          icon: Icons.picture_as_pdf_outlined,
+                          label: 'Export PDF reports (always free)',
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  if (_sub.lastError != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Text(
+                        _sub.lastError!,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  FilledButton(
+                    onPressed: _sub.loading || !_sub.canPurchase
+                        ? null
+                        : () => _sub.purchase(),
+                    child: _sub.loading
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Text(
+                            _sub.canPurchase
+                                ? 'Subscribe - $priceText / year'
+                                : 'Subscribe (price unavailable)',
+                          ),
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton(
+                    onPressed: _sub.loading || !_sub.storeAvailable
+                        ? null
+                        : () => _sub.restorePurchases(),
+                    child: const Text('Restore purchases'),
+                  ),
+                  const SizedBox(height: 8),
                   TextButton(
-                    onPressed: () async {
-                      final url = Uri.parse(
-                        'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/',
-                      );
-                      if (await canLaunchUrl(url)) {
-                        await launchUrl(
-                          url,
-                          mode: LaunchMode.externalApplication,
-                        );
-                      }
-                    },
-                    child: const Text('Terms of Use'),
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Not now - view my data'),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Subscription auto-renews yearly. Cancel anytime in Settings.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      TextButton(
+                        onPressed: () async {
+                          final url = Uri.parse(
+                            'https://mikeremington28.github.io/ranch-hand-privacy/',
+                          );
+                          if (await canLaunchUrl(url)) {
+                            await launchUrl(
+                              url,
+                              mode: LaunchMode.externalApplication,
+                            );
+                          }
+                        },
+                        child: const Text('Privacy Policy'),
+                      ),
+                      const SizedBox(width: 12),
+                      TextButton(
+                        onPressed: () async {
+                          final url = Uri.parse(
+                            'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/',
+                          );
+                          if (await canLaunchUrl(url)) {
+                            await launchUrl(
+                              url,
+                              mode: LaunchMode.externalApplication,
+                            );
+                          }
+                        },
+                        child: const Text('Terms of Use'),
+                      ),
+                    ],
                   ),
                 ],
               ),
-            ],
+            ),
           ),
         ),
       ),
