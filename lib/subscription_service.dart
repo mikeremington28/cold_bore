@@ -9,6 +9,10 @@ import 'meta_app_events_service.dart';
 
 /// Product ID must match App Store Connect exactly (case-sensitive)
 const String kSubscriptionProductId = 'Coldbore_Pro_Yearly';
+const List<String> kSubscriptionProductIdCandidates = <String>[
+  kSubscriptionProductId,
+  'ColdBore_Pro_Yearly',
+];
 const String _entitlementPrefsKey = 'cold_bore.subscription.entitled.v1';
 const String _entitlementExpiryPrefsKey = 'cold_bore.subscription.expiry_ms.v1';
 const String _trialStartPrefsKey = 'cold_bore.subscription.trial_start_ms.v1';
@@ -116,9 +120,19 @@ class SubscriptionService extends ChangeNotifier {
 
   Future<void> _loadProduct() async {
     try {
-      final response = await _iap.queryProductDetails({kSubscriptionProductId});
+      final response = await _iap.queryProductDetails(
+        kSubscriptionProductIdCandidates.toSet(),
+      );
       if (response.productDetails.isNotEmpty) {
-        _product = response.productDetails.first;
+        final productById = {
+          for (final product in response.productDetails) product.id: product,
+        };
+        ProductDetails? selected;
+        for (final id in kSubscriptionProductIdCandidates) {
+          selected = productById[id];
+          if (selected != null) break;
+        }
+        _product = selected ?? response.productDetails.first;
         _lastError = null;
         notifyListeners();
         return;
@@ -149,8 +163,8 @@ class SubscriptionService extends ChangeNotifier {
 
     try {
       final param = PurchaseParam(productDetails: _product!);
-      // For subscriptions, use buyConsumable with autoConsume: false
-      await _iap.buyConsumable(purchaseParam: param, autoConsume: false);
+      // Auto-renewing subscriptions should use non-consumable purchase flow.
+      await _iap.buyNonConsumable(purchaseParam: param);
     } catch (e) {
       _lastError = 'Purchase failed. Please try again.';
       _loading = false;
@@ -179,7 +193,9 @@ class SubscriptionService extends ChangeNotifier {
 
   Future<void> _onPurchaseUpdates(List<PurchaseDetails> purchases) async {
     for (final purchase in purchases) {
-      if (purchase.productID != kSubscriptionProductId) continue;
+      if (!kSubscriptionProductIdCandidates.contains(purchase.productID)) {
+        continue;
+      }
 
       if (purchase.status == PurchaseStatus.pending) {
         _loading = true;

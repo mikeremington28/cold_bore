@@ -2530,7 +2530,7 @@ class _PaywallScreenState extends State<_PaywallScreen> {
                       TextButton(
                         onPressed: () async {
                           final url = Uri.parse(
-                            'https://mikeremington28.github.io/ranch-hand-privacy/',
+                            'https://mikeremington28.github.io/App-Privacy/',
                           );
                           if (await canLaunchUrl(url)) {
                             await launchUrl(
