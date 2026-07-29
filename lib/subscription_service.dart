@@ -187,9 +187,16 @@ class SubscriptionService extends ChangeNotifier {
 
   Future<void> purchase() async {
     if (_product == null) {
-      _lastError = 'Product not available. Please try again.';
-      notifyListeners();
-      return;
+      if (_available) {
+        await _loadProduct();
+      }
+      if (_product == null) {
+        _lastError = _available
+            ? 'Product not available. Please refresh and try again.'
+            : 'Subscription store is currently unavailable.';
+        notifyListeners();
+        return;
+      }
     }
     _lastError = null;
     _loading = true;

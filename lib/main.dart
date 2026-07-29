@@ -2399,6 +2399,36 @@ class _PaywallScreenState extends State<_PaywallScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  Future<void> _startTrialFromPaywall() async {
+    if (_sub.loading) return;
+
+    if (!_sub.canPurchase) {
+      await _sub.refreshProductDetails();
+    }
+
+    if (!_sub.canPurchase) {
+      if (!mounted) return;
+      final msg = _sub.storeAvailable
+          ? 'Unable to load subscription options. Tap Refresh price and try again.'
+          : 'Subscription store is currently unavailable. Please try again in a moment.';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      return;
+    }
+
+    await _sub.purchase();
+    if (!mounted) return;
+    if (await _waitForEntitlement()) {
+      if (mounted) Navigator.of(context).pop();
+      return;
+    }
+
+    if (_sub.lastError != null && _sub.lastError!.trim().isNotEmpty && mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_sub.lastError!)));
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -2517,15 +2547,9 @@ class _PaywallScreenState extends State<_PaywallScreen> {
                       ),
                     ),
                   FilledButton(
-                    onPressed: _sub.loading || !_sub.canPurchase
+                    onPressed: _sub.loading || !_sub.storeAvailable
                         ? null
-                        : () async {
-                            await _sub.purchase();
-                            if (!mounted) return;
-                            if (await _waitForEntitlement()) {
-                              if (mounted) Navigator.of(context).pop();
-                            }
-                          },
+                        : _startTrialFromPaywall,
                     child: _sub.loading
                         ? const SizedBox(
                             height: 20,
