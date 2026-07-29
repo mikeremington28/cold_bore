@@ -9,11 +9,6 @@ import 'meta_app_events_service.dart';
 
 /// Product ID must match App Store Connect exactly (case-sensitive)
 const String kSubscriptionProductId = 'Coldbore_Pro_Yearly';
-const List<String> kSubscriptionProductIdCandidates = <String>[
-  kSubscriptionProductId,
-  'ColdBore_Pro_Yearly',
-  'coldbore_pro_yearly',
-];
 const String _entitlementPrefsKey = 'cold_bore.subscription.entitled.v1';
 const String _entitlementExpiryPrefsKey = 'cold_bore.subscription.expiry_ms.v1';
 const String _hadEntitlementPrefsKey =
@@ -108,7 +103,7 @@ class SubscriptionService extends ChangeNotifier {
     if (kIsWeb) return; // IAP not available on web.
 
     debugPrint(
-      '[IAP] initialize() platform=${defaultTargetPlatform.name} kIsWeb=$kIsWeb kReleaseMode=$kReleaseMode requestedIds=${kSubscriptionProductIdCandidates.join(', ')}',
+      '[IAP] initialize() platform=${defaultTargetPlatform.name} kIsWeb=$kIsWeb kReleaseMode=$kReleaseMode requestedIds=$kSubscriptionProductId',
     );
     _available = await _iap.isAvailable();
     debugPrint('[IAP] store availability: $_available');
@@ -135,7 +130,7 @@ class SubscriptionService extends ChangeNotifier {
 
     try {
       debugPrint(
-        '[IAP] refreshProductDetails() platform=${defaultTargetPlatform.name} kReleaseMode=$kReleaseMode requestedIds=${kSubscriptionProductIdCandidates.join(', ')}',
+        '[IAP] refreshProductDetails() platform=${defaultTargetPlatform.name} kReleaseMode=$kReleaseMode requestedIds=$kSubscriptionProductId',
       );
       _available = await _iap.isAvailable();
       debugPrint('[IAP] refresh store availability: $_available');
@@ -177,24 +172,14 @@ class SubscriptionService extends ChangeNotifier {
   Future<void> _loadProduct() async {
     try {
       debugPrint(
-        '[IAP] Querying product details for IDs: ${kSubscriptionProductIdCandidates.join(', ')}',
+        '[IAP] Querying product details for ID: $kSubscriptionProductId',
       );
-      final response = await _iap.queryProductDetails(
-        kSubscriptionProductIdCandidates.toSet(),
-      );
+      final response = await _iap.queryProductDetails({kSubscriptionProductId});
       debugPrint(
         '[IAP] queryProductDetails result: found=${response.productDetails.map((p) => p.id).join(', ')}, notFound=${response.notFoundIDs.join(', ')}',
       );
       if (response.productDetails.isNotEmpty) {
-        final productById = {
-          for (final product in response.productDetails) product.id: product,
-        };
-        ProductDetails? selected;
-        for (final id in kSubscriptionProductIdCandidates) {
-          selected = productById[id];
-          if (selected != null) break;
-        }
-        _product = selected ?? response.productDetails.first;
+        _product = response.productDetails.first;
         debugPrint(
           '[IAP] Product loaded: id=${_product!.id}, title=${_product!.title}, price=${_product!.price}',
         );
@@ -250,7 +235,6 @@ class SubscriptionService extends ChangeNotifier {
       debugPrint(
         '[IAP] Calling buyNonConsumable with product id=${_product!.id}, title=${_product!.title}, price=${_product!.price}',
       );
-      // In in_app_purchase, subscriptions are started via buyNonConsumable.
       final launched = await _iap.buyNonConsumable(purchaseParam: param);
       _lastPurchaseLaunchResult = launched;
       debugPrint('[IAP] buyNonConsumable returned: $launched');
@@ -294,11 +278,9 @@ class SubscriptionService extends ChangeNotifier {
 
   Future<void> _onPurchaseUpdates(List<PurchaseDetails> purchases) async {
     debugPrint('[IAP] purchaseStream update count=${purchases.length}');
-    var hasPending = false;
-    var hasTerminal = false;
 
     for (final purchase in purchases) {
-      if (!kSubscriptionProductIdCandidates.contains(purchase.productID)) {
+      if (purchase.productID != kSubscriptionProductId) {
         debugPrint('[IAP] Ignoring purchase update for productID=${purchase.productID}');
         continue;
       }
@@ -315,7 +297,6 @@ class SubscriptionService extends ChangeNotifier {
         _lastPurchaseStatus = PurchaseStatus.pending;
         _lastPurchaseErrorCode = null;
         _lastPurchaseErrorMessage = null;
-        hasPending = true;
         _loading = true;
         notifyListeners();
         continue;
@@ -327,7 +308,6 @@ class SubscriptionService extends ChangeNotifier {
             purchase.error?.message ?? 'Purchase failed. Please try again.';
         _lastPurchaseErrorCode = purchase.error?.code;
         _lastPurchaseErrorMessage = purchase.error?.message;
-        hasTerminal = true;
         _loading = false;
         notifyListeners();
       }
@@ -337,7 +317,6 @@ class SubscriptionService extends ChangeNotifier {
         _lastPurchaseErrorCode = 'canceled';
         _lastPurchaseErrorMessage = 'Purchase canceled by user.';
         _lastError = null;
-        hasTerminal = true;
         _loading = false;
         notifyListeners();
       }
@@ -347,7 +326,6 @@ class SubscriptionService extends ChangeNotifier {
         _lastPurchaseStatus = purchase.status;
         _lastPurchaseErrorCode = null;
         _lastPurchaseErrorMessage = null;
-        hasTerminal = true;
         await _grantEntitlement(purchase: purchase);
       }
 
@@ -357,7 +335,7 @@ class SubscriptionService extends ChangeNotifier {
       }
     }
 
-    _loading = hasPending && !hasTerminal;
+    _loading = false;
     notifyListeners();
   }
 

@@ -2428,33 +2428,9 @@ class _PaywallScreenState extends State<_PaywallScreen> {
     }
   }
 
-  Future<bool> _waitForEntitlement({Duration timeout = const Duration(seconds: 10)}) async {
-    if (_sub.isEntitled) return true;
-    final completer = Completer<bool>();
-    late VoidCallback listener;
-    listener = () {
-      if (_sub.isEntitled && !completer.isCompleted) {
-        completer.complete(true);
-      }
-    };
-    _sub.addListener(listener);
-    try {
-      return await completer.future.timeout(
-        timeout,
-        onTimeout: () => false,
-      );
-    } finally {
-      _sub.removeListener(listener);
-    }
-  }
-
   Future<void> _restorePurchasesFromPaywall() async {
     await _sub.restorePurchases();
     if (!mounted) return;
-    if (await _waitForEntitlement()) {
-      if (mounted) Navigator.of(context).pop();
-      return;
-    }
     final message = _sub.isEntitled
         ? 'Purchase restored. Full access enabled.'
         : 'No active subscription found for this Apple ID.';
@@ -2469,12 +2445,7 @@ class _PaywallScreenState extends State<_PaywallScreen> {
       'Start trial tapped. entitled=${_sub.isEntitled}, productLoaded=${_sub.product != null}, productId=${_sub.product?.id ?? '-'}',
     );
 
-    await _sub.refreshProductDetails();
-    _logPurchaseTap(
-      'After refresh. storeAvailable=${_sub.storeAvailable}, productLoaded=${_sub.product != null}, productId=${_sub.product?.id ?? '-'}, title=${_sub.product?.title ?? '-'}, price=${_sub.product?.price ?? '-'}',
-    );
-
-    if (_sub.product == null || !_sub.storeAvailable) {
+    if (_sub.product == null) {
       _setPurchaseDebugLine('Error: Product not loaded');
       if (!mounted) return;
       final msg = 'Subscription is temporarily unavailable. Please try again.';
@@ -2512,7 +2483,6 @@ class _PaywallScreenState extends State<_PaywallScreen> {
     _logPurchaseTap('Purchase call returned.');
     if (!mounted) return;
     _logPurchaseTap('Entitled after purchase: ${_sub.isEntitled}');
-    _handlePurchaseStatusFromStream();
   }
 
   @override
@@ -2529,7 +2499,6 @@ class _PaywallScreenState extends State<_PaywallScreen> {
       }
     };
     _sub.addListener(_listener);
-    unawaited(_sub.refreshProductDetails());
   }
 
   @override
@@ -2641,7 +2610,7 @@ class _PaywallScreenState extends State<_PaywallScreen> {
                       ),
                     ),
                   FilledButton(
-                    onPressed: _sub.loading || !_sub.canPurchase
+                    onPressed: _sub.loading || _sub.product == null
                         ? null
                         : _startTrialFromPaywall,
                     child: _sub.loading
