@@ -186,14 +186,22 @@ class SubscriptionService extends ChangeNotifier {
   // ── purchase ──────────────────────────────────────────────────────────────
 
   Future<void> purchase() async {
+    try {
+      _available = await _iap.isAvailable();
+    } catch (_) {
+      _available = false;
+    }
+    if (!_available) {
+      _lastError = 'Subscription store is currently unavailable.';
+      notifyListeners();
+      return;
+    }
+
     if (_product == null) {
-      if (_available) {
-        await _loadProduct();
-      }
+      await _loadProduct();
       if (_product == null) {
-        _lastError = _available
-            ? 'Product not available. Please refresh and try again.'
-            : 'Subscription store is currently unavailable.';
+        _lastError =
+            'Product not available. Please refresh and try again.';
         notifyListeners();
         return;
       }
@@ -216,7 +224,7 @@ class SubscriptionService extends ChangeNotifier {
       _loading = false;
       notifyListeners();
     } catch (e) {
-      _lastError = 'Purchase failed. Please try again.';
+      _lastError = 'Purchase failed. ${e.toString()}';
       _loading = false;
       notifyListeners();
     }

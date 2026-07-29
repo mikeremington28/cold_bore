@@ -2405,11 +2405,29 @@ class _PaywallScreenState extends State<_PaywallScreen> {
     await _sub.refreshProductDetails();
 
     if (!_sub.canPurchase) {
+      await _sub.restorePurchases(silent: true);
+      if (!mounted) return;
+      if (await _waitForEntitlement(timeout: const Duration(seconds: 5))) {
+        if (mounted) Navigator.of(context).pop();
+        return;
+      }
       if (!mounted) return;
       final msg = _sub.storeAvailable
-          ? 'Unable to load subscription options. Tap Refresh price and try again.'
+          ? 'Unable to load App Store subscription options on this device right now. Please tap Refresh price, confirm you are signed into the App Store, and try again.'
           : 'Subscription store is currently unavailable. Please try again in a moment.';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Purchase unavailable'),
+          content: Text(msg),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
       return;
     }
 
@@ -2421,9 +2439,19 @@ class _PaywallScreenState extends State<_PaywallScreen> {
     }
 
     if (_sub.lastError != null && _sub.lastError!.trim().isNotEmpty && mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(_sub.lastError!)));
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Purchase did not complete'),
+          content: Text(_sub.lastError!),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
     }
   }
 
