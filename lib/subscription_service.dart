@@ -200,6 +200,10 @@ class SubscriptionService extends ChangeNotifier {
       // Auto-renewing subscriptions should use non-consumable purchase flow.
       await _iap.buyNonConsumable(purchaseParam: param);
 
+      // Some devices deliver the entitlement update slightly after the
+      // purchase flow returns, so re-sync with the store immediately.
+      await restorePurchases(silent: true);
+
       // If the storefront is dismissed without a terminal purchase update,
       // don't leave the paywall in a perpetual loading state.
       _loading = false;

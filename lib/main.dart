@@ -2366,9 +2366,33 @@ class _PaywallScreenState extends State<_PaywallScreen> {
   final SubscriptionService _sub = SubscriptionService();
   late final VoidCallback _listener;
 
+  Future<bool> _waitForEntitlement({Duration timeout = const Duration(seconds: 10)}) async {
+    if (_sub.isEntitled) return true;
+    final completer = Completer<bool>();
+    late VoidCallback listener;
+    listener = () {
+      if (_sub.isEntitled && !completer.isCompleted) {
+        completer.complete(true);
+      }
+    };
+    _sub.addListener(listener);
+    try {
+      return await completer.future.timeout(
+        timeout,
+        onTimeout: () => false,
+      );
+    } finally {
+      _sub.removeListener(listener);
+    }
+  }
+
   Future<void> _restorePurchasesFromPaywall() async {
     await _sub.restorePurchases();
     if (!mounted) return;
+    if (await _waitForEntitlement()) {
+      if (mounted) Navigator.of(context).pop();
+      return;
+    }
     final message = _sub.isEntitled
         ? 'Purchase restored. Full access enabled.'
         : 'No active subscription found for this Apple ID.';
@@ -2495,7 +2519,13 @@ class _PaywallScreenState extends State<_PaywallScreen> {
                   FilledButton(
                     onPressed: _sub.loading || !_sub.canPurchase
                         ? null
-                        : () => _sub.purchase(),
+                        : () async {
+                            await _sub.purchase();
+                            if (!mounted) return;
+                            if (await _waitForEntitlement()) {
+                              if (mounted) Navigator.of(context).pop();
+                            }
+                          },
                     child: _sub.loading
                         ? const SizedBox(
                             height: 20,
