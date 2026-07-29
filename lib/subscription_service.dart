@@ -44,6 +44,12 @@ class SubscriptionService extends ChangeNotifier {
   ProductDetails? _product;
   String? _lastError;
   PurchaseStatus? _lastPurchaseStatus;
+  String? _lastPurchaseErrorCode;
+  String? _lastPurchaseErrorMessage;
+  String? _lastPurchaseId;
+  String? _lastPurchaseProductId;
+  bool? _lastPendingCompletePurchase;
+  bool? _lastPurchaseLaunchResult;
   bool _testerOverride = false;
   String? _currentIdentifier;
   final Set<String> _loggedMetaEventKeys = <String>{};
@@ -79,6 +85,18 @@ class SubscriptionService extends ChangeNotifier {
   String? get lastError => _lastError;
 
   PurchaseStatus? get lastPurchaseStatus => _lastPurchaseStatus;
+
+  String? get lastPurchaseErrorCode => _lastPurchaseErrorCode;
+
+  String? get lastPurchaseErrorMessage => _lastPurchaseErrorMessage;
+
+  String? get lastPurchaseId => _lastPurchaseId;
+
+  String? get lastPurchaseProductId => _lastPurchaseProductId;
+
+  bool? get lastPendingCompletePurchase => _lastPendingCompletePurchase;
+
+  bool? get lastPurchaseLaunchResult => _lastPurchaseLaunchResult;
 
   // ── lifecycle ─────────────────────────────────────────────────────────────
 
@@ -218,6 +236,8 @@ class SubscriptionService extends ChangeNotifier {
     }
     if (!_available) {
       _lastError = 'Subscription store is currently unavailable.';
+      _lastPurchaseErrorCode = 'store_unavailable';
+      _lastPurchaseErrorMessage = _lastError;
       notifyListeners();
       return;
     }
@@ -227,6 +247,8 @@ class SubscriptionService extends ChangeNotifier {
       if (_product == null) {
         _lastError =
             'Product not available. Please refresh and try again.';
+        _lastPurchaseErrorCode = 'product_unavailable';
+        _lastPurchaseErrorMessage = _lastError;
         debugPrint('[IAP] purchase() aborted: product not loaded.');
         notifyListeners();
         return;
@@ -234,6 +256,9 @@ class SubscriptionService extends ChangeNotifier {
     }
     _lastError = null;
     _lastPurchaseStatus = null;
+    _lastPurchaseErrorCode = null;
+    _lastPurchaseErrorMessage = null;
+    _lastPurchaseLaunchResult = null;
     _loading = true;
     notifyListeners();
 
@@ -243,7 +268,9 @@ class SubscriptionService extends ChangeNotifier {
         '[IAP] Launching purchase sheet with product id=${_product!.id}, title=${_product!.title}, price=${_product!.price}',
       );
       // In in_app_purchase, subscriptions are started via buyNonConsumable.
-      await _iap.buyNonConsumable(purchaseParam: param);
+      final launched = await _iap.buyNonConsumable(purchaseParam: param);
+      _lastPurchaseLaunchResult = launched;
+      debugPrint('[IAP] buyNonConsumable returned: $launched');
 
       // Some devices deliver the entitlement update slightly after the
       // purchase flow returns, so re-sync with the store immediately.
@@ -257,6 +284,8 @@ class SubscriptionService extends ChangeNotifier {
       debugPrint('[IAP] purchase() exception: $e');
       _lastError = 'Purchase failed. ${e.toString()}';
       _lastPurchaseStatus = PurchaseStatus.error;
+      _lastPurchaseErrorCode = 'purchase_exception';
+      _lastPurchaseErrorMessage = e.toString();
       _loading = false;
       notifyListeners();
     }
@@ -286,18 +315,28 @@ class SubscriptionService extends ChangeNotifier {
 
   Future<void> _onPurchaseUpdates(List<PurchaseDetails> purchases) async {
     debugPrint('[IAP] purchaseStream update count=${purchases.length}');
+    var hasPending = false;
+    var hasTerminal = false;
+
     for (final purchase in purchases) {
       if (!kSubscriptionProductIdCandidates.contains(purchase.productID)) {
         debugPrint('[IAP] Ignoring purchase update for productID=${purchase.productID}');
         continue;
       }
 
+      _lastPurchaseId = purchase.purchaseID;
+      _lastPurchaseProductId = purchase.productID;
+      _lastPendingCompletePurchase = purchase.pendingCompletePurchase;
+
       debugPrint(
-        '[IAP] Purchase update: productID=${purchase.productID}, status=${purchase.status.name}, pendingComplete=${purchase.pendingCompletePurchase}',
+        '[IAP] Purchase update: purchaseID=${purchase.purchaseID ?? '-'}, productID=${purchase.productID}, status=${purchase.status.name}, pendingComplete=${purchase.pendingCompletePurchase}, errorCode=${purchase.error?.code ?? '-'}, errorMsg=${purchase.error?.message ?? '-'}, verificationDataLen=${purchase.verificationData.serverVerificationData.length}',
       );
 
       if (purchase.status == PurchaseStatus.pending) {
         _lastPurchaseStatus = PurchaseStatus.pending;
+        _lastPurchaseErrorCode = null;
+        _lastPurchaseErrorMessage = null;
+        hasPending = true;
         _loading = true;
         notifyListeners();
         continue;
@@ -307,13 +346,19 @@ class SubscriptionService extends ChangeNotifier {
         _lastPurchaseStatus = PurchaseStatus.error;
         _lastError =
             purchase.error?.message ?? 'Purchase failed. Please try again.';
+        _lastPurchaseErrorCode = purchase.error?.code;
+        _lastPurchaseErrorMessage = purchase.error?.message;
+        hasTerminal = true;
         _loading = false;
         notifyListeners();
       }
 
       if (purchase.status == PurchaseStatus.canceled) {
         _lastPurchaseStatus = PurchaseStatus.canceled;
+        _lastPurchaseErrorCode = 'canceled';
+        _lastPurchaseErrorMessage = 'Purchase canceled by user.';
         _lastError = null;
+        hasTerminal = true;
         _loading = false;
         notifyListeners();
       }
@@ -321,15 +366,19 @@ class SubscriptionService extends ChangeNotifier {
       if (purchase.status == PurchaseStatus.purchased ||
           purchase.status == PurchaseStatus.restored) {
         _lastPurchaseStatus = purchase.status;
+        _lastPurchaseErrorCode = null;
+        _lastPurchaseErrorMessage = null;
+        hasTerminal = true;
         await _grantEntitlement(purchase: purchase);
       }
 
       if (purchase.pendingCompletePurchase) {
+        debugPrint('[IAP] Completing pending purchase for purchaseID=${purchase.purchaseID ?? '-'}');
         await _iap.completePurchase(purchase);
       }
     }
 
-    _loading = false;
+    _loading = hasPending && !hasTerminal;
     notifyListeners();
   }
 

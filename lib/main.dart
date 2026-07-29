@@ -2462,6 +2462,16 @@ class _PaywallScreenState extends State<_PaywallScreen> {
     await _sub.purchase();
     _logPurchaseTap('Purchase call returned.');
     if (!mounted) return;
+
+    final statusAfterCall = _sub.lastPurchaseStatus;
+    if (statusAfterCall == PurchaseStatus.pending) {
+      _logPurchaseTap('Purchase pending after call return. Waiting for stream updates.');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Purchase pending...')),
+      );
+      return;
+    }
+
     _logPurchaseTap('Entitled after purchase: ${_sub.isEntitled}');
     if (await _waitForEntitlement()) {
       _logPurchaseTap('Purchase completed. Entitlement=true.');
@@ -2480,10 +2490,19 @@ class _PaywallScreenState extends State<_PaywallScreen> {
       return;
     }
 
+    if (_sub.lastPurchaseStatus == PurchaseStatus.error) {
+      final shortError = (_sub.lastPurchaseErrorMessage ?? _sub.lastError ?? 'Please try again.').trim();
+      _logPurchaseTap('Purchase error. code=${_sub.lastPurchaseErrorCode ?? '-'}, message=$shortError');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Purchase failed: $shortError')),
+      );
+      return;
+    }
+
     final shortError = (_sub.lastError ?? 'Please try again.').trim();
     _logPurchaseTap('Purchase failed. status=${_sub.lastPurchaseStatus?.name ?? '-'}, error=$shortError');
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Purchase failed: $shortError')),
+      const SnackBar(content: Text('Purchase did not complete. Please try again.')),
     );
     await showDialog<void>(
       context: context,
@@ -2523,6 +2542,10 @@ class _PaywallScreenState extends State<_PaywallScreen> {
   Widget build(BuildContext context) {
     final product = _sub.product;
     final priceText = product?.price ?? '-';
+    final showDebugPanel =
+        !kIsWeb &&
+        kReleaseMode &&
+        defaultTargetPlatform == TargetPlatform.iOS;
     final isExpired = widget.mode == _PaywallMode.expired;
     final isIos = defaultTargetPlatform == TargetPlatform.iOS;
     final title = isExpired ? 'Subscription required' : 'Start your free trial';
@@ -2618,7 +2641,7 @@ class _PaywallScreenState extends State<_PaywallScreen> {
                       ),
                     ),
                   FilledButton(
-                    onPressed: _sub.loading
+                    onPressed: _sub.loading || !_sub.canPurchase
                         ? null
                         : _startTrialFromPaywall,
                     child: _sub.loading
@@ -2629,6 +2652,29 @@ class _PaywallScreenState extends State<_PaywallScreen> {
                           )
                         : Text(cta),
                   ),
+                  if (showDebugPanel) ...[
+                    const SizedBox(height: 12),
+                    ColdBoreCard(
+                      padding: const EdgeInsets.all(10),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Debug (TestFlight)',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 6),
+                          Text('Product loaded: ${_sub.product != null}'),
+                          Text('Product ID: ${_sub.product?.id ?? '-'}'),
+                          Text('Store available: ${_sub.storeAvailable}'),
+                          Text('Last purchase status: ${_sub.lastPurchaseStatus?.name ?? '-'}'),
+                          Text('Last error code: ${_sub.lastPurchaseErrorCode ?? '-'}'),
+                          Text('Last error message: ${_sub.lastPurchaseErrorMessage ?? _sub.lastError ?? '-'}'),
+                          Text('Entitled: ${_sub.isEntitled}'),
+                        ],
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   if (!_sub.canPurchase)
                     Padding(
