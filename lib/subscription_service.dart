@@ -9,14 +9,16 @@ import 'meta_app_events_service.dart';
 
 /// Product ID must match App Store Connect exactly (case-sensitive)
 const String kSubscriptionProductId = 'Coldbore_Pro_Yearly';
+const List<String> kSubscriptionProductIdCandidates = <String>[
+  kSubscriptionProductId,
+  'ColdBore_Pro_Yearly',
+];
 const String _entitlementPrefsKey = 'cold_bore.subscription.entitled.v1';
 const String _entitlementExpiryPrefsKey = 'cold_bore.subscription.expiry_ms.v1';
-const String _hadEntitlementPrefsKey =
-    'cold_bore.subscription.had_entitlement.v1';
-const String _lastPurchaseMsPrefsKey =
-    'cold_bore.subscription.last_purchase_ms.v1';
+const String _trialStartPrefsKey = 'cold_bore.subscription.trial_start_ms.v1';
 const String _metaLoggedEventKeysPrefsKey =
   'cold_bore.subscription.meta_event_keys.v1';
+const int _trialDays = 30;
 
 /// Lightweight subscription service.
 ///
@@ -32,19 +34,11 @@ class SubscriptionService extends ChangeNotifier {
   StreamSubscription<List<PurchaseDetails>>? _purchaseSub;
 
   bool _entitled = false;
-  bool _hadEntitlementEver = false;
-  DateTime? _lastPurchaseAt;
+  DateTime? _trialEndsAt;
   bool _loading = false;
   bool _available = false;
   ProductDetails? _product;
   String? _lastError;
-  PurchaseStatus? _lastPurchaseStatus;
-  String? _lastPurchaseErrorCode;
-  String? _lastPurchaseErrorMessage;
-  String? _lastPurchaseId;
-  String? _lastPurchaseProductId;
-  bool? _lastPendingCompletePurchase;
-  bool? _lastPurchaseLaunchResult;
   bool _testerOverride = false;
   String? _currentIdentifier;
   final Set<String> _loggedMetaEventKeys = <String>{};
@@ -52,19 +46,20 @@ class SubscriptionService extends ChangeNotifier {
   /// True while initial availability check / purchase is in progress.
   bool get loading => _loading;
 
-  /// True when the user has an active paid/trial entitlement from Apple.
-  bool get isEntitled => _entitled || _testerOverride;
+  /// True when the user has an active subscription or is in their free trial.
+  bool get isEntitled => _entitled || _isTrialActive || _testerOverride;
 
   bool get hasTesterAccess => _testerOverride;
 
-  bool get hadEntitlementEver => _hadEntitlementEver;
+  bool get _isTrialActive =>
+      _trialEndsAt != null && DateTime.now().isBefore(_trialEndsAt!);
 
-  DateTime? get lastPurchaseAt => _lastPurchaseAt;
+  DateTime? get trialEndsAt => _trialEndsAt;
 
-  bool get isLikelyInAppleTrial {
-    // The in_app_purchase API used here does not provide a reliable flag for
-    // "currently in introductory trial". Fall back to Pro Active labeling.
-    return false;
+  int get trialDaysRemaining {
+    if (!_isTrialActive || _trialEndsAt == null) return 0;
+    final remaining = _trialEndsAt!.difference(DateTime.now()).inDays + 1;
+    return remaining.clamp(0, _trialDays);
   }
 
   /// The product to display in the paywall (may be null until loaded).
@@ -79,34 +74,17 @@ class SubscriptionService extends ChangeNotifier {
   /// Set when a purchase/restore fails.
   String? get lastError => _lastError;
 
-  PurchaseStatus? get lastPurchaseStatus => _lastPurchaseStatus;
-
-  String? get lastPurchaseErrorCode => _lastPurchaseErrorCode;
-
-  String? get lastPurchaseErrorMessage => _lastPurchaseErrorMessage;
-
-  String? get lastPurchaseId => _lastPurchaseId;
-
-  String? get lastPurchaseProductId => _lastPurchaseProductId;
-
-  bool? get lastPendingCompletePurchase => _lastPendingCompletePurchase;
-
-  bool? get lastPurchaseLaunchResult => _lastPurchaseLaunchResult;
-
   // ── lifecycle ─────────────────────────────────────────────────────────────
 
   Future<void> initialize() async {
     // Restore cached entitlement quickly so UI doesn't flash locked state.
     await _loadCachedEntitlement();
+    await _loadOrStartTrial();
     await _loadLoggedMetaEventKeys();
 
     if (kIsWeb) return; // IAP not available on web.
 
-    debugPrint(
-      '[IAP] initialize() platform=${defaultTargetPlatform.name} kIsWeb=$kIsWeb kReleaseMode=$kReleaseMode requestedIds=$kSubscriptionProductId',
-    );
     _available = await _iap.isAvailable();
-    debugPrint('[IAP] store availability: $_available');
     if (!_available) {
       _lastError = 'Subscription store is currently unavailable.';
       notifyListeners();
@@ -129,11 +107,7 @@ class SubscriptionService extends ChangeNotifier {
     if (kIsWeb) return;
 
     try {
-      debugPrint(
-        '[IAP] refreshProductDetails() platform=${defaultTargetPlatform.name} kReleaseMode=$kReleaseMode requestedIds=$kSubscriptionProductId',
-      );
       _available = await _iap.isAvailable();
-      debugPrint('[IAP] refresh store availability: $_available');
       if (!_available) {
         _product = null;
         _lastError = 'Subscription store is currently unavailable.';
@@ -171,24 +145,24 @@ class SubscriptionService extends ChangeNotifier {
 
   Future<void> _loadProduct() async {
     try {
-      debugPrint(
-        '[IAP] Querying product details for ID: $kSubscriptionProductId',
-      );
-      final response = await _iap.queryProductDetails({kSubscriptionProductId});
-      debugPrint(
-        '[IAP] queryProductDetails result: found=${response.productDetails.map((p) => p.id).join(', ')}, notFound=${response.notFoundIDs.join(', ')}',
+      final response = await _iap.queryProductDetails(
+        kSubscriptionProductIdCandidates.toSet(),
       );
       if (response.productDetails.isNotEmpty) {
-        _product = response.productDetails.first;
-        debugPrint(
-          '[IAP] Product loaded: id=${_product!.id}, title=${_product!.title}, price=${_product!.price}',
-        );
+        final productById = {
+          for (final product in response.productDetails) product.id: product,
+        };
+        ProductDetails? selected;
+        for (final id in kSubscriptionProductIdCandidates) {
+          selected = productById[id];
+          if (selected != null) break;
+        }
+        _product = selected ?? response.productDetails.first;
         _lastError = null;
         notifyListeners();
         return;
       }
       if (response.notFoundIDs.isNotEmpty) {
-        debugPrint('[IAP] Product not found IDs: ${response.notFoundIDs.join(', ')}');
         _product = null;
         _lastError =
             'Subscription product not found in App Store (${response.notFoundIDs.join(', ')}).';
@@ -211,44 +185,26 @@ class SubscriptionService extends ChangeNotifier {
   // ── purchase ──────────────────────────────────────────────────────────────
 
   Future<void> purchase() async {
-    debugPrint(
-      '[IAP] purchase() called. entitled=$isEntitled, storeAvailable=$_available, productLoaded=${_product != null}',
-    );
     if (_product == null) {
       _lastError = 'Product not available. Please try again.';
-      _lastPurchaseErrorCode = 'product_unavailable';
-      _lastPurchaseErrorMessage = _lastError;
-      debugPrint('[IAP] purchase() aborted: product not loaded.');
       notifyListeners();
       return;
     }
     _lastError = null;
-    _lastPurchaseStatus = null;
-    _lastPurchaseErrorCode = null;
-    _lastPurchaseErrorMessage = null;
-    _lastPurchaseLaunchResult = null;
     _loading = true;
     notifyListeners();
 
     try {
       final param = PurchaseParam(productDetails: _product!);
-      debugPrint(
-        '[IAP] Calling buyNonConsumable with product id=${_product!.id}, title=${_product!.title}, price=${_product!.price}',
-      );
-      final launched = await _iap.buyNonConsumable(purchaseParam: param);
-      _lastPurchaseLaunchResult = launched;
-      debugPrint('[IAP] buyNonConsumable returned: $launched');
+      // Auto-renewing subscriptions should use non-consumable purchase flow.
+      await _iap.buyNonConsumable(purchaseParam: param);
 
       // If the storefront is dismissed without a terminal purchase update,
       // don't leave the paywall in a perpetual loading state.
       _loading = false;
       notifyListeners();
     } catch (e) {
-      debugPrint('[IAP] purchase() exception: $e');
-      _lastError = 'Purchase failed. ${e.toString()}';
-      _lastPurchaseStatus = PurchaseStatus.error;
-      _lastPurchaseErrorCode = 'purchase_exception';
-      _lastPurchaseErrorMessage = e.toString();
+      _lastError = 'Purchase failed. Please try again.';
       _loading = false;
       notifyListeners();
     }
@@ -277,45 +233,25 @@ class SubscriptionService extends ChangeNotifier {
   // ── purchase stream handler ───────────────────────────────────────────────
 
   Future<void> _onPurchaseUpdates(List<PurchaseDetails> purchases) async {
-    debugPrint('[IAP] purchaseStream update count=${purchases.length}');
-
     for (final purchase in purchases) {
-      if (purchase.productID != kSubscriptionProductId) {
-        debugPrint('[IAP] Ignoring purchase update for productID=${purchase.productID}');
+      if (!kSubscriptionProductIdCandidates.contains(purchase.productID)) {
         continue;
       }
 
-      _lastPurchaseId = purchase.purchaseID;
-      _lastPurchaseProductId = purchase.productID;
-      _lastPendingCompletePurchase = purchase.pendingCompletePurchase;
-
-      debugPrint(
-        '[IAP] Purchase update: purchaseID=${purchase.purchaseID ?? '-'}, productID=${purchase.productID}, status=${purchase.status.name}, pendingComplete=${purchase.pendingCompletePurchase}, errorCode=${purchase.error?.code ?? '-'}, errorMsg=${purchase.error?.message ?? '-'}, verificationDataLen=${purchase.verificationData.serverVerificationData.length}',
-      );
-
       if (purchase.status == PurchaseStatus.pending) {
-        _lastPurchaseStatus = PurchaseStatus.pending;
-        _lastPurchaseErrorCode = null;
-        _lastPurchaseErrorMessage = null;
         _loading = true;
         notifyListeners();
         continue;
       }
 
       if (purchase.status == PurchaseStatus.error) {
-        _lastPurchaseStatus = PurchaseStatus.error;
         _lastError =
             purchase.error?.message ?? 'Purchase failed. Please try again.';
-        _lastPurchaseErrorCode = purchase.error?.code;
-        _lastPurchaseErrorMessage = purchase.error?.message;
         _loading = false;
         notifyListeners();
       }
 
       if (purchase.status == PurchaseStatus.canceled) {
-        _lastPurchaseStatus = PurchaseStatus.canceled;
-        _lastPurchaseErrorCode = 'canceled';
-        _lastPurchaseErrorMessage = 'Purchase canceled by user.';
         _lastError = null;
         _loading = false;
         notifyListeners();
@@ -323,14 +259,10 @@ class SubscriptionService extends ChangeNotifier {
 
       if (purchase.status == PurchaseStatus.purchased ||
           purchase.status == PurchaseStatus.restored) {
-        _lastPurchaseStatus = purchase.status;
-        _lastPurchaseErrorCode = null;
-        _lastPurchaseErrorMessage = null;
         await _grantEntitlement(purchase: purchase);
       }
 
       if (purchase.pendingCompletePurchase) {
-        debugPrint('[IAP] Completing pending purchase for purchaseID=${purchase.purchaseID ?? '-'}');
         await _iap.completePurchase(purchase);
       }
     }
@@ -343,21 +275,9 @@ class SubscriptionService extends ChangeNotifier {
 
   Future<void> _grantEntitlement({PurchaseDetails? purchase}) async {
     _entitled = true;
-    _hadEntitlementEver = true;
     _lastError = null;
-    final purchaseAt = _parsePurchaseDate(purchase);
-    if (purchaseAt != null) {
-      _lastPurchaseAt = purchaseAt;
-    }
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_entitlementPrefsKey, true);
-    await prefs.setBool(_hadEntitlementPrefsKey, true);
-    if (_lastPurchaseAt != null) {
-      await prefs.setInt(
-        _lastPurchaseMsPrefsKey,
-        _lastPurchaseAt!.millisecondsSinceEpoch,
-      );
-    }
     // Store a far-future expiry; StoreKit handles actual renewal checks.
     final farFuture = DateTime.now()
         .add(const Duration(days: 400))
@@ -373,11 +293,6 @@ class SubscriptionService extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       final entitled = prefs.getBool(_entitlementPrefsKey) == true;
-      _hadEntitlementEver = prefs.getBool(_hadEntitlementPrefsKey) == true;
-      final lastPurchaseMs = prefs.getInt(_lastPurchaseMsPrefsKey);
-      _lastPurchaseAt = lastPurchaseMs == null
-          ? null
-          : DateTime.fromMillisecondsSinceEpoch(lastPurchaseMs);
       final expiryMs = prefs.getInt(_entitlementExpiryPrefsKey);
       if (entitled && expiryMs != null) {
         final expiry = DateTime.fromMillisecondsSinceEpoch(expiryMs);
@@ -387,22 +302,39 @@ class SubscriptionService extends ChangeNotifier {
       }
     } catch (_) {
       _entitled = false;
-      _hadEntitlementEver = false;
-      _lastPurchaseAt = null;
     }
     notifyListeners();
   }
 
-  DateTime? _parsePurchaseDate(PurchaseDetails? purchase) {
-    final raw = purchase?.transactionDate;
-    if (raw == null) return null;
-    final ms = int.tryParse(raw);
-    if (ms == null) return null;
-    try {
-      return DateTime.fromMillisecondsSinceEpoch(ms);
-    } catch (_) {
-      return null;
+  Future<void> _loadOrStartTrial() async {
+    // On iOS, rely on App Store introductory offer eligibility (Apple ID based)
+    // instead of local trial storage that can be reset by reinstall.
+    if (!kIsWeb && Platform.isIOS) {
+      _trialEndsAt = null;
+      notifyListeners();
+      return;
     }
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      var startMs = prefs.getInt(_trialStartPrefsKey);
+      if (startMs == null) {
+        startMs = DateTime.now().millisecondsSinceEpoch;
+        await prefs.setInt(_trialStartPrefsKey, startMs);
+        await MetaAppEventsService.instance.logTrialStarted(
+          orderId: 'trial-$startMs',
+          parameters: <String, dynamic>{
+            'product_id': kSubscriptionProductId,
+            'trial_days': _trialDays,
+          },
+        );
+      }
+      final start = DateTime.fromMillisecondsSinceEpoch(startMs);
+      _trialEndsAt = start.add(const Duration(days: _trialDays));
+    } catch (_) {
+      _trialEndsAt = null;
+    }
+    notifyListeners();
   }
 
   Future<void> _loadLoggedMetaEventKeys() async {

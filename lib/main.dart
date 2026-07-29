@@ -11,7 +11,6 @@ import 'package:geolocator/geolocator.dart';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:image_picker/image_picker.dart';
-import 'package:in_app_purchase/in_app_purchase.dart';
 import 'dart:async';
 import 'package:noise_meter/noise_meter.dart';
 import 'package:share_plus/share_plus.dart';
@@ -2318,47 +2317,32 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
   }
 }
 
-enum _WriteGateKind {
-  addRifle,
-  addSession,
-  addShot,
-  addAmmoLot,
-  addMaintenance,
-  addDope,
-  addRecord,
-}
-
-enum _PaywallMode { previewLimit, expired }
-
 // Subscription gate helper
 /// Returns true if the action should proceed.
-/// If blocked, shows the paywall and returns false.
-Future<bool> _guardWrite(
-  BuildContext context, {
-  AppState? state,
-  _WriteGateKind kind = _WriteGateKind.addRecord,
-}) async {
+/// If not entitled, shows the paywall and returns false.
+Future<bool> _guardWrite(BuildContext context) async {
   if (kDebugMode) return true;
   final sub = SubscriptionService();
   if (sub.isEntitled) return true;
-  final isExpired = sub.hadEntitlementEver;
-
+  if (!sub.canPurchase) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Subscription store is temporarily unavailable. Write access is allowed for now.',
+        ),
+      ),
+    );
+    return true;
+  }
   await Navigator.of(
     context,
-  ).push(
-    MaterialPageRoute(
-      builder: (_) => _PaywallScreen(
-        mode: isExpired ? _PaywallMode.expired : _PaywallMode.previewLimit,
-      ),
-    ),
-  );
+  ).push(MaterialPageRoute(builder: (_) => const _PaywallScreen()));
   return false;
 }
 
 // Paywall screen
 class _PaywallScreen extends StatefulWidget {
-  final _PaywallMode mode;
-  const _PaywallScreen({this.mode = _PaywallMode.previewLimit});
+  const _PaywallScreen();
   @override
   State<_PaywallScreen> createState() => _PaywallScreenState();
 }
@@ -2366,124 +2350,6 @@ class _PaywallScreen extends StatefulWidget {
 class _PaywallScreenState extends State<_PaywallScreen> {
   final SubscriptionService _sub = SubscriptionService();
   late final VoidCallback _listener;
-  String _purchaseDebugLine = 'Ready';
-  String? _lastHandledPurchaseToken;
-
-  void _logPurchaseTap(String message) {
-    debugPrint('[Paywall] $message');
-  }
-
-  void _setPurchaseDebugLine(String value) {
-    _logPurchaseTap('debug_line=$value');
-    if (!mounted) return;
-    setState(() => _purchaseDebugLine = value);
-  }
-
-  void _handlePurchaseStatusFromStream() {
-    final status = _sub.lastPurchaseStatus;
-    if (status == null) return;
-    final token =
-        '${_sub.lastPurchaseId ?? '-'}:${status.name}:${_sub.lastPurchaseErrorCode ?? '-'}:${_sub.lastPurchaseErrorMessage ?? '-'}:${_sub.isEntitled}';
-    if (token == _lastHandledPurchaseToken) return;
-    _lastHandledPurchaseToken = token;
-
-    _setPurchaseDebugLine('Purchase stream status: ${status.name}');
-
-    if (status == PurchaseStatus.pending) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Purchase pending...')));
-      return;
-    }
-
-    if (status == PurchaseStatus.canceled) {
-      final msg = 'Purchase canceled.';
-      _setPurchaseDebugLine('Error: $msg');
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Purchase canceled')));
-      return;
-    }
-
-    if (status == PurchaseStatus.error) {
-      final shortError =
-          (_sub.lastPurchaseErrorMessage ?? _sub.lastError ?? 'Unknown error')
-              .trim();
-      final code = _sub.lastPurchaseErrorCode ?? '-';
-      _setPurchaseDebugLine('Error: [$code] $shortError');
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Purchase failed: $shortError')));
-      return;
-    }
-
-    if ((status == PurchaseStatus.purchased ||
-            status == PurchaseStatus.restored) &&
-        _sub.isEntitled) {
-      _setPurchaseDebugLine('Purchase stream status: ${status.name}');
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Purchase completed')));
-      Navigator.of(context).pop();
-    }
-  }
-
-  Future<void> _restorePurchasesFromPaywall() async {
-    await _sub.restorePurchases();
-    if (!mounted) return;
-    final message = _sub.isEntitled
-        ? 'Purchase restored. Full access enabled.'
-        : 'No active subscription found for this Apple ID.';
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
-  }
-
-  Future<void> _startTrialFromPaywall() async {
-    if (_sub.loading) return;
-
-    _setPurchaseDebugLine('Button tapped');
-    _logPurchaseTap(
-      'Start trial tapped. entitled=${_sub.isEntitled}, productLoaded=${_sub.product != null}, productId=${_sub.product?.id ?? '-'}',
-    );
-
-    if (_sub.product == null) {
-      _setPurchaseDebugLine('Error: Product not loaded');
-      if (!mounted) return;
-      final msg = 'Subscription is temporarily unavailable. Please try again.';
-      _logPurchaseTap(
-        'Product not loaded. storeAvailable=${_sub.storeAvailable}, lastError=${_sub.lastError ?? '-'}',
-      );
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Product not loaded')));
-      await showDialog<void>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Purchase unavailable'),
-          content: Text(msg),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Close'),
-            ),
-          ],
-        ),
-      );
-      return;
-    }
-
-    _setPurchaseDebugLine('Calling StoreKit purchase');
-    _logPurchaseTap('Calling purchase() for productId=${_sub.product?.id ?? '-'}');
-    if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Starting purchase...')));
-    }
-    await _sub.purchase();
-    _setPurchaseDebugLine('StoreKit purchase call returned');
-    _logPurchaseTap('Purchase call returned.');
-    if (!mounted) return;
-    _logPurchaseTap('Entitled after purchase: ${_sub.isEntitled}');
-  }
 
   @override
   void initState() {
@@ -2491,14 +2357,11 @@ class _PaywallScreenState extends State<_PaywallScreen> {
     _listener = () {
       if (!mounted) return;
       setState(() {});
-      _handlePurchaseStatusFromStream();
       // Auto-dismiss when entitlement is granted.
-      if (_sub.isEntitled && mounted) {
-        _setPurchaseDebugLine('Purchase stream status: purchased');
-        Navigator.of(context).pop();
-      }
+      if (_sub.isEntitled && mounted) Navigator.of(context).pop();
     };
     _sub.addListener(_listener);
+    unawaited(_sub.refreshProductDetails());
   }
 
   @override
@@ -2511,21 +2374,9 @@ class _PaywallScreenState extends State<_PaywallScreen> {
   Widget build(BuildContext context) {
     final product = _sub.product;
     final priceText = product?.price ?? '-';
-    final showDebugPanel =
-        !kIsWeb &&
-        kReleaseMode &&
-        defaultTargetPlatform == TargetPlatform.iOS;
-    final isExpired = widget.mode == _PaywallMode.expired;
+    final trialDays = _sub.trialDaysRemaining;
+    final inTrial = trialDays > 0;
     final isIos = defaultTargetPlatform == TargetPlatform.iOS;
-    final title = isExpired ? 'Subscription required' : 'Start your free trial';
-    final body = isExpired
-        ? 'Your free trial or subscription has ended. Subscribe to continue logging new data.'
-        : 'Try Cold Bore Pro free for 1 month. After the trial, it renews yearly unless canceled.';
-    final cta = isExpired
-        ? (_sub.canPurchase
-              ? 'Subscribe - $priceText / year'
-              : 'Subscribe (price unavailable)')
-        : 'Start 1-Month Free Trial';
 
     return ColdBoreScaffold(
       appBar: AppBar(title: const Text('Cold Bore Pro')),
@@ -2539,10 +2390,40 @@ class _PaywallScreenState extends State<_PaywallScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const SizedBox(height: 16),
-                  const Icon(Icons.lock_open_outlined, size: 56),
-                  const SizedBox(height: 16),
+                  if (inTrial) ...[
+                    ColdBoreCard(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.hourglass_bottom_outlined,
+                            size: 20,
+                            color: cbBlue,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              '$trialDays ${trialDays == 1 ? 'day' : 'days'} left in your free trial',
+                              style: const TextStyle(
+                                color: cbBlue,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  if (!inTrial) const Icon(Icons.lock_open_outlined, size: 56),
+                  if (!inTrial) const SizedBox(height: 16),
                   Text(
-                    title,
+                    inTrial
+                        ? 'Unlock Cold Bore Pro'
+                        : 'Subscribe to keep adding data',
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.bold,
                     ),
@@ -2550,18 +2431,18 @@ class _PaywallScreenState extends State<_PaywallScreen> {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    body,
+                    inTrial
+                        ? 'Subscribe now to keep all features after your trial ends. '
+                              'Your data is always yours to view and export.'
+                        : 'Your existing data is always available to view and export. '
+                              'A Cold Bore Pro subscription lets you continue logging sessions, '
+                              'shots, gear, and maintenance records.',
                     textAlign: TextAlign.center,
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Your existing data is always available to view and export.',
-                    textAlign: TextAlign.center,
-                  ),
-                  if (isIos) ...[
+                  if (!inTrial && isIos) ...[
                     const SizedBox(height: 8),
                     Text(
-                      'On iPhone/iPad, free-trial eligibility is checked by the App Store using your Apple ID when you tap subscribe.',
+                      'On iPhone/iPad, free-trial eligibility is checked by the App Store using your Apple ID when you tap Subscribe.',
                       style: Theme.of(context).textTheme.bodySmall,
                       textAlign: TextAlign.center,
                     ),
@@ -2610,52 +2491,22 @@ class _PaywallScreenState extends State<_PaywallScreen> {
                       ),
                     ),
                   FilledButton(
-                    onPressed: _sub.loading || _sub.product == null
+                    onPressed: _sub.loading || !_sub.canPurchase
                         ? null
-                        : _startTrialFromPaywall,
+                        : () => _sub.purchase(),
                     child: _sub.loading
                         ? const SizedBox(
                             height: 20,
                             width: 20,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : Text(cta),
-                  ),
-                  if (showDebugPanel) ...[
-                    const SizedBox(height: 12),
-                    ColdBoreCard(
-                      padding: const EdgeInsets.all(10),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Debug (TestFlight)',
-                            style: TextStyle(fontWeight: FontWeight.w700),
+                        : Text(
+                            _sub.canPurchase
+                                ? 'Subscribe - $priceText / year'
+                                : 'Subscribe (price unavailable)',
                           ),
-                          const SizedBox(height: 6),
-                          Text('Product loaded: ${_sub.product != null}'),
-                          Text('Product ID: ${_sub.product?.id ?? '-'}'),
-                          Text('Store available: ${_sub.storeAvailable}'),
-                          Text('Last purchase status: ${_sub.lastPurchaseStatus?.name ?? '-'}'),
-                          Text('Last error code: ${_sub.lastPurchaseErrorCode ?? '-'}'),
-                          Text('Last error message: ${_sub.lastPurchaseErrorMessage ?? _sub.lastError ?? '-'}'),
-                          Text('Launch result: ${_sub.lastPurchaseLaunchResult?.toString() ?? '-'}'),
-                          Text('Debug line: $_purchaseDebugLine'),
-                          Text('Entitled: ${_sub.isEntitled}'),
-                        ],
-                      ),
-                    ),
-                  ],
+                  ),
                   const SizedBox(height: 12),
-                  if (!_sub.canPurchase)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Text(
-                        'Subscription is temporarily unavailable. Please try again.',
-                        style: Theme.of(context).textTheme.bodySmall,
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
                   if (!_sub.canPurchase)
                     Align(
                       alignment: Alignment.center,
@@ -2664,14 +2515,14 @@ class _PaywallScreenState extends State<_PaywallScreen> {
                             ? null
                             : () => _sub.refreshProductDetails(),
                         icon: const Icon(Icons.refresh),
-                        label: const Text('Retry'),
+                        label: const Text('Refresh price'),
                       ),
                     ),
                   if (!_sub.canPurchase) const SizedBox(height: 8),
                   OutlinedButton(
                     onPressed: _sub.loading || !_sub.storeAvailable
                         ? null
-                        : _restorePurchasesFromPaywall,
+                        : () => _sub.restorePurchases(),
                     child: const Text('Restore purchases'),
                   ),
                   const SizedBox(height: 8),
@@ -8652,72 +8503,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  Future<void> _openManageSubscription() async {
-    final url = Uri.parse('https://apps.apple.com/account/subscriptions');
-    final ok = await launchUrl(url, mode: LaunchMode.externalApplication);
-    if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open subscription settings.')),
-      );
-    }
-  }
-
-  Future<void> _showProActiveDialog() async {
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Cold Bore Pro Active'),
-        content: const Text('You currently have full access to Cold Bore.'),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              unawaited(_openManageSubscription());
-            },
-            child: const Text('Manage Subscription'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _handleSubscriptionRowTap() async {
-    if (_sub.isEntitled) {
-      await _showProActiveDialog();
-      return;
-    }
-
-    if (!mounted) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => _PaywallScreen(
-          mode: _sub.hadEntitlementEver
-              ? _PaywallMode.expired
-              : _PaywallMode.previewLimit,
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    final statusLabel = _sub.hasTesterAccess
-        ? 'Pro Active'
+    final entitlementText = _sub.hasTesterAccess
+        ? 'Tester access enabled - full access unlocked.'
         : (_sub.isEntitled
-              ? (_sub.isLikelyInAppleTrial ? 'Trial Active' : 'Pro Active')
-              : (_sub.hadEntitlementEver ? 'Expired' : 'Free Preview'));
-    final entitlementText = switch (statusLabel) {
-      'Trial Active' => 'Apple free trial is active. Full access enabled.',
-      'Pro Active' => 'Subscription active. Full access enabled.',
-      'Expired' =>
-        'Your free trial or subscription has ended. Existing data remains viewable and exportable.',
-      _ =>
-        'Free preview active. Start your 1-month Apple free trial to add new data.',
-    };
+              ? 'Active - full access enabled.'
+              : 'Read-only mode - upgrade to add new data.');
     final cloudError =
         _cloud.lastError != null && _cloud.lastError!.trim().isNotEmpty;
     final cloudConnected = !cloudError && _cloud.canSync;
@@ -8872,22 +8664,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               leading: const Icon(Icons.workspace_premium_outlined),
               title: const Text('Cold Bore Pro'),
               subtitle: Text(entitlementText),
-              trailing: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: cbBlue.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  statusLabel,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: cbBlue,
-                  ),
-                ),
-              ),
-              onTap: _handleSubscriptionRowTap,
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const _PaywallScreen()),
+                );
+              },
             ),
           ),
           ColdBoreCard(
@@ -10151,13 +9932,6 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
   }
 
   Future<void> _calculateDope() async {
-    if (!await _guardWrite(
-      context,
-      state: widget.state,
-      kind: _WriteGateKind.addDope,
-    )) {
-      return;
-    }
     final distance = double.tryParse(_distanceCtrl.text.trim());
     if (distance == null) {
       ScaffoldMessenger.of(
@@ -10287,13 +10061,6 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Generate a chart first.')));
-      return;
-    }
-    if (!await _guardWrite(
-      context,
-      state: widget.state,
-      kind: _WriteGateKind.addDope,
-    )) {
       return;
     }
 
@@ -12126,13 +11893,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
   }
 
   Future<void> _newSession(BuildContext context) async {
-    if (!await _guardWrite(
-      context,
-      state: widget.state,
-      kind: _WriteGateKind.addSession,
-    )) {
-      return;
-    }
+    if (!await _guardWrite(context)) return;
     final res = await showDialog<_NewSessionResult>(
       context: context,
       builder: (_) => const _NewSessionDialog(),
@@ -14753,13 +14514,6 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
     if (!mounted) return;
     switch (action) {
       case 'save':
-        if (!await _guardWrite(
-          context,
-          state: widget.state,
-          kind: _WriteGateKind.addRecord,
-        )) {
-          return;
-        }
         widget.state.addSessionTimerRun(
           sessionId: widget.sessionId,
           elapsedMs: _elapsedMs,
@@ -16300,13 +16054,7 @@ class SessionDetailScreen extends StatelessWidget {
   }
 
   Future<void> addColdBore(BuildContext context, TrainingSession s) async {
-    if (!await _guardWrite(
-      context,
-      state: state,
-      kind: _WriteGateKind.addShot,
-    )) {
-      return;
-    }
+    if (!await _guardWrite(context)) return;
     final res = await showDialog<_ColdBoreResult>(
       context: context,
       builder: (_) => _ColdBoreDialog(defaultTime: s.dateTime),
@@ -16327,13 +16075,7 @@ class SessionDetailScreen extends StatelessWidget {
   }
 
   Future<void> addPhotoNote(BuildContext context, TrainingSession s) async {
-    if (!await _guardWrite(
-      context,
-      state: state,
-      kind: _WriteGateKind.addRecord,
-    )) {
-      return;
-    }
+    if (!await _guardWrite(context)) return;
     final res = await showDialog<String>(
       context: context,
       builder: (_) => _PhotoNoteDialog(),
@@ -16814,13 +16556,7 @@ class SessionDetailScreen extends StatelessWidget {
   }
 
   Future<void> addDope(BuildContext context, TrainingSession s) async {
-    if (!await _guardWrite(
-      context,
-      state: state,
-      kind: _WriteGateKind.addDope,
-    )) {
-      return;
-    }
+    if (!await _guardWrite(context)) return;
     if (s.rifleId == null) {
       ScaffoldMessenger.of(
         context,
@@ -17950,13 +17686,6 @@ class SessionDetailScreen extends StatelessWidget {
                   children: [
                     FilledButton.icon(
                       onPressed: () async {
-                        if (!await _guardWrite(
-                          context,
-                          state: state,
-                          kind: _WriteGateKind.addRecord,
-                        )) {
-                          return;
-                        }
                         final picker = ImagePicker();
                         try {
                           final x = await picker.pickImage(
@@ -19055,13 +18784,6 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
 
   Future<void> _pick({required ImageSource source}) async {
     try {
-      if (!await _guardWrite(
-        context,
-        state: widget.state,
-        kind: _WriteGateKind.addRecord,
-      )) {
-        return;
-      }
       final x = await _picker.pickImage(
         source: source,
         imageQuality: 92,
@@ -19604,13 +19326,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
   int _seg = 0;
 
   Future<void> _addRifle() async {
-    if (!await _guardWrite(
-      context,
-      state: widget.state,
-      kind: _WriteGateKind.addRifle,
-    )) {
-      return;
-    }
+    if (!await _guardWrite(context)) return;
     final res = await showDialog<_NewRifleResult>(
       context: context,
       builder: (_) => _NewRifleDialog(),
@@ -19643,13 +19359,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
   }
 
   Future<void> _addAmmo() async {
-    if (!await _guardWrite(
-      context,
-      state: widget.state,
-      kind: _WriteGateKind.addAmmoLot,
-    )) {
-      return;
-    }
+    if (!await _guardWrite(context)) return;
     final res = await showDialog<_NewAmmoResult>(
       context: context,
       builder: (_) => _NewAmmoDialog(),
@@ -24799,13 +24509,6 @@ class DopeManagerScreen extends StatelessWidget {
       appBar: AppBar(title: Text('DOPE • ${rifle.name}')),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
-          if (!await _guardWrite(
-            context,
-            state: state,
-            kind: _WriteGateKind.addDope,
-          )) {
-            return;
-          }
           final res = await showDialog<RifleDopeEntry>(
             context: context,
             builder: (_) => const _RifleDopeEntryDialog(),
@@ -25361,13 +25064,7 @@ class _RifleServiceLogScreenState extends State<RifleServiceLogScreen> {
     MaintenanceTaskType initialTaskType = MaintenanceTaskType.general,
     String? initialServiceLabel,
   }) async {
-    if (!await _guardWrite(
-      context,
-      state: widget.state,
-      kind: _WriteGateKind.addMaintenance,
-    )) {
-      return;
-    }
+    if (!await _guardWrite(context)) return;
     final res = await showDialog<RifleServiceEntry>(
       context: context,
       builder: (_) => _AddRifleServiceDialog(
