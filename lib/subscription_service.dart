@@ -15,10 +15,12 @@ const List<String> kSubscriptionProductIdCandidates = <String>[
 ];
 const String _entitlementPrefsKey = 'cold_bore.subscription.entitled.v1';
 const String _entitlementExpiryPrefsKey = 'cold_bore.subscription.expiry_ms.v1';
-const String _trialStartPrefsKey = 'cold_bore.subscription.trial_start_ms.v1';
+const String _hadEntitlementPrefsKey =
+    'cold_bore.subscription.had_entitlement.v1';
+const String _lastPurchaseMsPrefsKey =
+    'cold_bore.subscription.last_purchase_ms.v1';
 const String _metaLoggedEventKeysPrefsKey =
   'cold_bore.subscription.meta_event_keys.v1';
-const int _trialDays = 30;
 
 /// Lightweight subscription service.
 ///
@@ -34,7 +36,8 @@ class SubscriptionService extends ChangeNotifier {
   StreamSubscription<List<PurchaseDetails>>? _purchaseSub;
 
   bool _entitled = false;
-  DateTime? _trialEndsAt;
+  bool _hadEntitlementEver = false;
+  DateTime? _lastPurchaseAt;
   bool _loading = false;
   bool _available = false;
   ProductDetails? _product;
@@ -46,20 +49,19 @@ class SubscriptionService extends ChangeNotifier {
   /// True while initial availability check / purchase is in progress.
   bool get loading => _loading;
 
-  /// True when the user has an active subscription or is in their free trial.
-  bool get isEntitled => _entitled || _isTrialActive || _testerOverride;
+  /// True when the user has an active paid/trial entitlement from Apple.
+  bool get isEntitled => _entitled || _testerOverride;
 
   bool get hasTesterAccess => _testerOverride;
 
-  bool get _isTrialActive =>
-      _trialEndsAt != null && DateTime.now().isBefore(_trialEndsAt!);
+  bool get hadEntitlementEver => _hadEntitlementEver;
 
-  DateTime? get trialEndsAt => _trialEndsAt;
+  DateTime? get lastPurchaseAt => _lastPurchaseAt;
 
-  int get trialDaysRemaining {
-    if (!_isTrialActive || _trialEndsAt == null) return 0;
-    final remaining = _trialEndsAt!.difference(DateTime.now()).inDays + 1;
-    return remaining.clamp(0, _trialDays);
+  bool get isLikelyInAppleTrial {
+    if (!isEntitled || _lastPurchaseAt == null) return false;
+    return DateTime.now().difference(_lastPurchaseAt!) <=
+        const Duration(days: 31);
   }
 
   /// The product to display in the paywall (may be null until loaded).
@@ -79,7 +81,6 @@ class SubscriptionService extends ChangeNotifier {
   Future<void> initialize() async {
     // Restore cached entitlement quickly so UI doesn't flash locked state.
     await _loadCachedEntitlement();
-    await _loadOrStartTrial();
     await _loadLoggedMetaEventKeys();
 
     if (kIsWeb) return; // IAP not available on web.
@@ -275,9 +276,21 @@ class SubscriptionService extends ChangeNotifier {
 
   Future<void> _grantEntitlement({PurchaseDetails? purchase}) async {
     _entitled = true;
+    _hadEntitlementEver = true;
     _lastError = null;
+    final purchaseAt = _parsePurchaseDate(purchase);
+    if (purchaseAt != null) {
+      _lastPurchaseAt = purchaseAt;
+    }
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_entitlementPrefsKey, true);
+    await prefs.setBool(_hadEntitlementPrefsKey, true);
+    if (_lastPurchaseAt != null) {
+      await prefs.setInt(
+        _lastPurchaseMsPrefsKey,
+        _lastPurchaseAt!.millisecondsSinceEpoch,
+      );
+    }
     // Store a far-future expiry; StoreKit handles actual renewal checks.
     final farFuture = DateTime.now()
         .add(const Duration(days: 400))
@@ -293,6 +306,11 @@ class SubscriptionService extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       final entitled = prefs.getBool(_entitlementPrefsKey) == true;
+      _hadEntitlementEver = prefs.getBool(_hadEntitlementPrefsKey) == true;
+      final lastPurchaseMs = prefs.getInt(_lastPurchaseMsPrefsKey);
+      _lastPurchaseAt = lastPurchaseMs == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(lastPurchaseMs);
       final expiryMs = prefs.getInt(_entitlementExpiryPrefsKey);
       if (entitled && expiryMs != null) {
         final expiry = DateTime.fromMillisecondsSinceEpoch(expiryMs);
@@ -302,39 +320,22 @@ class SubscriptionService extends ChangeNotifier {
       }
     } catch (_) {
       _entitled = false;
+      _hadEntitlementEver = false;
+      _lastPurchaseAt = null;
     }
     notifyListeners();
   }
 
-  Future<void> _loadOrStartTrial() async {
-    // On iOS, rely on App Store introductory offer eligibility (Apple ID based)
-    // instead of local trial storage that can be reset by reinstall.
-    if (!kIsWeb && Platform.isIOS) {
-      _trialEndsAt = null;
-      notifyListeners();
-      return;
-    }
-
+  DateTime? _parsePurchaseDate(PurchaseDetails? purchase) {
+    final raw = purchase?.transactionDate;
+    if (raw == null) return null;
+    final ms = int.tryParse(raw);
+    if (ms == null) return null;
     try {
-      final prefs = await SharedPreferences.getInstance();
-      var startMs = prefs.getInt(_trialStartPrefsKey);
-      if (startMs == null) {
-        startMs = DateTime.now().millisecondsSinceEpoch;
-        await prefs.setInt(_trialStartPrefsKey, startMs);
-        await MetaAppEventsService.instance.logTrialStarted(
-          orderId: 'trial-$startMs',
-          parameters: <String, dynamic>{
-            'product_id': kSubscriptionProductId,
-            'trial_days': _trialDays,
-          },
-        );
-      }
-      final start = DateTime.fromMillisecondsSinceEpoch(startMs);
-      _trialEndsAt = start.add(const Duration(days: _trialDays));
+      return DateTime.fromMillisecondsSinceEpoch(ms);
     } catch (_) {
-      _trialEndsAt = null;
+      return null;
     }
-    notifyListeners();
   }
 
   Future<void> _loadLoggedMetaEventKeys() async {
