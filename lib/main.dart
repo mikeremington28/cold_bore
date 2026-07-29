@@ -2402,9 +2402,7 @@ class _PaywallScreenState extends State<_PaywallScreen> {
   Future<void> _startTrialFromPaywall() async {
     if (_sub.loading) return;
 
-    if (!_sub.canPurchase) {
-      await _sub.refreshProductDetails();
-    }
+    await _sub.refreshProductDetails();
 
     if (!_sub.canPurchase) {
       if (!mounted) return;
@@ -2547,7 +2545,7 @@ class _PaywallScreenState extends State<_PaywallScreen> {
                       ),
                     ),
                   FilledButton(
-                    onPressed: _sub.loading || !_sub.storeAvailable
+                    onPressed: _sub.loading
                         ? null
                         : _startTrialFromPaywall,
                     child: _sub.loading
