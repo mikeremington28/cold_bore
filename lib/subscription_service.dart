@@ -229,30 +229,13 @@ class SubscriptionService extends ChangeNotifier {
     debugPrint(
       '[IAP] purchase() called. entitled=$isEntitled, storeAvailable=$_available, productLoaded=${_product != null}',
     );
-    try {
-      _available = await _iap.isAvailable();
-    } catch (_) {
-      _available = false;
-    }
-    if (!_available) {
-      _lastError = 'Subscription store is currently unavailable.';
-      _lastPurchaseErrorCode = 'store_unavailable';
+    if (_product == null) {
+      _lastError = 'Product not available. Please try again.';
+      _lastPurchaseErrorCode = 'product_unavailable';
       _lastPurchaseErrorMessage = _lastError;
+      debugPrint('[IAP] purchase() aborted: product not loaded.');
       notifyListeners();
       return;
-    }
-
-    if (_product == null) {
-      await _loadProduct();
-      if (_product == null) {
-        _lastError =
-            'Product not available. Please refresh and try again.';
-        _lastPurchaseErrorCode = 'product_unavailable';
-        _lastPurchaseErrorMessage = _lastError;
-        debugPrint('[IAP] purchase() aborted: product not loaded.');
-        notifyListeners();
-        return;
-      }
     }
     _lastError = null;
     _lastPurchaseStatus = null;
@@ -265,16 +248,12 @@ class SubscriptionService extends ChangeNotifier {
     try {
       final param = PurchaseParam(productDetails: _product!);
       debugPrint(
-        '[IAP] Launching purchase sheet with product id=${_product!.id}, title=${_product!.title}, price=${_product!.price}',
+        '[IAP] Calling buyNonConsumable with product id=${_product!.id}, title=${_product!.title}, price=${_product!.price}',
       );
       // In in_app_purchase, subscriptions are started via buyNonConsumable.
       final launched = await _iap.buyNonConsumable(purchaseParam: param);
       _lastPurchaseLaunchResult = launched;
       debugPrint('[IAP] buyNonConsumable returned: $launched');
-
-      // Some devices deliver the entitlement update slightly after the
-      // purchase flow returns, so re-sync with the store immediately.
-      await restorePurchases(silent: true);
 
       // If the storefront is dismissed without a terminal purchase update,
       // don't leave the paywall in a perpetual loading state.

@@ -2366,9 +2366,66 @@ class _PaywallScreen extends StatefulWidget {
 class _PaywallScreenState extends State<_PaywallScreen> {
   final SubscriptionService _sub = SubscriptionService();
   late final VoidCallback _listener;
+  String _purchaseDebugLine = 'Ready';
+  String? _lastHandledPurchaseToken;
 
   void _logPurchaseTap(String message) {
     debugPrint('[Paywall] $message');
+  }
+
+  void _setPurchaseDebugLine(String value) {
+    _logPurchaseTap('debug_line=$value');
+    if (!mounted) return;
+    setState(() => _purchaseDebugLine = value);
+  }
+
+  void _handlePurchaseStatusFromStream() {
+    final status = _sub.lastPurchaseStatus;
+    if (status == null) return;
+    final token =
+        '${_sub.lastPurchaseId ?? '-'}:${status.name}:${_sub.lastPurchaseErrorCode ?? '-'}:${_sub.lastPurchaseErrorMessage ?? '-'}:${_sub.isEntitled}';
+    if (token == _lastHandledPurchaseToken) return;
+    _lastHandledPurchaseToken = token;
+
+    _setPurchaseDebugLine('Purchase stream status: ${status.name}');
+
+    if (status == PurchaseStatus.pending) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Purchase pending...')));
+      return;
+    }
+
+    if (status == PurchaseStatus.canceled) {
+      final msg = 'Purchase canceled.';
+      _setPurchaseDebugLine('Error: $msg');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Purchase canceled')));
+      return;
+    }
+
+    if (status == PurchaseStatus.error) {
+      final shortError =
+          (_sub.lastPurchaseErrorMessage ?? _sub.lastError ?? 'Unknown error')
+              .trim();
+      final code = _sub.lastPurchaseErrorCode ?? '-';
+      _setPurchaseDebugLine('Error: [$code] $shortError');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Purchase failed: $shortError')));
+      return;
+    }
+
+    if ((status == PurchaseStatus.purchased ||
+            status == PurchaseStatus.restored) &&
+        _sub.isEntitled) {
+      _setPurchaseDebugLine('Purchase stream status: ${status.name}');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Purchase completed')));
+      Navigator.of(context).pop();
+    }
   }
 
   Future<bool> _waitForEntitlement({Duration timeout = const Duration(seconds: 10)}) async {
@@ -2407,6 +2464,7 @@ class _PaywallScreenState extends State<_PaywallScreen> {
   Future<void> _startTrialFromPaywall() async {
     if (_sub.loading) return;
 
+    _setPurchaseDebugLine('Button tapped');
     _logPurchaseTap(
       'Start trial tapped. entitled=${_sub.isEntitled}, productLoaded=${_sub.product != null}, productId=${_sub.product?.id ?? '-'}',
     );
@@ -2416,19 +2474,8 @@ class _PaywallScreenState extends State<_PaywallScreen> {
       'After refresh. storeAvailable=${_sub.storeAvailable}, productLoaded=${_sub.product != null}, productId=${_sub.product?.id ?? '-'}, title=${_sub.product?.title ?? '-'}, price=${_sub.product?.price ?? '-'}',
     );
 
-    if (!_sub.canPurchase) {
-      await _sub.restorePurchases(silent: true);
-      if (!mounted) return;
-      if (await _waitForEntitlement(timeout: const Duration(seconds: 5))) {
-        _logPurchaseTap('Entitlement restored during fallback restore.');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Purchase completed')),
-          );
-        }
-        if (mounted) Navigator.of(context).pop();
-        return;
-      }
+    if (_sub.product == null || !_sub.storeAvailable) {
+      _setPurchaseDebugLine('Error: Product not loaded');
       if (!mounted) return;
       final msg = 'Subscription is temporarily unavailable. Please try again.';
       _logPurchaseTap(
@@ -2453,6 +2500,7 @@ class _PaywallScreenState extends State<_PaywallScreen> {
       return;
     }
 
+    _setPurchaseDebugLine('Calling StoreKit purchase');
     _logPurchaseTap('Calling purchase() for productId=${_sub.product?.id ?? '-'}');
     if (mounted) {
       ScaffoldMessenger.of(
@@ -2460,63 +2508,11 @@ class _PaywallScreenState extends State<_PaywallScreen> {
       ).showSnackBar(const SnackBar(content: Text('Starting purchase...')));
     }
     await _sub.purchase();
+    _setPurchaseDebugLine('StoreKit purchase call returned');
     _logPurchaseTap('Purchase call returned.');
     if (!mounted) return;
-
-    final statusAfterCall = _sub.lastPurchaseStatus;
-    if (statusAfterCall == PurchaseStatus.pending) {
-      _logPurchaseTap('Purchase pending after call return. Waiting for stream updates.');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Purchase pending...')),
-      );
-      return;
-    }
-
     _logPurchaseTap('Entitled after purchase: ${_sub.isEntitled}');
-    if (await _waitForEntitlement()) {
-      _logPurchaseTap('Purchase completed. Entitlement=true.');
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Purchase completed')));
-      if (mounted) Navigator.of(context).pop();
-      return;
-    }
-
-    if (_sub.lastPurchaseStatus == PurchaseStatus.canceled) {
-      _logPurchaseTap('Purchase canceled by user.');
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Purchase canceled')));
-      return;
-    }
-
-    if (_sub.lastPurchaseStatus == PurchaseStatus.error) {
-      final shortError = (_sub.lastPurchaseErrorMessage ?? _sub.lastError ?? 'Please try again.').trim();
-      _logPurchaseTap('Purchase error. code=${_sub.lastPurchaseErrorCode ?? '-'}, message=$shortError');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Purchase failed: $shortError')),
-      );
-      return;
-    }
-
-    final shortError = (_sub.lastError ?? 'Please try again.').trim();
-    _logPurchaseTap('Purchase failed. status=${_sub.lastPurchaseStatus?.name ?? '-'}, error=$shortError');
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Purchase did not complete. Please try again.')),
-    );
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Purchase did not complete'),
-        content: const Text('Purchase did not complete. Please try again.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
+    _handlePurchaseStatusFromStream();
   }
 
   @override
@@ -2525,8 +2521,12 @@ class _PaywallScreenState extends State<_PaywallScreen> {
     _listener = () {
       if (!mounted) return;
       setState(() {});
+      _handlePurchaseStatusFromStream();
       // Auto-dismiss when entitlement is granted.
-      if (_sub.isEntitled && mounted) Navigator.of(context).pop();
+      if (_sub.isEntitled && mounted) {
+        _setPurchaseDebugLine('Purchase stream status: purchased');
+        Navigator.of(context).pop();
+      }
     };
     _sub.addListener(_listener);
     unawaited(_sub.refreshProductDetails());
@@ -2670,6 +2670,8 @@ class _PaywallScreenState extends State<_PaywallScreen> {
                           Text('Last purchase status: ${_sub.lastPurchaseStatus?.name ?? '-'}'),
                           Text('Last error code: ${_sub.lastPurchaseErrorCode ?? '-'}'),
                           Text('Last error message: ${_sub.lastPurchaseErrorMessage ?? _sub.lastError ?? '-'}'),
+                          Text('Launch result: ${_sub.lastPurchaseLaunchResult?.toString() ?? '-'}'),
+                          Text('Debug line: $_purchaseDebugLine'),
                           Text('Entitled: ${_sub.isEntitled}'),
                         ],
                       ),
