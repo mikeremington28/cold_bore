@@ -2410,11 +2410,6 @@ class _PaywallScreenState extends State<_PaywallScreen> {
     _logPurchaseTap(
       'Start trial tapped. entitled=${_sub.isEntitled}, productLoaded=${_sub.product != null}, productId=${_sub.product?.id ?? '-'}',
     );
-    if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Starting purchase...')));
-    }
 
     await _sub.refreshProductDetails();
     _logPurchaseTap(
@@ -2459,8 +2454,15 @@ class _PaywallScreenState extends State<_PaywallScreen> {
     }
 
     _logPurchaseTap('Calling purchase() for productId=${_sub.product?.id ?? '-'}');
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Starting purchase...')));
+    }
     await _sub.purchase();
+    _logPurchaseTap('Purchase call returned.');
     if (!mounted) return;
+    _logPurchaseTap('Entitled after purchase: ${_sub.isEntitled}');
     if (await _waitForEntitlement()) {
       _logPurchaseTap('Purchase completed. Entitlement=true.');
       ScaffoldMessenger.of(
@@ -2645,7 +2647,7 @@ class _PaywallScreenState extends State<_PaywallScreen> {
                             ? null
                             : () => _sub.refreshProductDetails(),
                         icon: const Icon(Icons.refresh),
-                        label: const Text('Refresh price'),
+                        label: const Text('Retry'),
                       ),
                     ),
                   if (!_sub.canPurchase) const SizedBox(height: 8),

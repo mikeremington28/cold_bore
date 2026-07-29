@@ -8,9 +8,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'meta_app_events_service.dart';
 
 /// Product ID must match App Store Connect exactly (case-sensitive)
-const String kSubscriptionProductId = 'coldbore_pro_yearly';
+const String kSubscriptionProductId = 'Coldbore_Pro_Yearly';
 const List<String> kSubscriptionProductIdCandidates = <String>[
   kSubscriptionProductId,
+  'ColdBore_Pro_Yearly',
+  'coldbore_pro_yearly',
 ];
 const String _entitlementPrefsKey = 'cold_bore.subscription.entitled.v1';
 const String _entitlementExpiryPrefsKey = 'cold_bore.subscription.expiry_ms.v1';
@@ -87,7 +89,11 @@ class SubscriptionService extends ChangeNotifier {
 
     if (kIsWeb) return; // IAP not available on web.
 
+    debugPrint(
+      '[IAP] initialize() platform=${defaultTargetPlatform.name} kIsWeb=$kIsWeb kReleaseMode=$kReleaseMode requestedIds=${kSubscriptionProductIdCandidates.join(', ')}',
+    );
     _available = await _iap.isAvailable();
+    debugPrint('[IAP] store availability: $_available');
     if (!_available) {
       _lastError = 'Subscription store is currently unavailable.';
       notifyListeners();
@@ -110,7 +116,11 @@ class SubscriptionService extends ChangeNotifier {
     if (kIsWeb) return;
 
     try {
+      debugPrint(
+        '[IAP] refreshProductDetails() platform=${defaultTargetPlatform.name} kReleaseMode=$kReleaseMode requestedIds=${kSubscriptionProductIdCandidates.join(', ')}',
+      );
       _available = await _iap.isAvailable();
+      debugPrint('[IAP] refresh store availability: $_available');
       if (!_available) {
         _product = null;
         _lastError = 'Subscription store is currently unavailable.';
@@ -153,6 +163,9 @@ class SubscriptionService extends ChangeNotifier {
       );
       final response = await _iap.queryProductDetails(
         kSubscriptionProductIdCandidates.toSet(),
+      );
+      debugPrint(
+        '[IAP] queryProductDetails result: found=${response.productDetails.map((p) => p.id).join(', ')}, notFound=${response.notFoundIDs.join(', ')}',
       );
       if (response.productDetails.isNotEmpty) {
         final productById = {
