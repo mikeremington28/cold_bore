@@ -59,9 +59,9 @@ class SubscriptionService extends ChangeNotifier {
   DateTime? get lastPurchaseAt => _lastPurchaseAt;
 
   bool get isLikelyInAppleTrial {
-    if (!isEntitled || _lastPurchaseAt == null) return false;
-    return DateTime.now().difference(_lastPurchaseAt!) <=
-        const Duration(days: 31);
+    // The in_app_purchase API used here does not provide a reliable flag for
+    // "currently in introductory trial". Fall back to Pro Active labeling.
+    return false;
   }
 
   /// The product to display in the paywall (may be null until loaded).

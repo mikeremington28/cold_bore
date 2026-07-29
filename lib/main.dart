@@ -8501,6 +8501,57 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _openManageSubscription() async {
+    final url = Uri.parse('https://apps.apple.com/account/subscriptions');
+    final ok = await launchUrl(url, mode: LaunchMode.externalApplication);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open subscription settings.')),
+      );
+    }
+  }
+
+  Future<void> _showProActiveDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cold Bore Pro Active'),
+        content: const Text('You currently have full access to Cold Bore.'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              unawaited(_openManageSubscription());
+            },
+            child: const Text('Manage Subscription'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _handleSubscriptionRowTap() async {
+    if (_sub.isEntitled) {
+      await _showProActiveDialog();
+      return;
+    }
+
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _PaywallScreen(
+          mode: _sub.hadEntitlementEver
+              ? _PaywallMode.expired
+              : _PaywallMode.previewLimit,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final statusLabel = _sub.hasTesterAccess
@@ -8685,11 +8736,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
               ),
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const _PaywallScreen()),
-                );
-              },
+              onTap: _handleSubscriptionRowTap,
             ),
           ),
           ColdBoreCard(
