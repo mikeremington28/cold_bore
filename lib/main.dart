@@ -1883,6 +1883,15 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
     if (!_looksLikeFreshLocalInstall()) return;
 
     try {
+      final sub = SubscriptionService();
+      await sub.refreshEntitlementIfNeeded();
+      if (!sub.isEntitled) {
+        debugPrint(
+          '[WriteGuard] Blocked: Import cloud backup records (auto restore).',
+        );
+        return;
+      }
+
       final prefs = await SharedPreferences.getInstance();
       final alreadyRestored =
           prefs.getBool(_autoICloudRestoreSuccessPrefsKey) == true;
@@ -2226,6 +2235,9 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
     if (!_canAutoBackupToICloud) {
       throw StateError('Cloud restore is currently available on iOS only.');
     }
+    if (!await _guardWrite(context, operation: 'Import cloud backup records')) {
+      return false;
+    }
     String? jsonText;
     for (var attempt = 0; attempt < 3; attempt++) {
       jsonText = await _iCloudChannel.invokeMethod<String>('restoreFromiCloud');
@@ -2320,29 +2332,52 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
 // Subscription gate helper
 /// Returns true if the action should proceed.
 /// If not entitled, shows the paywall and returns false.
-Future<bool> _guardWrite(BuildContext context) async {
-  if (kDebugMode) return true;
+enum _PaywallMode { freePreview, expired }
+
+Future<bool> _guardWrite(
+  BuildContext context, {
+  String operation = 'write action',
+}) async {
   final sub = SubscriptionService();
-  if (sub.isEntitled) return true;
-  if (!sub.canPurchase) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Subscription store is temporarily unavailable. Write access is allowed for now.',
-        ),
-      ),
-    );
+  debugPrint('[WriteGuard] Checking entitlement for operation: $operation');
+  await sub.refreshEntitlementIfNeeded();
+  debugPrint('[WriteGuard] Entitlement before paywall: ${sub.isEntitled}');
+  if (sub.isEntitled) {
+    debugPrint('[WriteGuard] Allowed: $operation');
     return true;
   }
-  await Navigator.of(
-    context,
-  ).push(MaterialPageRoute(builder: (_) => const _PaywallScreen()));
+
+  if (!context.mounted) return false;
+  final mode = sub.hadEntitlementEver
+      ? _PaywallMode.expired
+      : _PaywallMode.freePreview;
+  debugPrint('[WriteGuard] Blocked: $operation. Opening paywall mode=$mode');
+  await Navigator.of(context).push(
+    MaterialPageRoute(builder: (_) => _PaywallScreen(mode: mode)),
+  );
+  await sub.refreshEntitlementIfNeeded();
+  debugPrint('[WriteGuard] Entitlement after paywall: ${sub.isEntitled}');
+  if (sub.isEntitled) {
+    debugPrint('[WriteGuard] Allowed after paywall: $operation');
+    return true;
+  }
+
+  if (!context.mounted) return false;
+  if (!sub.canPurchase || !sub.storeAvailable || sub.product == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Subscription is temporarily unavailable. Please try again.'),
+      ),
+    );
+  }
+  debugPrint('[WriteGuard] Still blocked after paywall: $operation');
   return false;
 }
 
 // Paywall screen
 class _PaywallScreen extends StatefulWidget {
-  const _PaywallScreen();
+  final _PaywallMode mode;
+  const _PaywallScreen({this.mode = _PaywallMode.freePreview});
   @override
   State<_PaywallScreen> createState() => _PaywallScreenState();
 }
@@ -2374,9 +2409,13 @@ class _PaywallScreenState extends State<_PaywallScreen> {
   Widget build(BuildContext context) {
     final product = _sub.product;
     final priceText = product?.price ?? '-';
-    final trialDays = _sub.trialDaysRemaining;
-    final inTrial = trialDays > 0;
+    final isExpired = widget.mode == _PaywallMode.expired;
     final isIos = defaultTargetPlatform == TargetPlatform.iOS;
+    final title = isExpired ? 'Subscription required' : 'Start your free trial';
+    final body = isExpired
+        ? 'Your free trial or subscription has ended. Subscribe to continue logging new data.'
+        : 'Try Cold Bore Pro free for 1 month. After the trial, it renews yearly unless canceled.';
+    final cta = isExpired ? 'Subscribe' : 'Start 1-Month Free Trial';
 
     return ColdBoreScaffold(
       appBar: AppBar(title: const Text('Cold Bore Pro')),
@@ -2390,40 +2429,10 @@ class _PaywallScreenState extends State<_PaywallScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const SizedBox(height: 16),
-                  if (inTrial) ...[
-                    ColdBoreCard(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.hourglass_bottom_outlined,
-                            size: 20,
-                            color: cbBlue,
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              '$trialDays ${trialDays == 1 ? 'day' : 'days'} left in your free trial',
-                              style: const TextStyle(
-                                color: cbBlue,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-                  if (!inTrial) const Icon(Icons.lock_open_outlined, size: 56),
-                  if (!inTrial) const SizedBox(height: 16),
+                  const Icon(Icons.lock_open_outlined, size: 56),
+                  const SizedBox(height: 16),
                   Text(
-                    inTrial
-                        ? 'Unlock Cold Bore Pro'
-                        : 'Subscribe to keep adding data',
+                    title,
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.bold,
                     ),
@@ -2431,18 +2440,13 @@ class _PaywallScreenState extends State<_PaywallScreen> {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    inTrial
-                        ? 'Subscribe now to keep all features after your trial ends. '
-                              'Your data is always yours to view and export.'
-                        : 'Your existing data is always available to view and export. '
-                              'A Cold Bore Pro subscription lets you continue logging sessions, '
-                              'shots, gear, and maintenance records.',
+                    body,
                     textAlign: TextAlign.center,
                   ),
-                  if (!inTrial && isIos) ...[
+                  if (isIos) ...[
                     const SizedBox(height: 8),
                     Text(
-                      'On iPhone/iPad, free-trial eligibility is checked by the App Store using your Apple ID when you tap Subscribe.',
+                      'On iPhone/iPad, free-trial eligibility is checked by the App Store using your Apple ID when you tap subscribe.',
                       style: Theme.of(context).textTheme.bodySmall,
                       textAlign: TextAlign.center,
                     ),
@@ -2501,9 +2505,7 @@ class _PaywallScreenState extends State<_PaywallScreen> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : Text(
-                            _sub.canPurchase
-                                ? 'Subscribe - $priceText / year'
-                                : 'Subscribe (price unavailable)',
+                          cta,
                           ),
                   ),
                   const SizedBox(height: 12),
@@ -8506,10 +8508,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final entitlementText = _sub.hasTesterAccess
-        ? 'Tester access enabled - full access unlocked.'
-        : (_sub.isEntitled
-              ? 'Active - full access enabled.'
-              : 'Read-only mode - upgrade to add new data.');
+      ? 'Pro Active'
+      : (_sub.isEntitled
+          ? 'Trial Active or Pro Active'
+          : (_sub.hadEntitlementEver ? 'Expired' : 'Free Preview'));
     final cloudError =
         _cloud.lastError != null && _cloud.lastError!.trim().isNotEmpty;
     final cloudConnected = !cloudError && _cloud.canSync;
@@ -8665,8 +8667,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               title: const Text('Cold Bore Pro'),
               subtitle: Text(entitlementText),
               onTap: () {
+                final mode = _sub.hadEntitlementEver
+                    ? _PaywallMode.expired
+                    : _PaywallMode.freePreview;
                 Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const _PaywallScreen()),
+                  MaterialPageRoute(builder: (_) => _PaywallScreen(mode: mode)),
                 );
               },
             ),
@@ -9932,6 +9937,9 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
   }
 
   Future<void> _calculateDope() async {
+    if (!await _guardWrite(context, operation: 'Save ballistic DOPE entry')) {
+      return;
+    }
     final distance = double.tryParse(_distanceCtrl.text.trim());
     if (distance == null) {
       ScaffoldMessenger.of(
@@ -10057,6 +10065,9 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
   }
 
   Future<void> _saveChartToHistory() async {
+    if (!await _guardWrite(context, operation: 'Save ballistic chart history')) {
+      return;
+    }
     if (_chartRows.isEmpty) {
       ScaffoldMessenger.of(
         context,
@@ -10153,6 +10164,9 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
   }
 
   Future<void> _saveSelectedRowToWorkingDope() async {
+    if (!await _guardWrite(context, operation: 'Save selected DOPE row')) {
+      return;
+    }
     final selected = _selectedChartRowIndex;
     if (selected == null || selected < 0 || selected >= _chartRows.length) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -10185,6 +10199,9 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
   }
 
   Future<void> _saveAllRowsToWorkingDope() async {
+    if (!await _guardWrite(context, operation: 'Save all DOPE rows')) {
+      return;
+    }
     if (_chartRows.isEmpty) {
       ScaffoldMessenger.of(
         context,
@@ -11893,7 +11910,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
   }
 
   Future<void> _newSession(BuildContext context) async {
-    if (!await _guardWrite(context)) return;
+    if (!await _guardWrite(context, operation: 'Add session')) return;
     final res = await showDialog<_NewSessionResult>(
       context: context,
       builder: (_) => const _NewSessionDialog(),
@@ -14514,6 +14531,9 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
     if (!mounted) return;
     switch (action) {
       case 'save':
+        if (!await _guardWrite(context, operation: 'Save shot timer run')) {
+          return;
+        }
         widget.state.addSessionTimerRun(
           sessionId: widget.sessionId,
           elapsedMs: _elapsedMs,
@@ -16054,7 +16074,9 @@ class SessionDetailScreen extends StatelessWidget {
   }
 
   Future<void> addColdBore(BuildContext context, TrainingSession s) async {
-    if (!await _guardWrite(context)) return;
+    if (!await _guardWrite(context, operation: 'Add shot / cold bore entry')) {
+      return;
+    }
     final res = await showDialog<_ColdBoreResult>(
       context: context,
       builder: (_) => _ColdBoreDialog(defaultTime: s.dateTime),
@@ -16075,7 +16097,7 @@ class SessionDetailScreen extends StatelessWidget {
   }
 
   Future<void> addPhotoNote(BuildContext context, TrainingSession s) async {
-    if (!await _guardWrite(context)) return;
+    if (!await _guardWrite(context, operation: 'Add photo note')) return;
     final res = await showDialog<String>(
       context: context,
       builder: (_) => _PhotoNoteDialog(),
@@ -16556,7 +16578,7 @@ class SessionDetailScreen extends StatelessWidget {
   }
 
   Future<void> addDope(BuildContext context, TrainingSession s) async {
-    if (!await _guardWrite(context)) return;
+    if (!await _guardWrite(context, operation: 'Add DOPE entry')) return;
     if (s.rifleId == null) {
       ScaffoldMessenger.of(
         context,
@@ -17686,6 +17708,12 @@ class SessionDetailScreen extends StatelessWidget {
                   children: [
                     FilledButton.icon(
                       onPressed: () async {
+                        if (!await _guardWrite(
+                          context,
+                          operation: 'Attach photo to session/cold bore entry',
+                        )) {
+                          return;
+                        }
                         final picker = ImagePicker();
                         try {
                           final x = await picker.pickImage(
@@ -19326,7 +19354,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
   int _seg = 0;
 
   Future<void> _addRifle() async {
-    if (!await _guardWrite(context)) return;
+    if (!await _guardWrite(context, operation: 'Add rifle')) return;
     final res = await showDialog<_NewRifleResult>(
       context: context,
       builder: (_) => _NewRifleDialog(),
@@ -19359,7 +19387,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
   }
 
   Future<void> _addAmmo() async {
-    if (!await _guardWrite(context)) return;
+    if (!await _guardWrite(context, operation: 'Add ammo lot')) return;
     final res = await showDialog<_NewAmmoResult>(
       context: context,
       builder: (_) => _NewAmmoDialog(),
@@ -24509,6 +24537,9 @@ class DopeManagerScreen extends StatelessWidget {
       appBar: AppBar(title: Text('DOPE • ${rifle.name}')),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
+          if (!await _guardWrite(context, operation: 'Add DOPE row/history')) {
+            return;
+          }
           final res = await showDialog<RifleDopeEntry>(
             context: context,
             builder: (_) => const _RifleDopeEntryDialog(),
@@ -25064,7 +25095,9 @@ class _RifleServiceLogScreenState extends State<RifleServiceLogScreen> {
     MaintenanceTaskType initialTaskType = MaintenanceTaskType.general,
     String? initialServiceLabel,
   }) async {
-    if (!await _guardWrite(context)) return;
+    if (!await _guardWrite(context, operation: 'Add maintenance/service entry')) {
+      return;
+    }
     final res = await showDialog<RifleServiceEntry>(
       context: context,
       builder: (_) => _AddRifleServiceDialog(
@@ -25981,6 +26014,9 @@ class _BackupScreen extends StatelessWidget {
   }
 
   Future<void> _restoreBackupFile(BuildContext context) async {
+    if (!await _guardWrite(context, operation: 'Import backup records')) {
+      return;
+    }
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
