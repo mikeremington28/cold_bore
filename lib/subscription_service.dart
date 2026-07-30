@@ -197,7 +197,14 @@ class SubscriptionService extends ChangeNotifier {
       _loading = false;
       notifyListeners();
     } catch (e) {
+      debugPrint('[IAP] purchase() threw: $e');
       _lastError = 'Purchase failed. Please try again.';
+      // In TestFlight/Sandbox, users with an active subscription may receive
+      // an "already subscribed" response instead of a new purchase update.
+      // Restore verifies entitlement and unlocks without changing purchase flow.
+      if (!kIsWeb && Platform.isIOS) {
+        await restorePurchases(silent: true);
+      }
       _loading = false;
       notifyListeners();
     }

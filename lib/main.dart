@@ -2426,7 +2426,7 @@ Future<bool> _guardWrite(
   await Navigator.of(context).push(
     MaterialPageRoute(builder: (_) => _PaywallScreen(mode: mode)),
   );
-  await sub.refreshEntitlementIfNeeded();
+  await sub.refreshEntitlementIfNeeded(performRestoreCheck: true);
   debugPrint('[WriteGuard] Entitlement after paywall: ${sub.isEntitled}');
   if (sub.isEntitled) {
     debugPrint('[WriteGuard] Allowed after paywall: $operation');
