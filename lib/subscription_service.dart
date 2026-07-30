@@ -9,10 +9,6 @@ import 'meta_app_events_service.dart';
 
 /// Product ID must match App Store Connect exactly (case-sensitive)
 const String kSubscriptionProductId = 'Coldbore_Pro_Yearly';
-const List<String> kSubscriptionProductIdCandidates = <String>[
-  kSubscriptionProductId,
-  'ColdBore_Pro_Yearly',
-];
 const String _entitlementPrefsKey = 'cold_bore.subscription.entitled.v1';
 const String _entitlementExpiryPrefsKey = 'cold_bore.subscription.expiry_ms.v1';
 const String _hadEntitlementPrefsKey =
@@ -43,13 +39,14 @@ class SubscriptionService extends ChangeNotifier {
   String? _currentIdentifier;
   bool _entitlementRefreshInFlight = false;
   DateTime? _lastEntitlementRefreshAt;
+  DateTime? _lastAppleEntitlementConfirmationAt;
   final Set<String> _loggedMetaEventKeys = <String>{};
 
   /// True while initial availability check / purchase is in progress.
   bool get loading => _loading;
 
   /// True when the user has an active subscription or is in their free trial.
-  bool get isEntitled => _entitled || _testerOverride;
+  bool get isEntitled => _entitled;
 
   bool get hadEntitlementEver => _hadEntitlementEver;
 
@@ -92,7 +89,9 @@ class SubscriptionService extends ChangeNotifier {
     );
 
     await _loadProduct();
-    await restorePurchases(silent: true);
+    await refreshEntitlementIfNeeded(
+      performRestoreCheck: _entitled || _hadEntitlementEver,
+    );
   }
 
   Future<void> refreshProductDetails() async {
@@ -137,19 +136,9 @@ class SubscriptionService extends ChangeNotifier {
 
   Future<void> _loadProduct() async {
     try {
-      final response = await _iap.queryProductDetails(
-        kSubscriptionProductIdCandidates.toSet(),
-      );
+      final response = await _iap.queryProductDetails({kSubscriptionProductId});
       if (response.productDetails.isNotEmpty) {
-        final productById = {
-          for (final product in response.productDetails) product.id: product,
-        };
-        ProductDetails? selected;
-        for (final id in kSubscriptionProductIdCandidates) {
-          selected = productById[id];
-          if (selected != null) break;
-        }
-        _product = selected ?? response.productDetails.first;
+        _product = response.productDetails.first;
         _lastError = null;
         notifyListeners();
         return;
@@ -235,7 +224,7 @@ class SubscriptionService extends ChangeNotifier {
 
   Future<void> _onPurchaseUpdates(List<PurchaseDetails> purchases) async {
     for (final purchase in purchases) {
-      if (!kSubscriptionProductIdCandidates.contains(purchase.productID)) {
+      if (purchase.productID != kSubscriptionProductId) {
         continue;
       }
 
@@ -282,6 +271,7 @@ class SubscriptionService extends ChangeNotifier {
   Future<void> _grantEntitlement({PurchaseDetails? purchase}) async {
     _entitled = true;
     _hadEntitlementEver = true;
+    _lastAppleEntitlementConfirmationAt = DateTime.now();
     debugPrint(
       '[IAP] Entitlement granted via ${purchase?.status.name ?? 'unknown'} for product=${purchase?.productID ?? '-'}',
     );
@@ -319,6 +309,14 @@ class SubscriptionService extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> _clearEntitlementCache() async {
+    _entitled = false;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_entitlementPrefsKey, false);
+    await prefs.remove(_entitlementExpiryPrefsKey);
+    notifyListeners();
+  }
+
   Future<void> refreshEntitlementIfNeeded({bool performRestoreCheck = false}) async {
     if (kIsWeb || !Platform.isIOS) {
       await _refreshTesterOverride();
@@ -343,6 +341,9 @@ class SubscriptionService extends ChangeNotifier {
     try {
       _available = await _iap.isAvailable();
       if (!_available) {
+        if (performRestoreCheck) {
+          await _clearEntitlementCache();
+        }
         _lastError = 'Subscription store is currently unavailable.';
         notifyListeners();
         return;
@@ -354,7 +355,17 @@ class SubscriptionService extends ChangeNotifier {
 
       // Restore checks can trigger StoreKit account UI; only do this when explicitly requested.
       if (performRestoreCheck && (_entitled || _hadEntitlementEver)) {
+        final previousConfirmationAt = _lastAppleEntitlementConfirmationAt;
         await restorePurchases(silent: true);
+        final confirmedByApple =
+            _lastAppleEntitlementConfirmationAt != null &&
+            (previousConfirmationAt == null ||
+                _lastAppleEntitlementConfirmationAt!.isAfter(
+                  previousConfirmationAt,
+                ));
+        if (!confirmedByApple) {
+          await _clearEntitlementCache();
+        }
       }
     } catch (e) {
       debugPrint('SubscriptionService: entitlement refresh failed: $e');
@@ -427,6 +438,14 @@ class SubscriptionService extends ChangeNotifier {
   }
 
   Future<void> _refreshTesterOverride() async {
+    if (!kDebugMode) {
+      if (_testerOverride) {
+        _testerOverride = false;
+        notifyListeners();
+      }
+      return;
+    }
+
     final identifier = _currentIdentifier;
     if (identifier == null) {
       if (_testerOverride) {
@@ -458,7 +477,10 @@ class SubscriptionService extends ChangeNotifier {
   /// Call on iOS foreground resume to re-verify via restore (silent).
   Future<void> refreshOnResume() async {
     if (!kIsWeb && Platform.isIOS) {
-      await restorePurchases(silent: true);
+      await refreshEntitlementIfNeeded(
+        performRestoreCheck: _entitled || _hadEntitlementEver,
+      );
+      return;
     }
     await _refreshTesterOverride();
   }

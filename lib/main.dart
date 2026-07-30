@@ -1952,6 +1952,9 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
     _autoICloudRestoreAttempted = true;
 
     try {
+      if (!await _guardWrite(context, operation: 'Auto cloud restore import')) {
+        return;
+      }
       final prefs = await SharedPreferences.getInstance();
       final alreadyRestored =
           prefs.getBool(_autoICloudRestoreSuccessPrefsKey) == true;
@@ -2309,6 +2312,9 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
     if (!_canAutoBackupToICloud) {
       throw StateError('Cloud restore is currently available on iOS only.');
     }
+    if (!await _guardWrite(context, operation: 'Import cloud backup records')) {
+      return false;
+    }
     String? jsonText;
     for (var attempt = 0; attempt < 3; attempt++) {
       jsonText = await _iCloudChannel.invokeMethod<String>('restoreFromiCloud');
@@ -2411,7 +2417,9 @@ Future<bool> _guardWrite(
 }) async {
   final sub = SubscriptionService();
   debugPrint('[WriteGuard] Checking entitlement for operation: $operation');
-  await sub.refreshEntitlementIfNeeded();
+  await sub.refreshEntitlementIfNeeded(
+    performRestoreCheck: sub.isEntitled || sub.hadEntitlementEver,
+  );
   debugPrint('[WriteGuard] Entitlement before paywall: ${sub.isEntitled}');
   if (sub.isEntitled) {
     debugPrint('[WriteGuard] Allowed: $operation');
@@ -16205,6 +16213,7 @@ class SessionDetailScreen extends StatelessWidget {
     BuildContext context,
     TrainingSession s,
   ) async {
+    if (!await _guardWrite(context, operation: 'Edit session notes')) return;
     final res = await showDialog<String>(
       context: context,
       builder: (_) => _EditNotesDialog(initialNotes: s.notes),
@@ -16240,6 +16249,9 @@ class SessionDetailScreen extends StatelessWidget {
     BuildContext context,
     TrainingSession s,
   ) async {
+    if (!await _guardWrite(context, operation: 'Edit session date/time')) {
+      return;
+    }
     var startAt = s.dateTime;
     var hasEnd = s.endedAt != null;
     var endAt = s.endedAt ?? DateTime.now();
@@ -16383,6 +16395,9 @@ class SessionDetailScreen extends StatelessWidget {
   }
 
   Future<void> endSession(BuildContext context, TrainingSession s) async {
+    if (!await _guardWrite(context, operation: 'End session / save shot count')) {
+      return;
+    }
     final shotCountsByRifle = shotCountsByRifle0(s);
     final res = await showDialog<_EndSessionResult>(
       context: context,
@@ -17256,6 +17271,12 @@ class SessionDetailScreen extends StatelessWidget {
                       ],
                       onChanged: (v) async {
                         if (v == s.rifleId) return;
+                        if (!await _guardWrite(
+                          context,
+                          operation: 'Edit session loadout rifle',
+                        )) {
+                          return;
+                        }
 
                         final current = s.strings.firstWhere(
                           (x) => x.id == s.activeStringId,
@@ -17397,6 +17418,12 @@ class SessionDetailScreen extends StatelessWidget {
                           ? null
                           : (v) async {
                               if (v == s.ammoLotId) return;
+                              if (!await _guardWrite(
+                                context,
+                                operation: 'Edit session loadout ammo',
+                              )) {
+                                return;
+                              }
 
                               final current = s.strings.firstWhere(
                                 (x) => x.id == s.activeStringId,
@@ -19502,6 +19529,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
   }
 
   Future<void> _editRifle(Rifle r) async {
+    if (!await _guardWrite(context, operation: 'Edit rifle')) return;
     final res = await showDialog<_NewRifleResult>(
       context: context,
       builder: (_) => _NewRifleDialog(existing: r),
@@ -19535,6 +19563,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
   }
 
   Future<void> _editAmmo(AmmoLot a) async {
+    if (!await _guardWrite(context, operation: 'Edit ammo lot')) return;
     final res = await showDialog<_NewAmmoResult>(
       context: context,
       builder: (_) => _NewAmmoDialog(existing: a),
@@ -25206,6 +25235,9 @@ class _RifleServiceLogScreenState extends State<RifleServiceLogScreen> {
   }
 
   Future<void> _editReminders() async {
+    if (!await _guardWrite(context, operation: 'Edit maintenance reminder rules')) {
+      return;
+    }
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => RifleMaintenanceRulesScreen(
@@ -25221,6 +25253,7 @@ class _RifleServiceLogScreenState extends State<RifleServiceLogScreen> {
   }
 
   Future<void> _resetBarrelCount() async {
+    if (!await _guardWrite(context, operation: 'Reset barrel count')) return;
     final rifle = widget.state.rifleById(widget.rifleId);
     if (rifle == null) return;
     final res = await showDialog<_ResetBarrelResult>(
@@ -25242,6 +25275,9 @@ class _RifleServiceLogScreenState extends State<RifleServiceLogScreen> {
   }
 
   Future<void> _markReminderDone(MaintenanceReminderStatus status) async {
+    if (!await _guardWrite(context, operation: 'Mark maintenance reminder done')) {
+      return;
+    }
     if (status.rule.type == MaintenanceTaskType.barrelLife) {
       await _resetBarrelCount();
       return;
@@ -25259,6 +25295,9 @@ class _RifleServiceLogScreenState extends State<RifleServiceLogScreen> {
   }
 
   Future<void> _deleteService(RifleServiceEntry entry) async {
+    if (!await _guardWrite(context, operation: 'Delete maintenance service entry')) {
+      return;
+    }
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
@@ -25818,6 +25857,9 @@ class _RifleMaintenanceRulesScreenState
   }
 
   Future<void> _save() async {
+    if (!await _guardWrite(context, operation: 'Save maintenance reminder rules')) {
+      return;
+    }
     final rules = MaintenanceTaskType.values
         .where(_isConfigurableMaintenanceTask)
         .map((type) {
@@ -26108,6 +26150,9 @@ class _BackupScreen extends StatelessWidget {
   }
 
   Future<void> _restoreBackupFile(BuildContext context) async {
+    if (!await _guardWrite(context, operation: 'Import backup records')) {
+      return;
+    }
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
