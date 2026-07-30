@@ -125,6 +125,12 @@ import UIKit
 
     icloudChannel.setMethodCallHandler { (call: FlutterMethodCall, result: @escaping FlutterResult) in
       switch call.method {
+      case "getICloudUserRecordName":
+        CloudKitBackupHandler.shared.fetchCurrentICloudUserRecordName { recordName in
+          DispatchQueue.main.async {
+            result(recordName)
+          }
+        }
       case "backupToiCloud":
         if let args = call.arguments as? [String: Any],
            let backupData = args["backupData"] as? String,

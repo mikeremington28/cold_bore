@@ -10,6 +10,20 @@ class CloudKitBackupHandler {
     private let backupAssetField = "backupAsset"
     private let backupStringField = "backupData" // Legacy fallback
     private let legacyStringMaxBytes = 500_000
+
+    func fetchCurrentICloudUserRecordName(completion: @escaping (String?) -> Void) {
+        container.fetchUserRecordID { recordID, error in
+            if let recordID = recordID {
+                completion(recordID.recordName)
+                return
+            }
+
+            if let error = error {
+                debugPrint("iCloud user record lookup failed: \(error.localizedDescription)")
+            }
+            completion(nil)
+        }
+    }
     
     func backupToiCloud(backupData: String, timestamp: String, completion: @escaping (String?) -> Void) {
         // Use CKAsset for larger payloads and better stability than a String field.
