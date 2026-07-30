@@ -8738,7 +8738,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               title: const Text('Cold Bore Pro'),
               subtitle: Text(entitlementText),
               onTap: () async {
-                await _sub.refreshEntitlementIfNeeded();
+                await _sub.refreshEntitlementIfNeeded(performRestoreCheck: true);
                 if (mounted) {
                   setState(() {});
                 }

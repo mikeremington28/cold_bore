@@ -41,6 +41,8 @@ class SubscriptionService extends ChangeNotifier {
   String? _lastError;
   bool _testerOverride = false;
   String? _currentIdentifier;
+  bool _entitlementRefreshInFlight = false;
+  DateTime? _lastEntitlementRefreshAt;
   final Set<String> _loggedMetaEventKeys = <String>{};
 
   /// True while initial availability check / purchase is in progress.
@@ -310,18 +312,50 @@ class SubscriptionService extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> refreshEntitlementIfNeeded() async {
+  Future<void> refreshEntitlementIfNeeded({bool performRestoreCheck = false}) async {
     if (kIsWeb || !Platform.isIOS) {
       await _refreshTesterOverride();
       return;
     }
 
-    // Default to locked until Apple restore confirms entitlement.
-    _entitled = false;
-    notifyListeners();
-    await restorePurchases(silent: true);
-    await _refreshTesterOverride();
-    debugPrint('[IAP] refreshEntitlementIfNeeded -> entitled=$isEntitled');
+    if (_entitlementRefreshInFlight) {
+      await _refreshTesterOverride();
+      return;
+    }
+
+    final now = DateTime.now();
+    if (_lastEntitlementRefreshAt != null &&
+        now.difference(_lastEntitlementRefreshAt!) <
+            const Duration(seconds: 30)) {
+      await _refreshTesterOverride();
+      return;
+    }
+
+    _entitlementRefreshInFlight = true;
+    _lastEntitlementRefreshAt = now;
+    try {
+      _available = await _iap.isAvailable();
+      if (!_available) {
+        _lastError = 'Subscription store is currently unavailable.';
+        notifyListeners();
+        return;
+      }
+
+      if (_product == null) {
+        await _loadProduct();
+      }
+
+      // Restore checks can trigger StoreKit account UI; only do this when explicitly requested.
+      if (performRestoreCheck && (_entitled || _hadEntitlementEver)) {
+        await restorePurchases(silent: true);
+      }
+    } catch (e) {
+      debugPrint('SubscriptionService: entitlement refresh failed: $e');
+    } finally {
+      _entitlementRefreshInFlight = false;
+      await _refreshTesterOverride();
+      debugPrint('[IAP] refreshEntitlementIfNeeded -> entitled=$isEntitled');
+    }
   }
 
   Future<void> _loadLoggedMetaEventKeys() async {
