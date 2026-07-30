@@ -1883,15 +1883,6 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
     if (!_looksLikeFreshLocalInstall()) return;
 
     try {
-      final sub = SubscriptionService();
-      await sub.refreshEntitlementIfNeeded();
-      if (!sub.isEntitled) {
-        debugPrint(
-          '[WriteGuard] Blocked: Import cloud backup records (auto restore).',
-        );
-        return;
-      }
-
       final prefs = await SharedPreferences.getInstance();
       final alreadyRestored =
           prefs.getBool(_autoICloudRestoreSuccessPrefsKey) == true;
@@ -2234,9 +2225,6 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
   Future<bool> _restoreFromICloudFromSettings() async {
     if (!_canAutoBackupToICloud) {
       throw StateError('Cloud restore is currently available on iOS only.');
-    }
-    if (!await _guardWrite(context, operation: 'Import cloud backup records')) {
-      return false;
     }
     String? jsonText;
     for (var attempt = 0; attempt < 3; attempt++) {
@@ -8666,7 +8654,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
               leading: const Icon(Icons.workspace_premium_outlined),
               title: const Text('Cold Bore Pro'),
               subtitle: Text(entitlementText),
-              onTap: () {
+              onTap: () async {
+                await _sub.refreshEntitlementIfNeeded();
+                if (mounted) {
+                  setState(() {});
+                }
+                if (_sub.isEntitled || _sub.hasTesterAccess) {
+                  if (!mounted) return;
+                  await showDialog<void>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('Cold Bore Pro is active'),
+                      content: const Text(
+                        'Your access is currently active. Purchases are managed by the App Store for your Apple ID.',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(ctx).pop(),
+                          child: const Text('Close'),
+                        ),
+                      ],
+                    ),
+                  );
+                  return;
+                }
                 final mode = _sub.hadEntitlementEver
                     ? _PaywallMode.expired
                     : _PaywallMode.freePreview;
@@ -26014,9 +26025,6 @@ class _BackupScreen extends StatelessWidget {
   }
 
   Future<void> _restoreBackupFile(BuildContext context) async {
-    if (!await _guardWrite(context, operation: 'Import backup records')) {
-      return;
-    }
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
