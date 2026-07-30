@@ -106,10 +106,21 @@ class SubscriptionService extends ChangeNotifier {
         return;
       }
 
-      _product = response.productDetails.firstWhere(
-        (p) => p.id == kSubscriptionProductId,
-        orElse: () => response.productDetails.first,
-      );
+      ProductDetails? foundProduct;
+      for (final product in response.productDetails) {
+        if (product.id == kSubscriptionProductId) {
+          foundProduct = product;
+          break;
+        }
+      }
+
+      _product = foundProduct;
+      if (_product == null) {
+        _lastError =
+            'Subscription product not found in App Store ($kSubscriptionProductId).';
+        return;
+      }
+      _lastError = null;
 
       // Apple entitlement is the authority. Recheck on iOS startup/refresh.
       if (!kIsWeb && Platform.isIOS) {
