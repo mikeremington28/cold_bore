@@ -2465,6 +2465,30 @@ class _PaywallScreenState extends State<_PaywallScreen> {
   final SubscriptionService _sub = SubscriptionService();
   late final VoidCallback _listener;
 
+  Future<void> _startPurchaseFromPaywall() async {
+    final unlocked = await _sub.purchase();
+    if (!mounted) return;
+    if (unlocked || _sub.isEntitled) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  Future<void> _restorePurchasesFromPaywall() async {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Checking subscription...')),
+    );
+    debugPrint('[IAP] restore tapped from paywall');
+    final restored = await _sub.restorePurchases();
+    if (!mounted) return;
+    if (restored || _sub.isEntitled) {
+      Navigator.of(context).pop();
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('No active subscription found.')),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -2576,7 +2600,7 @@ class _PaywallScreenState extends State<_PaywallScreen> {
                   FilledButton(
                     onPressed: _sub.loading || !_sub.canPurchase
                         ? null
-                        : () => _sub.purchase(),
+                      : _startPurchaseFromPaywall,
                     child: _sub.loading
                         ? const SizedBox(
                             height: 20,
@@ -2603,7 +2627,7 @@ class _PaywallScreenState extends State<_PaywallScreen> {
                   OutlinedButton(
                     onPressed: _sub.loading || !_sub.storeAvailable
                         ? null
-                        : () => _sub.restorePurchases(),
+                        : _restorePurchasesFromPaywall,
                     child: const Text('Restore purchases'),
                   ),
                   const SizedBox(height: 8),
@@ -8478,11 +8502,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _restorePurchases() async {
-    await _sub.restorePurchases();
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Checking subscription...')));
+    debugPrint('[IAP] restore tapped from settings');
+    final restored = await _sub.restorePurchases();
     if (!mounted) return;
-    final message = _sub.isEntitled
+    final message = (restored || _sub.isEntitled)
         ? 'Purchase restored. Full access enabled.'
-        : 'No active subscription found for this Apple ID.';
+        : 'No active subscription found.';
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));

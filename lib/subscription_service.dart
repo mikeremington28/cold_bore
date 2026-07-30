@@ -40,7 +40,10 @@ class SubscriptionService extends ChangeNotifier {
   bool _entitlementRefreshInFlight = false;
   DateTime? _lastEntitlementRefreshAt;
   DateTime? _lastAppleEntitlementConfirmationAt;
+  Completer<bool>? _pendingEntitlementResult;
+  String? _pendingEntitlementReason;
   final Set<String> _loggedMetaEventKeys = <String>{};
+  static const Duration _restoreWaitTimeout = Duration(seconds: 10);
 
   /// True while initial availability check / purchase is in progress.
   bool get loading => _loading;
@@ -165,26 +168,31 @@ class SubscriptionService extends ChangeNotifier {
 
   // ── purchase ──────────────────────────────────────────────────────────────
 
-  Future<void> purchase() async {
+  Future<bool> purchase() async {
     debugPrint('[IAP] purchase() called. entitled=$isEntitled product=${_product?.id ?? '-'} available=$_available');
     if (_product == null) {
       _lastError = 'Product not available. Please try again.';
       notifyListeners();
-      return;
+      return false;
     }
     _lastError = null;
     _loading = true;
     notifyListeners();
 
     try {
+      final wait = _beginEntitlementWait('purchase');
       final param = PurchaseParam(productDetails: _product!);
       // Auto-renewing subscriptions should use non-consumable purchase flow.
       await _iap.buyNonConsumable(purchaseParam: param);
 
-      // If the storefront is dismissed without a terminal purchase update,
-      // don't leave the paywall in a perpetual loading state.
+      var unlocked = await wait;
+      if (!unlocked && !kIsWeb && Platform.isIOS) {
+        debugPrint('[IAP] purchase wait ended without entitlement. Trying restore fallback.');
+        unlocked = await restorePurchases(silent: true);
+      }
       _loading = false;
       notifyListeners();
+      return unlocked;
     } catch (e) {
       debugPrint('[IAP] purchase() threw: $e');
       _lastError = 'Purchase failed. Please try again.';
@@ -192,26 +200,36 @@ class SubscriptionService extends ChangeNotifier {
       // an "already subscribed" response instead of a new purchase update.
       // Restore verifies entitlement and unlocks without changing purchase flow.
       if (!kIsWeb && Platform.isIOS) {
-        await restorePurchases(silent: true);
+        final restored = await restorePurchases(silent: true);
+        _loading = false;
+        notifyListeners();
+        return restored;
       }
       _loading = false;
       notifyListeners();
+      return false;
     }
   }
 
-  Future<void> restorePurchases({bool silent = false}) async {
-    if (!_available) return;
-    debugPrint('[IAP] restorePurchases(silent: $silent) called.');
+  Future<bool> restorePurchases({bool silent = false}) async {
+    if (!_available) return false;
+    debugPrint('[IAP] restorePurchases(silent: $silent) called. entitledBefore=$isEntitled');
     if (!silent) {
       _loading = true;
       notifyListeners();
     }
     try {
+      final wait = _beginEntitlementWait('restore');
       await _iap.restorePurchases();
+      final restored = await wait;
+      debugPrint('[IAP] restorePurchases completed. entitledAfter=$isEntitled restored=$restored');
+      return restored;
     } catch (e) {
+      _completePendingEntitlementWait(false);
       if (!silent) {
         _lastError = 'Restore failed. Please try again.';
       }
+      return false;
     } finally {
       if (!silent) {
         _loading = false;
@@ -230,6 +248,7 @@ class SubscriptionService extends ChangeNotifier {
 
       debugPrint(
         '[IAP] stream status=${purchase.status.name} product=${purchase.productID} '
+        'errorCode=${purchase.error?.code ?? '-'} errorMessage=${purchase.error?.message ?? '-'} '
         'pendingComplete=${purchase.pendingCompletePurchase}',
       );
 
@@ -242,12 +261,14 @@ class SubscriptionService extends ChangeNotifier {
       if (purchase.status == PurchaseStatus.error) {
         _lastError =
             purchase.error?.message ?? 'Purchase failed. Please try again.';
+        _completePendingEntitlementWait(false);
         _loading = false;
         notifyListeners();
       }
 
       if (purchase.status == PurchaseStatus.canceled) {
         _lastError = null;
+        _completePendingEntitlementWait(false);
         _loading = false;
         notifyListeners();
       }
@@ -255,6 +276,7 @@ class SubscriptionService extends ChangeNotifier {
       if (purchase.status == PurchaseStatus.purchased ||
           purchase.status == PurchaseStatus.restored) {
         await _grantEntitlement(purchase: purchase);
+        _completePendingEntitlementWait(true);
       }
 
       if (purchase.pendingCompletePurchase) {
@@ -288,6 +310,34 @@ class SubscriptionService extends ChangeNotifier {
       await _logMetaSubscriptionPurchase(purchase);
     }
     notifyListeners();
+  }
+
+  Future<bool> _beginEntitlementWait(String reason) async {
+    _pendingEntitlementResult ??= Completer<bool>();
+    _pendingEntitlementReason = reason;
+    debugPrint('[IAP] $reason wait started. entitledBefore=$isEntitled');
+    try {
+      final result = await _pendingEntitlementResult!.future.timeout(
+        _restoreWaitTimeout,
+        onTimeout: () {
+          debugPrint('[IAP] $reason timeout after ${_restoreWaitTimeout.inSeconds}s');
+          _completePendingEntitlementWait(false);
+          return false;
+        },
+      );
+      return result;
+    } finally {
+      _pendingEntitlementResult = null;
+      _pendingEntitlementReason = null;
+    }
+  }
+
+  void _completePendingEntitlementWait(bool value) {
+    final pending = _pendingEntitlementResult;
+    if (pending != null && !pending.isCompleted) {
+      debugPrint('[IAP] ${_pendingEntitlementReason ?? 'entitlement'} wait completed with $value');
+      pending.complete(value);
+    }
   }
 
   Future<void> _loadCachedEntitlement() async {
