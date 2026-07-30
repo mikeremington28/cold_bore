@@ -2417,9 +2417,7 @@ Future<bool> _guardWrite(
 }) async {
   final sub = SubscriptionService();
   debugPrint('[WriteGuard] Checking entitlement for operation: $operation');
-  await sub.refreshEntitlementIfNeeded(
-    performRestoreCheck: sub.isEntitled || sub.hadEntitlementEver,
-  );
+  await sub.refresh();
   debugPrint('[WriteGuard] Entitlement before paywall: ${sub.isEntitled}');
   if (sub.isEntitled) {
     debugPrint('[WriteGuard] Allowed: $operation');
@@ -2434,7 +2432,7 @@ Future<bool> _guardWrite(
   await Navigator.of(context).push(
     MaterialPageRoute(builder: (_) => _PaywallScreen(mode: mode)),
   );
-  await sub.refreshEntitlementIfNeeded(performRestoreCheck: true);
+  await sub.refresh();
   debugPrint('[WriteGuard] Entitlement after paywall: ${sub.isEntitled}');
   if (sub.isEntitled) {
     debugPrint('[WriteGuard] Allowed after paywall: $operation');
@@ -2466,10 +2464,24 @@ class _PaywallScreenState extends State<_PaywallScreen> {
   late final VoidCallback _listener;
 
   Future<void> _startPurchaseFromPaywall() async {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Starting purchase...')),
+    );
     final unlocked = await _sub.purchase();
     if (!mounted) return;
     if (unlocked || _sub.isEntitled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Purchase completed.')),
+      );
       Navigator.of(context).pop();
+      return;
+    }
+
+    final error = _sub.lastError;
+    if (error != null && error.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error)),
+      );
     }
   }
 
@@ -2598,10 +2610,10 @@ class _PaywallScreenState extends State<_PaywallScreen> {
                       ),
                     ),
                   FilledButton(
-                    onPressed: _sub.loading || !_sub.canPurchase
+                    onPressed: _sub.purchasing || _sub.restoring || !_sub.canPurchase
                         ? null
                       : _startPurchaseFromPaywall,
-                    child: _sub.loading
+                    child: _sub.purchasing
                         ? const SizedBox(
                             height: 20,
                             width: 20,
@@ -2616,7 +2628,7 @@ class _PaywallScreenState extends State<_PaywallScreen> {
                     Align(
                       alignment: Alignment.center,
                       child: TextButton.icon(
-                        onPressed: _sub.loading
+                        onPressed: _sub.purchasing || _sub.restoring
                             ? null
                             : () => _sub.refreshProductDetails(),
                         icon: const Icon(Icons.refresh),
@@ -2625,11 +2637,36 @@ class _PaywallScreenState extends State<_PaywallScreen> {
                     ),
                   if (!_sub.canPurchase) const SizedBox(height: 8),
                   OutlinedButton(
-                    onPressed: _sub.loading || !_sub.storeAvailable
+                    onPressed: _sub.purchasing || _sub.restoring || !_sub.storeAvailable
                         ? null
                         : _restorePurchasesFromPaywall,
                     child: const Text('Restore purchases'),
                   ),
+                  if (isIos && kReleaseMode) ...[
+                    const SizedBox(height: 12),
+                    ColdBoreCard(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'TestFlight diagnostics',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 8),
+                          Text('Product loaded: ${_sub.product != null}'),
+                          Text('Store available: ${_sub.storeAvailable}'),
+                          Text('Product ID: ${_sub.product?.id ?? kSubscriptionProductId}'),
+                          Text('Entitled: ${_sub.isEntitled}'),
+                          Text('Purchasing: ${_sub.purchasing}'),
+                          Text('Restoring: ${_sub.restoring}'),
+                          Text('Last purchase status: ${_sub.lastPurchaseStatus}'),
+                          Text('Last restore status: ${_sub.lastRestoreStatus}'),
+                          Text('Last error: ${_sub.lastError ?? '-'}'),
+                        ],
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 8),
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
@@ -7233,12 +7270,6 @@ class _AudioCounterScreenState extends State<AudioCounterScreen> {
             if (shouldMark) {
               _lastShotAt = now;
               _totalShotsDetected += 1;
-              if (_applyToRifleOnDetection && _selectedRifleId != null) {
-                widget.state.addRifleRounds(
-                  rifleId: _selectedRifleId!,
-                  roundCount: 1,
-                );
-              }
             }
           });
         },
@@ -7267,8 +7298,11 @@ class _AudioCounterScreenState extends State<AudioCounterScreen> {
     }
   }
 
-  void _applyDetectedShotsToRifle() {
+  Future<void> _applyDetectedShotsToRifle() async {
     if (_totalShotsDetected <= 0 || _selectedRifleId == null) return;
+    if (!await _guardWrite(context, operation: 'Apply detected audio shots')) {
+      return;
+    }
     widget.state.addRifleRounds(
       rifleId: _selectedRifleId!,
       roundCount: _totalShotsDetected,
@@ -7368,7 +7402,7 @@ class _AudioCounterScreenState extends State<AudioCounterScreen> {
                         contentPadding: EdgeInsets.zero,
                         title: const Text('Apply shots immediately'),
                         subtitle: const Text(
-                          'Auto-increment rifle round count as shots are detected',
+                          'Track detections, then apply with the button below',
                         ),
                         value: _applyToRifleOnDetection,
                         onChanged: (v) =>
@@ -7424,7 +7458,7 @@ class _AudioCounterScreenState extends State<AudioCounterScreen> {
                           if (_totalShotsDetected > 0 &&
                               _selectedRifleId != null)
                             FilledButton.icon(
-                              onPressed: _applyDetectedShotsToRifle,
+                              onPressed: () => _applyDetectedShotsToRifle(),
                               icon: const Icon(Icons.check_circle_outline),
                               label: Text('Apply $_totalShotsDetected shots'),
                             ),
@@ -7854,6 +7888,13 @@ class _HomeShellState extends State<HomeShell> {
       );
 
       if (approved) {
+        if (!await _guardWrite(context, operation: 'Import shared session')) {
+          _incomingSharedImportPromptInFlight = false;
+          if (!mounted) return;
+          _maybePromptForIncomingSharedImport();
+          _maybePromptForNewSharedSession();
+          return;
+        }
         debugPrint(
           'Incoming shared-session import accepted for ${preview.session.id}.',
         );
@@ -8614,11 +8655,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final entitlementText = _sub.hasTesterAccess
-      ? 'Pro Active'
-      : (_sub.isEntitled
-          ? 'Trial Active or Pro Active'
-          : (_sub.hadEntitlementEver ? 'Expired' : 'Free Preview'));
+    final entitlementText = _sub.isEntitled
+      ? 'Trial Active or Pro Active'
+      : (_sub.hadEntitlementEver ? 'Expired' : 'Free Preview');
     final cloudError =
         _cloud.lastError != null && _cloud.lastError!.trim().isNotEmpty;
     final cloudConnected = !cloudError && _cloud.canSync;
@@ -8774,11 +8813,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               title: const Text('Cold Bore Pro'),
               subtitle: Text(entitlementText),
               onTap: () async {
-                await _sub.refreshEntitlementIfNeeded(performRestoreCheck: true);
+                await _sub.refresh();
                 if (mounted) {
                   setState(() {});
                 }
-                if (_sub.isEntitled || _sub.hasTesterAccess) {
+                if (_sub.isEntitled) {
                   if (!mounted) return;
                   await showDialog<void>(
                     context: context,
@@ -9221,6 +9260,12 @@ class _DataScreenState extends State<DataScreen> {
                       })();
 
                       Future<void> editEntry() async {
+                        if (!await _guardWrite(
+                          context,
+                          operation: 'Edit working DOPE entry',
+                        )) {
+                          return;
+                        }
                         var targetRifleOnly = _rifleOnly;
                         var targetBucketKey = key;
 
@@ -9269,6 +9314,12 @@ class _DataScreenState extends State<DataScreen> {
                       }
 
                       Future<void> deleteEntry() async {
+                        if (!await _guardWrite(
+                          context,
+                          operation: 'Delete working DOPE entry',
+                        )) {
+                          return;
+                        }
                         final ok = await showDialog<bool>(
                           context: context,
                           builder: (_) => AlertDialog(
@@ -12132,6 +12183,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
         ),
       );
       if (next == null) return;
+      if (!await _guardWrite(context, operation: 'Edit session folder')) return;
       widget.state.updateSessionFolder(sessionId: session.id, folderName: next);
       if (!mounted) return;
       if (next.trim().isNotEmpty && _folderFilter == null) {
@@ -12168,6 +12220,12 @@ class _SessionsScreenState extends State<SessionsScreen> {
       ),
     );
     if (confirmed != true) return;
+    if (!await _guardWrite(
+      context,
+      operation: archived ? 'Archive sessions' : 'Unarchive sessions',
+    )) {
+      return;
+    }
     for (final session in sessions) {
       widget.state.setSessionArchived(
         sessionId: session.id,
@@ -12248,6 +12306,9 @@ class _SessionsScreenState extends State<SessionsScreen> {
         ),
       );
       if (next == null) return;
+      if (!await _guardWrite(context, operation: 'Move sessions to folder')) {
+        return;
+      }
       for (final session in sessions) {
         widget.state.updateSessionFolder(
           sessionId: session.id,
@@ -12287,6 +12348,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
       ),
     );
     if (confirmed != true) return;
+    if (!await _guardWrite(context, operation: 'Delete session')) return;
     widget.state.deleteSession(sessionId: session.id);
     if (!context.mounted) return;
     ScaffoldMessenger.of(
@@ -12378,6 +12440,12 @@ class _SessionsScreenState extends State<SessionsScreen> {
                       return;
                     }
                     if (value == 'archive') {
+                      if (!await _guardWrite(
+                        context,
+                        operation: 'Archive session',
+                      )) {
+                        return;
+                      }
                       widget.state.setSessionArchived(
                         sessionId: s.id,
                         archived: true,
@@ -12385,6 +12453,12 @@ class _SessionsScreenState extends State<SessionsScreen> {
                       return;
                     }
                     if (value == 'unarchive') {
+                      if (!await _guardWrite(
+                        context,
+                        operation: 'Unarchive session',
+                      )) {
+                        return;
+                      }
                       widget.state.setSessionArchived(
                         sessionId: s.id,
                         archived: false,
@@ -14550,15 +14624,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
             if (shouldMark) {
               _lastAudioShotAt = now;
               _recordShotAt(_currentElapsedMs());
-              if (widget.state.shotTimerApplyAudioShotCountToRifle &&
-                  _selectedRifleId != null) {
-                widget.state.addRifleRounds(
-                  rifleId: _selectedRifleId!,
-                  roundCount: 1,
-                );
-              } else {
-                _audioShotCount += 1;
-              }
+              _audioShotCount += 1;
             }
           });
           if (shouldMark) {
@@ -14969,7 +15035,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
                 subtitle: Text(
                   _selectedRifleId == null
                       ? 'Pick a rifle first, or leave No firearm selected to use timer only.'
-                      : 'Increment selected rifle round count for auto-marked audio shots',
+                      : 'Track audio detections and apply shot count manually below.',
                 ),
                 value: widget.state.shotTimerApplyAudioShotCountToRifle,
                 onChanged: isEnded
@@ -14983,7 +15049,13 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
                 FilledButton.icon(
                   onPressed: isEnded
                       ? null
-                      : () {
+                      : () async {
+                          if (!await _guardWrite(
+                            context,
+                            operation: 'Apply shot timer audio shot counts',
+                          )) {
+                            return;
+                          }
                           widget.state.addRifleRounds(
                             rifleId: _selectedRifleId!,
                             roundCount: _audioShotCount,
@@ -15104,6 +15176,12 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
                             ),
                           );
                           if (confirm != true) return;
+                          if (!await _guardWrite(
+                            context,
+                            operation: 'Delete shot timer run',
+                          )) {
+                            return;
+                          }
                           widget.state.deleteSessionTimerRun(
                             sessionId: widget.sessionId,
                             runId: run.id,
@@ -15719,7 +15797,7 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
               subtitle: Text(
                 _selectedRifleId == null
                     ? 'Pick a rifle first, or leave No firearm selected to use timer only.'
-                    : 'Increment selected rifle round count for auto-marked audio shots',
+                  : 'Track audio detections and apply shot count manually below.',
               ),
               value: widget.state.shotTimerApplyAudioShotCountToRifle,
               onChanged: _selectedRifleId == null
@@ -15729,7 +15807,13 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
             ),
             if (_audioShotCount > 0 && _selectedRifleId != null)
               FilledButton.icon(
-                onPressed: () {
+                onPressed: () async {
+                  if (!await _guardWrite(
+                    context,
+                    operation: 'Apply shot timer audio shot counts',
+                  )) {
+                    return;
+                  }
                   widget.state.addRifleRounds(
                     rifleId: _selectedRifleId!,
                     roundCount: _audioShotCount,
@@ -17617,6 +17701,12 @@ class SessionDetailScreen extends StatelessWidget {
                               ),
                             );
                             if (ok != true) return;
+                            if (!await _guardWrite(
+                              context,
+                              operation: 'Delete DOPE entry',
+                            )) {
+                              return;
+                            }
                             state.deleteTrainingDopeEntry(
                               sessionId: s.id,
                               dopeEntryId: e.id,
@@ -17811,6 +17901,12 @@ class SessionDetailScreen extends StatelessWidget {
                                   ),
                                 );
                                 if (ok != true) return;
+                                if (!await _guardWrite(
+                                  context,
+                                  operation: 'Delete working DOPE entry',
+                                )) {
+                                  return;
+                                }
 
                                 final fromAmmoScoped =
                                     ammoKey != null &&
@@ -18960,6 +19056,9 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
   final ImagePicker _picker = ImagePicker();
 
   Future<void> _pick({required ImageSource source}) async {
+    if (!await _guardWrite(context, operation: 'Attach photo to cold bore entry')) {
+      return;
+    }
     try {
       final x = await _picker.pickImage(
         source: source,
@@ -18982,7 +19081,10 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
     }
   }
 
-  void _setBaseline() {
+  Future<void> _setBaseline() async {
+    if (!await _guardWrite(context, operation: 'Set cold bore baseline')) {
+      return;
+    }
     widget.state.setBaselineColdBore(
       sessionId: widget.sessionId,
       shotId: widget.shotId,
@@ -19290,7 +19392,7 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
                     label: const Text('Pick from Library'),
                   ),
                   OutlinedButton.icon(
-                    onPressed: _setBaseline,
+                    onPressed: () => _setBaseline(),
                     icon: const Icon(Icons.star_border),
                     label: const Text('Mark as Baseline'),
                   ),
@@ -19645,6 +19747,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
           'This removes the rifle from your equipment list.\n\nHistorical sessions will keep their records and exports will show the rifle as Deleted.',
     );
     if (!ok) return;
+    if (!await _guardWrite(context, operation: 'Delete rifle')) return;
     widget.state.deleteRifle(r.id);
   }
 
@@ -19655,6 +19758,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
           'This removes the ammo lot from your equipment list.\n\nHistorical sessions will keep their records and exports will show the ammo lot as Deleted.',
     );
     if (!ok) return;
+    if (!await _guardWrite(context, operation: 'Delete ammo lot')) return;
     widget.state.deleteAmmoLot(a.id);
   }
 
@@ -19821,6 +19925,12 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                                                       ),
                                                 );
                                             if (updated == null) return;
+                                            if (!await _guardWrite(
+                                              context,
+                                              operation: 'Edit rifle DOPE text',
+                                            )) {
+                                              return;
+                                            }
                                             widget.state.updateRifleDope(
                                               rifleId: r.id,
                                               dope: updated,
@@ -24745,6 +24855,9 @@ class DopeManagerScreen extends StatelessWidget {
                   ),
                   subtitle: e.notes.trim().isEmpty ? null : Text(e.notes),
                   onTap: () async {
+                    if (!await _guardWrite(context, operation: 'Edit DOPE row/history')) {
+                      return;
+                    }
                     final edited = await showDialog<RifleDopeEntry>(
                       context: context,
                       builder: (_) => _RifleDopeEntryDialog(existing: e),
@@ -24782,6 +24895,12 @@ class DopeManagerScreen extends StatelessWidget {
                         ),
                       );
                       if (ok == true) {
+                        if (!await _guardWrite(
+                          context,
+                          operation: 'Delete DOPE row/history',
+                        )) {
+                          return;
+                        }
                         state.deleteRifleDopeEntry(rifle.id, e.id);
                       }
                     },

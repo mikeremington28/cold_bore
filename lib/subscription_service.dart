@@ -1,25 +1,14 @@
 import 'dart:async';
 import 'dart:io';
-import 'package:cloud_firestore/cloud_firestore.dart';
+
 import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'meta_app_events_service.dart';
-
-/// Product ID must match App Store Connect exactly (case-sensitive)
 const String kSubscriptionProductId = 'Coldbore_Pro_Yearly';
-const String _entitlementPrefsKey = 'cold_bore.subscription.entitled.v1';
-const String _entitlementExpiryPrefsKey = 'cold_bore.subscription.expiry_ms.v1';
 const String _hadEntitlementPrefsKey =
     'cold_bore.subscription.had_entitlement.v1';
-const String _metaLoggedEventKeysPrefsKey =
-  'cold_bore.subscription.meta_event_keys.v1';
 
-/// Lightweight subscription service.
-///
-/// Call [initialize] once at app start. Listen to [statusStream] for changes.
-/// Check [isEntitled] before allowing write actions.
 class SubscriptionService extends ChangeNotifier {
   static final SubscriptionService _instance = SubscriptionService._();
   factory SubscriptionService() => _instance;
@@ -28,255 +17,256 @@ class SubscriptionService extends ChangeNotifier {
   final InAppPurchase _iap = InAppPurchase.instance;
 
   StreamSubscription<List<PurchaseDetails>>? _purchaseSub;
+  Completer<bool>? _pendingEntitlementWait;
 
-  bool _entitled = false;
-  bool _hadEntitlementEver = false;
-  bool _loading = false;
-  bool _available = false;
   ProductDetails? _product;
+  bool _storeAvailable = false;
+  bool _isEntitled = false;
+  bool _loading = false;
+  bool _purchasing = false;
+  bool _restoring = false;
+  bool _hadEntitlementEver = false;
   String? _lastError;
-  bool _testerOverride = false;
-  String? _currentIdentifier;
-  bool _entitlementRefreshInFlight = false;
-  DateTime? _lastEntitlementRefreshAt;
-  DateTime? _lastAppleEntitlementConfirmationAt;
-  Completer<bool>? _pendingEntitlementResult;
-  String? _pendingEntitlementReason;
-  final Set<String> _loggedMetaEventKeys = <String>{};
-  static const Duration _restoreWaitTimeout = Duration(seconds: 10);
+  String _lastPurchaseStatus = 'idle';
+  String _lastRestoreStatus = 'idle';
+  DateTime? _lastRefreshAt;
 
-  /// True while initial availability check / purchase is in progress.
+  static const Duration _waitTimeout = Duration(seconds: 10);
+
+  bool get isEntitled => _isEntitled;
   bool get loading => _loading;
-
-  /// True when the user has an active subscription or is in their free trial.
-  bool get isEntitled => _entitled;
-
+  bool get purchasing => _purchasing;
+  bool get restoring => _restoring;
   bool get hadEntitlementEver => _hadEntitlementEver;
-
-  bool get hasTesterAccess => _testerOverride;
-
-  /// The product to display in the paywall (may be null until loaded).
-  ProductDetails? get product => _product;
-
-  /// True when the native IAP store is reachable on this device.
-  bool get storeAvailable => _available;
-
-  /// True when purchases can be attempted (store available + product loaded).
-  bool get canPurchase => _available && _product != null;
-
-  /// Set when a purchase/restore fails.
   String? get lastError => _lastError;
 
-  // ── lifecycle ─────────────────────────────────────────────────────────────
+  ProductDetails? get product => _product;
+  bool get storeAvailable => _storeAvailable;
+  bool get canPurchase => _storeAvailable && _product != null;
+  String get lastPurchaseStatus => _lastPurchaseStatus;
+  String get lastRestoreStatus => _lastRestoreStatus;
 
   Future<void> initialize() async {
-    // Restore cached entitlement quickly so UI doesn't flash locked state.
-    await _loadCachedEntitlement();
-    await _loadLoggedMetaEventKeys();
+    await _loadLocalFlags();
 
-    if (kIsWeb) return; // IAP not available on web.
-
-    _available = await _iap.isAvailable();
-    if (!_available) {
-      _lastError = 'Subscription store is currently unavailable.';
+    if (kIsWeb) {
       notifyListeners();
       return;
     }
 
-    _purchaseSub = _iap.purchaseStream.listen(
+    _purchaseSub ??= _iap.purchaseStream.listen(
       _onPurchaseUpdates,
       onError: (Object e) {
         _lastError = e.toString();
+        _lastPurchaseStatus = 'error';
+        _lastRestoreStatus = 'error';
+        _completePendingWait(false);
         notifyListeners();
       },
     );
 
-    await _loadProduct();
-    await refreshEntitlementIfNeeded(
-      performRestoreCheck: _entitled || _hadEntitlementEver,
-    );
+    await refresh();
   }
 
-  Future<void> refreshProductDetails() async {
+  Future<void> refresh() async {
     if (kIsWeb) return;
 
-    try {
-      _available = await _iap.isAvailable();
-      if (!_available) {
-        _product = null;
-        _lastError = 'Subscription store is currently unavailable.';
-        notifyListeners();
-        return;
-      }
-
-      await _loadProduct();
-    } catch (e) {
-      _product = null;
-      _lastError = 'Subscription store is currently unavailable.';
-      debugPrint('SubscriptionService: refresh failed: $e');
-      notifyListeners();
+    final now = DateTime.now();
+    if (_lastRefreshAt != null &&
+        now.difference(_lastRefreshAt!) < const Duration(seconds: 10) &&
+        !_restoring &&
+        !_purchasing) {
+      return;
     }
-  }
 
-  Future<void> setCurrentUserIdentifier(String? identifier) async {
-    final normalized = identifier?.trim().toUpperCase();
-    final nextIdentifier = (normalized == null || normalized.isEmpty)
-        ? null
-        : normalized;
-    if (_currentIdentifier == nextIdentifier) return;
-
-    _currentIdentifier = nextIdentifier;
-    await _refreshTesterOverride();
-  }
-
-  @override
-  void dispose() {
-    _purchaseSub?.cancel();
-    super.dispose();
-  }
-
-  // ── product loading ───────────────────────────────────────────────────────
-
-  Future<void> _loadProduct() async {
-    try {
-      final response = await _iap.queryProductDetails({kSubscriptionProductId});
-      if (response.productDetails.isNotEmpty) {
-        _product = response.productDetails.first;
-        _lastError = null;
-        notifyListeners();
-        return;
-      }
-      if (response.notFoundIDs.isNotEmpty) {
-        _product = null;
-        _lastError =
-            'Subscription product not found in App Store (${response.notFoundIDs.join(', ')}).';
-        notifyListeners();
-        return;
-      }
-
-      _product = null;
-      _lastError =
-          'Subscription product is not available yet. Please try again shortly.';
-      notifyListeners();
-    } catch (e) {
-      _product = null;
-      debugPrint('SubscriptionService: product load failed: $e');
-      _lastError = 'Subscription store is currently unavailable.';
-      notifyListeners();
-    }
-  }
-
-  // ── purchase ──────────────────────────────────────────────────────────────
-
-  Future<bool> purchase() async {
-    debugPrint('[IAP] purchase() called. entitled=$isEntitled product=${_product?.id ?? '-'} available=$_available');
-    if (_product == null) {
-      _lastError = 'Product not available. Please try again.';
-      notifyListeners();
-      return false;
-    }
-    _lastError = null;
+    _lastRefreshAt = now;
     _loading = true;
+    _lastError = null;
     notifyListeners();
 
     try {
-      final wait = _beginEntitlementWait('purchase');
+      _storeAvailable = await _iap.isAvailable();
+      if (!_storeAvailable) {
+        _product = null;
+        _isEntitled = false;
+        _lastError = 'Subscription store is currently unavailable.';
+        return;
+      }
+
+      final response = await _iap.queryProductDetails({kSubscriptionProductId});
+      if (response.error != null) {
+        _product = null;
+        _lastError = response.error!.message;
+        return;
+      }
+
+      if (response.productDetails.isEmpty) {
+        _product = null;
+        _lastError = 'Subscription product not found in App Store ($kSubscriptionProductId).';
+        return;
+      }
+
+      _product = response.productDetails.firstWhere(
+        (p) => p.id == kSubscriptionProductId,
+        orElse: () => response.productDetails.first,
+      );
+
+      // Apple entitlement is the authority. Recheck on iOS startup/refresh.
+      if (!kIsWeb && Platform.isIOS) {
+        await _restoreInternal(silent: true, reason: 'refresh');
+      }
+    } catch (e) {
+      _lastError = e.toString();
+    } finally {
+      _loading = _purchasing || _restoring;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> purchase() async {
+    if (kIsWeb) return false;
+    if (_purchasing) return false;
+
+    _purchasing = true;
+    _loading = true;
+    _lastError = null;
+    _lastPurchaseStatus = 'starting';
+    notifyListeners();
+
+    try {
+      if (!_storeAvailable || _product == null) {
+        await refresh();
+      }
+
+      if (!_storeAvailable || _product == null) {
+        _lastPurchaseStatus = 'error';
+        _lastError = 'Subscription is temporarily unavailable. Please try again.';
+        return false;
+      }
+
+      debugPrint('[IAP] Start trial tapped product=${_product!.id} price=${_product!.price}');
+      final wait = _beginEntitlementWait();
       final param = PurchaseParam(productDetails: _product!);
-      // Auto-renewing subscriptions should use non-consumable purchase flow.
+      _lastPurchaseStatus = 'calling_purchase';
       await _iap.buyNonConsumable(purchaseParam: param);
 
       var unlocked = await wait;
       if (!unlocked && !kIsWeb && Platform.isIOS) {
-        debugPrint('[IAP] purchase wait ended without entitlement. Trying restore fallback.');
-        unlocked = await restorePurchases(silent: true);
+        debugPrint('[IAP] purchase returned without entitlement, running restore fallback');
+        unlocked = await _restoreInternal(silent: true, reason: 'purchase_fallback');
       }
-      _loading = false;
-      notifyListeners();
+
+      if (unlocked) {
+        _lastPurchaseStatus = 'purchased';
+      } else if (_lastPurchaseStatus != 'canceled' && _lastPurchaseStatus != 'error') {
+        _lastPurchaseStatus = 'no_entitlement';
+      }
       return unlocked;
     } catch (e) {
-      debugPrint('[IAP] purchase() threw: $e');
-      _lastError = 'Purchase failed. Please try again.';
-      // In TestFlight/Sandbox, users with an active subscription may receive
-      // an "already subscribed" response instead of a new purchase update.
-      // Restore verifies entitlement and unlocks without changing purchase flow.
+      _lastError = e.toString();
+      _lastPurchaseStatus = 'error';
+      _completePendingWait(false);
       if (!kIsWeb && Platform.isIOS) {
-        final restored = await restorePurchases(silent: true);
-        _loading = false;
-        notifyListeners();
-        return restored;
-      }
-      _loading = false;
-      notifyListeners();
-      return false;
-    }
-  }
-
-  Future<bool> restorePurchases({bool silent = false}) async {
-    if (!_available) return false;
-    debugPrint('[IAP] restorePurchases(silent: $silent) called. entitledBefore=$isEntitled');
-    if (!silent) {
-      _loading = true;
-      notifyListeners();
-    }
-    try {
-      final wait = _beginEntitlementWait('restore');
-      await _iap.restorePurchases();
-      final restored = await wait;
-      debugPrint('[IAP] restorePurchases completed. entitledAfter=$isEntitled restored=$restored');
-      return restored;
-    } catch (e) {
-      _completePendingEntitlementWait(false);
-      if (!silent) {
-        _lastError = 'Restore failed. Please try again.';
+        return _restoreInternal(silent: true, reason: 'purchase_error_restore');
       }
       return false;
     } finally {
-      if (!silent) {
-        _loading = false;
-        notifyListeners();
-      }
+      _purchasing = false;
+      _loading = _restoring;
+      notifyListeners();
     }
   }
 
-  // ── purchase stream handler ───────────────────────────────────────────────
+  Future<bool> restorePurchases() async {
+    return _restoreInternal(silent: false, reason: 'manual_restore');
+  }
+
+  Future<bool> _restoreInternal({
+    required bool silent,
+    required String reason,
+  }) async {
+    if (kIsWeb) return false;
+    if (_restoring) return false;
+
+    _restoring = true;
+    _loading = true;
+    _lastError = null;
+    _lastRestoreStatus = 'starting';
+    notifyListeners();
+
+    try {
+      _storeAvailable = await _iap.isAvailable();
+      if (!_storeAvailable) {
+        _isEntitled = false;
+        _lastRestoreStatus = 'store_unavailable';
+        _lastError = silent ? _lastError : 'Subscription store is currently unavailable.';
+        return false;
+      }
+
+      final wait = _beginEntitlementWait();
+      debugPrint('[IAP] restorePurchases called reason=$reason');
+      await _iap.restorePurchases();
+      final restored = await wait;
+
+      if (restored) {
+        _lastRestoreStatus = 'restored';
+      } else {
+        _isEntitled = false;
+        _lastRestoreStatus = 'not_found';
+      }
+      return restored;
+    } catch (e) {
+      _lastRestoreStatus = 'error';
+      _lastError = e.toString();
+      _isEntitled = false;
+      _completePendingWait(false);
+      return false;
+    } finally {
+      _restoring = false;
+      _loading = _purchasing;
+      notifyListeners();
+    }
+  }
 
   Future<void> _onPurchaseUpdates(List<PurchaseDetails> purchases) async {
     for (final purchase in purchases) {
+      debugPrint(
+        '[IAP] stream product=${purchase.productID} status=${purchase.status.name} '
+        'error=${purchase.error?.code ?? '-'}:${purchase.error?.message ?? '-'} '
+        'pendingComplete=${purchase.pendingCompletePurchase}',
+      );
+
       if (purchase.productID != kSubscriptionProductId) {
         continue;
       }
 
-      debugPrint(
-        '[IAP] stream status=${purchase.status.name} product=${purchase.productID} '
-        'errorCode=${purchase.error?.code ?? '-'} errorMessage=${purchase.error?.message ?? '-'} '
-        'pendingComplete=${purchase.pendingCompletePurchase}',
-      );
-
-      if (purchase.status == PurchaseStatus.pending) {
-        _loading = true;
-        notifyListeners();
-        continue;
-      }
-
-      if (purchase.status == PurchaseStatus.error) {
-        _lastError =
-            purchase.error?.message ?? 'Purchase failed. Please try again.';
-        _completePendingEntitlementWait(false);
-        _loading = false;
-        notifyListeners();
-      }
-
-      if (purchase.status == PurchaseStatus.canceled) {
-        _lastError = null;
-        _completePendingEntitlementWait(false);
-        _loading = false;
-        notifyListeners();
-      }
-
-      if (purchase.status == PurchaseStatus.purchased ||
-          purchase.status == PurchaseStatus.restored) {
-        await _grantEntitlement(purchase: purchase);
-        _completePendingEntitlementWait(true);
+      switch (purchase.status) {
+        case PurchaseStatus.pending:
+          _lastPurchaseStatus = 'pending';
+          break;
+        case PurchaseStatus.purchased:
+          _lastPurchaseStatus = 'purchased';
+          _lastRestoreStatus = 'restored';
+          await _grantEntitlement();
+          _completePendingWait(true);
+          break;
+        case PurchaseStatus.restored:
+          _lastPurchaseStatus = 'restored';
+          _lastRestoreStatus = 'restored';
+          await _grantEntitlement();
+          _completePendingWait(true);
+          break;
+        case PurchaseStatus.error:
+          _lastPurchaseStatus = 'error';
+          _lastRestoreStatus = 'error';
+          _lastError = purchase.error?.message ?? 'Purchase failed.';
+          _completePendingWait(false);
+          break;
+        case PurchaseStatus.canceled:
+          _lastPurchaseStatus = 'canceled';
+          _lastError = 'Purchase canceled.';
+          _completePendingWait(false);
+          break;
       }
 
       if (purchase.pendingCompletePurchase) {
@@ -284,254 +274,66 @@ class SubscriptionService extends ChangeNotifier {
       }
     }
 
-    _loading = false;
+    _loading = _purchasing || _restoring;
     notifyListeners();
   }
 
-  // ── entitlement persistence ───────────────────────────────────────────────
-
-  Future<void> _grantEntitlement({PurchaseDetails? purchase}) async {
-    _entitled = true;
+  Future<void> _grantEntitlement() async {
+    _isEntitled = true;
     _hadEntitlementEver = true;
-    _lastAppleEntitlementConfirmationAt = DateTime.now();
-    debugPrint(
-      '[IAP] Entitlement granted via ${purchase?.status.name ?? 'unknown'} for product=${purchase?.productID ?? '-'}',
-    );
     _lastError = null;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_entitlementPrefsKey, true);
     await prefs.setBool(_hadEntitlementPrefsKey, true);
-    // Store a far-future expiry; StoreKit handles actual renewal checks.
-    final farFuture = DateTime.now()
-        .add(const Duration(days: 400))
-        .millisecondsSinceEpoch;
-    await prefs.setInt(_entitlementExpiryPrefsKey, farFuture);
-    if (purchase != null && purchase.status == PurchaseStatus.purchased) {
-      await _logMetaSubscriptionPurchase(purchase);
-    }
     notifyListeners();
   }
 
-  Future<bool> _beginEntitlementWait(String reason) async {
-    _pendingEntitlementResult ??= Completer<bool>();
-    _pendingEntitlementReason = reason;
-    debugPrint('[IAP] $reason wait started. entitledBefore=$isEntitled');
+  Future<void> _loadLocalFlags() async {
+    final prefs = await SharedPreferences.getInstance();
+    _hadEntitlementEver = prefs.getBool(_hadEntitlementPrefsKey) == true;
+    _isEntitled = false;
+  }
+
+  Future<bool> _beginEntitlementWait() async {
+    final pending = _pendingEntitlementWait ??= Completer<bool>();
     try {
-      final result = await _pendingEntitlementResult!.future.timeout(
-        _restoreWaitTimeout,
+      return await pending.future.timeout(
+        _waitTimeout,
         onTimeout: () {
-          debugPrint('[IAP] $reason timeout after ${_restoreWaitTimeout.inSeconds}s');
-          _completePendingEntitlementWait(false);
+          _completePendingWait(false);
           return false;
         },
       );
-      return result;
     } finally {
-      _pendingEntitlementResult = null;
-      _pendingEntitlementReason = null;
+      if (identical(_pendingEntitlementWait, pending)) {
+        _pendingEntitlementWait = null;
+      }
     }
   }
 
-  void _completePendingEntitlementWait(bool value) {
-    final pending = _pendingEntitlementResult;
+  void _completePendingWait(bool value) {
+    final pending = _pendingEntitlementWait;
     if (pending != null && !pending.isCompleted) {
-      debugPrint('[IAP] ${_pendingEntitlementReason ?? 'entitlement'} wait completed with $value');
       pending.complete(value);
     }
+    _pendingEntitlementWait = null;
   }
 
-  Future<void> _loadCachedEntitlement() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final entitled = prefs.getBool(_entitlementPrefsKey) == true;
-      _hadEntitlementEver = prefs.getBool(_hadEntitlementPrefsKey) == true;
-      final expiryMs = prefs.getInt(_entitlementExpiryPrefsKey);
-      if (entitled && expiryMs != null) {
-        final expiry = DateTime.fromMillisecondsSinceEpoch(expiryMs);
-        _entitled = DateTime.now().isBefore(expiry);
-      } else {
-        _entitled = entitled;
-      }
-    } catch (_) {
-      _entitled = false;
-      _hadEntitlementEver = false;
-    }
-    notifyListeners();
-  }
-
-  Future<void> _clearEntitlementCache() async {
-    _entitled = false;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_entitlementPrefsKey, false);
-    await prefs.remove(_entitlementExpiryPrefsKey);
-    notifyListeners();
-  }
-
-  Future<void> refreshEntitlementIfNeeded({bool performRestoreCheck = false}) async {
-    if (kIsWeb || !Platform.isIOS) {
-      await _refreshTesterOverride();
-      return;
-    }
-
-    if (_entitlementRefreshInFlight) {
-      await _refreshTesterOverride();
-      return;
-    }
-
-    final now = DateTime.now();
-    if (_lastEntitlementRefreshAt != null &&
-        now.difference(_lastEntitlementRefreshAt!) <
-            const Duration(seconds: 30)) {
-      await _refreshTesterOverride();
-      return;
-    }
-
-    _entitlementRefreshInFlight = true;
-    _lastEntitlementRefreshAt = now;
-    try {
-      _available = await _iap.isAvailable();
-      if (!_available) {
-        if (performRestoreCheck) {
-          await _clearEntitlementCache();
-        }
-        _lastError = 'Subscription store is currently unavailable.';
-        notifyListeners();
-        return;
-      }
-
-      if (_product == null) {
-        await _loadProduct();
-      }
-
-      // Restore checks can trigger StoreKit account UI; only do this when explicitly requested.
-      if (performRestoreCheck && (_entitled || _hadEntitlementEver)) {
-        final previousConfirmationAt = _lastAppleEntitlementConfirmationAt;
-        await restorePurchases(silent: true);
-        final confirmedByApple =
-            _lastAppleEntitlementConfirmationAt != null &&
-            (previousConfirmationAt == null ||
-                _lastAppleEntitlementConfirmationAt!.isAfter(
-                  previousConfirmationAt,
-                ));
-        if (!confirmedByApple) {
-          await _clearEntitlementCache();
-        }
-      }
-    } catch (e) {
-      debugPrint('SubscriptionService: entitlement refresh failed: $e');
-    } finally {
-      _entitlementRefreshInFlight = false;
-      await _refreshTesterOverride();
-      debugPrint('[IAP] refreshEntitlementIfNeeded -> entitled=$isEntitled');
-    }
-  }
-
-  Future<void> _loadLoggedMetaEventKeys() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      _loggedMetaEventKeys
-        ..clear()
-        ..addAll(prefs.getStringList(_metaLoggedEventKeysPrefsKey) ?? const []);
-    } catch (_) {
-      _loggedMetaEventKeys.clear();
-    }
-  }
-
-  Future<void> _saveLoggedMetaEventKeys() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(
-      _metaLoggedEventKeysPrefsKey,
-      _loggedMetaEventKeys.toList(),
-    );
-  }
-
-  String _purchaseEventKey(PurchaseDetails purchase) {
-    final purchaseId = purchase.purchaseID?.trim();
-    if (purchaseId != null && purchaseId.isNotEmpty) return purchaseId;
-
-    final serverVerificationData =
-        purchase.verificationData.serverVerificationData.trim();
-    if (serverVerificationData.isNotEmpty) return serverVerificationData;
-
-    final localVerificationData =
-        purchase.verificationData.localVerificationData.trim();
-    if (localVerificationData.isNotEmpty) return localVerificationData;
-
-    return '${purchase.productID}:${purchase.status.name}';
-  }
-
-  Future<void> _logMetaSubscriptionPurchase(PurchaseDetails purchase) async {
-    final key = _purchaseEventKey(purchase);
-    if (_loggedMetaEventKeys.contains(key)) return;
-
-    _loggedMetaEventKeys.add(key);
-    await _saveLoggedMetaEventKeys();
-
-    final amount = _product?.rawPrice;
-    final currency = _product?.currencyCode;
-    if (amount == null || currency == null || currency.trim().isEmpty) {
-      return;
-    }
-
-    final parameters = <String, dynamic>{
-      'product_id': purchase.productID,
-      if (purchase.purchaseID != null && purchase.purchaseID!.trim().isNotEmpty)
-        'purchase_id': purchase.purchaseID!.trim(),
-    };
-
-    await MetaAppEventsService.instance.logSubscribe(
-      orderId: key,
-      price: amount,
-      currency: currency,
-      parameters: parameters,
-    );
-  }
-
-  Future<void> _refreshTesterOverride() async {
-    if (!kDebugMode) {
-      if (_testerOverride) {
-        _testerOverride = false;
-        notifyListeners();
-      }
-      return;
-    }
-
-    final identifier = _currentIdentifier;
-    if (identifier == null) {
-      if (_testerOverride) {
-        _testerOverride = false;
-        notifyListeners();
-      }
-      return;
-    }
-
-    try {
-      final doc = await FirebaseFirestore.instance
-          .collection('tester_access')
-          .doc(identifier)
-          .get();
-      final enabled = doc.exists && doc.data()?['enabled'] == true;
-      if (_testerOverride != enabled) {
-        _testerOverride = enabled;
-        notifyListeners();
-      }
-    } catch (e) {
-      debugPrint('SubscriptionService tester access lookup failed: $e');
-      if (_testerOverride) {
-        _testerOverride = false;
-        notifyListeners();
-      }
-    }
-  }
-
-  /// Call on iOS foreground resume to re-verify via restore (silent).
   Future<void> refreshOnResume() async {
-    if (!kIsWeb && Platform.isIOS) {
-      await refreshEntitlementIfNeeded(
-        performRestoreCheck: _entitled || _hadEntitlementEver,
-      );
-      return;
-    }
-    await _refreshTesterOverride();
+    await refresh();
+  }
+
+  Future<void> refreshProductDetails() async {
+    await refresh();
+  }
+
+  Future<void> setCurrentUserIdentifier(String? identifier) async {
+    // Intentionally unused in Apple-entitlement subscription logic.
+  }
+
+  @override
+  void dispose() {
+    _purchaseSub?.cancel();
+    _purchaseSub = null;
+    super.dispose();
   }
 }
