@@ -6,8 +6,12 @@ import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const String kSubscriptionProductId = 'Coldbore_Pro_Yearly';
+const String _entitlementPrefsKey =
+    'cold_bore.subscription.entitled_hint.v1';
 const String _hadEntitlementPrefsKey =
     'cold_bore.subscription.had_entitlement.v1';
+const String _forceLockedPrefsKey =
+    'cold_bore.subscription.force_locked_for_testing.v1';
 
 class SubscriptionService extends ChangeNotifier {
   static final SubscriptionService _instance = SubscriptionService._();
@@ -26,24 +30,23 @@ class SubscriptionService extends ChangeNotifier {
   bool _purchasing = false;
   bool _restoring = false;
   bool _hadEntitlementEver = false;
+  bool _forceLockedForTesting = false;
+  bool _initialized = false;
   String? _lastError;
   String _lastPurchaseStatus = 'idle';
   String _lastRestoreStatus = 'idle';
   DateTime? _lastRefreshAt;
 
   static const Duration _waitTimeout = Duration(seconds: 10);
-  static const String _forceLockedPrefsKey =
-      'cold_bore.subscription.force_locked_for_testing.v1';
 
-
-  bool get isEntitled => _forceLockedForTesting ? false : _isEntitled;
+  bool get isEntitled => _isEntitled;
   bool get loading => _loading;
   bool get purchasing => _purchasing;
   bool get restoring => _restoring;
   bool get hadEntitlementEver => _hadEntitlementEver;
-  String? get lastError => _lastError;
-  bool get forceLockedForTesting => _forceLockedForTesting;
+  bool get forceLockedForTesting => false;
   bool get realAppleEntitlementActive => _isEntitled;
+  String? get lastError => _lastError;
 
   ProductDetails? get product => _product;
   bool get storeAvailable => _storeAvailable;
@@ -52,6 +55,9 @@ class SubscriptionService extends ChangeNotifier {
   String get lastRestoreStatus => _lastRestoreStatus;
 
   Future<void> initialize() async {
+    if (_initialized) return;
+    _initialized = true;
+
     await _loadLocalFlags();
 
     if (kIsWeb) {
@@ -59,6 +65,17 @@ class SubscriptionService extends ChangeNotifier {
       return;
     }
 
+    _ensurePurchaseListener();
+    await refresh();
+
+    // Validate any cached entitlement in the background. Do not block startup or
+    // normal writing on StoreKit restore timing; purchase stream events will
+    // grant entitlement when Apple responds.
+    unawaited(_restoreInternal(silent: true, reason: 'startup_validation'));
+  }
+
+  void _ensurePurchaseListener() {
+    if (kIsWeb) return;
     _purchaseSub ??= _iap.purchaseStream.listen(
       _onPurchaseUpdates,
       onError: (Object e) {
@@ -69,12 +86,11 @@ class SubscriptionService extends ChangeNotifier {
         notifyListeners();
       },
     );
-
-    await refresh();
   }
 
   Future<void> refresh() async {
     if (kIsWeb) return;
+    _ensurePurchaseListener();
 
     final now = DateTime.now();
     if (_lastRefreshAt != null &&
@@ -93,7 +109,6 @@ class SubscriptionService extends ChangeNotifier {
       _storeAvailable = await _iap.isAvailable();
       if (!_storeAvailable) {
         _product = null;
-        _isEntitled = false;
         _lastError = 'Subscription store is currently unavailable.';
         return;
       }
@@ -126,11 +141,6 @@ class SubscriptionService extends ChangeNotifier {
         return;
       }
       _lastError = null;
-
-      // Apple entitlement is the authority. Recheck on iOS startup/refresh.
-      if (!kIsWeb && Platform.isIOS) {
-        await _restoreInternal(silent: true, reason: 'refresh');
-      }
     } catch (e) {
       _lastError = e.toString();
     } finally {
@@ -141,6 +151,7 @@ class SubscriptionService extends ChangeNotifier {
 
   Future<bool> purchase() async {
     if (kIsWeb) return false;
+    _ensurePurchaseListener();
     if (_purchasing) return false;
 
     _purchasing = true;
@@ -202,6 +213,7 @@ class SubscriptionService extends ChangeNotifier {
     required String reason,
   }) async {
     if (kIsWeb) return false;
+    _ensurePurchaseListener();
     if (_restoring) return false;
 
     _restoring = true;
@@ -213,7 +225,6 @@ class SubscriptionService extends ChangeNotifier {
     try {
       _storeAvailable = await _iap.isAvailable();
       if (!_storeAvailable) {
-        _isEntitled = false;
         _lastRestoreStatus = 'store_unavailable';
         _lastError = silent ? _lastError : 'Subscription store is currently unavailable.';
         return false;
@@ -227,14 +238,14 @@ class SubscriptionService extends ChangeNotifier {
       if (restored) {
         _lastRestoreStatus = 'restored';
       } else {
-        _isEntitled = false;
+        // A restore timeout/no-event is not proof of expiration. Keep any
+        // current in-memory entitlement and let future StoreKit events update it.
         _lastRestoreStatus = 'not_found';
       }
       return restored;
     } catch (e) {
       _lastRestoreStatus = 'error';
       _lastError = e.toString();
-      _isEntitled = false;
       _completePendingWait(false);
       return false;
     } finally {
@@ -299,6 +310,7 @@ class SubscriptionService extends ChangeNotifier {
     _hadEntitlementEver = true;
     _lastError = null;
     final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_entitlementPrefsKey, true);
     await prefs.setBool(_hadEntitlementPrefsKey, true);
     notifyListeners();
   }
@@ -306,15 +318,26 @@ class SubscriptionService extends ChangeNotifier {
   Future<void> _loadLocalFlags() async {
     final prefs = await SharedPreferences.getInstance();
     _hadEntitlementEver = prefs.getBool(_hadEntitlementPrefsKey) == true;
-    _forceLockedForTesting =
-        prefs.getBool(_forceLockedPrefsKey) == true;
-    _isEntitled = false;
+    // This is only a local startup hint so active users do not get re-paywalled
+    // on every launch. StoreKit purchase/restore events remain the source that
+    // grants this flag, and startup/resume validation runs in the background.
+    _isEntitled = prefs.getBool(_entitlementPrefsKey) == true;
+    // Force-lock testing is disabled in this build. Clear any stuck local
+    // override so real Apple entitlement controls access again.
+    _forceLockedForTesting = false;
+    await prefs.setBool(_forceLockedPrefsKey, false);
   }
 
   Future<void> setForceLockedForTesting(bool value) async {
-    _forceLockedForTesting = value;
+    // Force-lock testing is disabled in this build. Always clear the local
+    // override so it cannot block a valid Apple entitlement.
+    final wasForceLocked = _forceLockedForTesting;
+    _forceLockedForTesting = false;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_forceLockedPrefsKey, value);
+    await prefs.setBool(_forceLockedPrefsKey, false);
+    if (wasForceLocked) {
+      // Keep notifier behavior deterministic while still clearing stale flag.
+    }
     notifyListeners();
   }
 
@@ -348,10 +371,15 @@ class SubscriptionService extends ChangeNotifier {
   }
 
   Future<void> refreshOnResume() async {
+    await initialize();
     await refresh();
+    if (!kIsWeb && Platform.isIOS) {
+      unawaited(_restoreInternal(silent: true, reason: 'resume_validation'));
+    }
   }
 
   Future<void> refreshProductDetails() async {
+    await initialize();
     await refresh();
   }
 
