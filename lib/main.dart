@@ -1,4 +1,4 @@
-﻿// ignore_for_file: avoid_types_as_parameter_names, curly_braces_in_flow_control_structures, dead_code, dead_null_aware_expression, deprecated_member_use, library_private_types_in_public_api, unnecessary_underscores, unused_element, unused_element_parameter, unused_local_variable, use_build_context_synchronously
+// ignore_for_file: avoid_types_as_parameter_names, curly_braces_in_flow_control_structures, dead_code, dead_null_aware_expression, deprecated_member_use, library_private_types_in_public_api, unnecessary_underscores, unused_element, unused_element_parameter, unused_local_variable, use_build_context_synchronously
 
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -30,6 +30,8 @@ const String kBackupSchemaVersion = '2026-02-05';
 const String kLocalStatePrefsKey = 'cold_bore.local_state.v1';
 const String kPdfExportPresetsPrefsKey = 'cold_bore.pdf_export_presets.v1';
 const String kThemeModePrefsKey = 'cold_bore.theme_mode.v1';
+// TEMPORARY: true only for TestFlight subscription testing. Set false before App Store release.
+const bool kShowSubscriptionTestControls = true;
 final AudioPlayer _shotTimerBeepPlayer = AudioPlayer();
 const MethodChannel _nearbyShareChannel = MethodChannel(
   'com.remington.coldbore/nearby_share',
@@ -8658,9 +8660,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final entitlementText = _sub.isEntitled
-      ? 'Trial Active or Pro Active'
-      : (_sub.hadEntitlementEver ? 'Expired' : 'Free Preview');
+    final entitlementText = _sub.forceLockedForTesting
+      ? 'TEST MODE: forced locked locally'
+      : (_sub.isEntitled
+          ? 'Trial Active or Pro Active'
+          : (_sub.hadEntitlementEver ? 'Expired' : 'Free Preview'));
     final cloudError =
         _cloud.lastError != null && _cloud.lastError!.trim().isNotEmpty;
     final cloudConnected = !cloudError && _cloud.canSync;
@@ -8848,6 +8852,71 @@ class _SettingsScreenState extends State<SettingsScreen> {
               },
             ),
           ),
+          if (kShowSubscriptionTestControls)
+            ColdBoreCard(
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'TEMPORARY TEST CONTROL — REMOVE BEFORE APP STORE RELEASE',
+                      style: TextStyle(
+                        color: cbAmber,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Use this only to test the unsubscribed/paywall flow on a device that already has an active Apple/TestFlight subscription.',
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Real Apple entitlement: ${_sub.realAppleEntitlementActive}',
+                    ),
+                    Text(
+                      'Force locked for testing: ${_sub.forceLockedForTesting}',
+                    ),
+                    if (_sub.forceLockedForTesting) ...[
+                      const SizedBox(height: 8),
+                      const Text(
+                        'TEST MODE: app is forced locked locally.',
+                        style: TextStyle(
+                          color: cbAmber,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 8),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Force locked for testing'),
+                      subtitle: const Text(
+                        'When on, write actions should show the paywall even if Apple entitlement is active.',
+                      ),
+                      value: _sub.forceLockedForTesting,
+                      onChanged: (value) async {
+                        await _sub.setForceLockedForTesting(value);
+                        if (mounted) setState(() {});
+                      },
+                    ),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: OutlinedButton.icon(
+                        onPressed: _sub.forceLockedForTesting
+                            ? () async {
+                                await _sub.clearForceLockedForTesting();
+                                if (mounted) setState(() {});
+                              }
+                            : null,
+                        icon: const Icon(Icons.lock_open_outlined),
+                        label: const Text('Clear force locked test override'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ColdBoreCard(
             child: ListTile(
               leading: const Icon(Icons.refresh_outlined),

@@ -10,6 +10,8 @@ const String _entitlementPrefsKey =
     'cold_bore.subscription.entitled_hint.v1';
 const String _hadEntitlementPrefsKey =
     'cold_bore.subscription.had_entitlement.v1';
+const String _forceLockedPrefsKey =
+    'cold_bore.subscription.force_locked_for_testing.v1';
 
 class SubscriptionService extends ChangeNotifier {
   static final SubscriptionService _instance = SubscriptionService._();
@@ -28,6 +30,7 @@ class SubscriptionService extends ChangeNotifier {
   bool _purchasing = false;
   bool _restoring = false;
   bool _hadEntitlementEver = false;
+  bool _forceLockedForTesting = false;
   bool _initialized = false;
   String? _lastError;
   String _lastPurchaseStatus = 'idle';
@@ -36,11 +39,13 @@ class SubscriptionService extends ChangeNotifier {
 
   static const Duration _waitTimeout = Duration(seconds: 10);
 
-  bool get isEntitled => _isEntitled;
+  bool get isEntitled => _forceLockedForTesting ? false : _isEntitled;
   bool get loading => _loading;
   bool get purchasing => _purchasing;
   bool get restoring => _restoring;
   bool get hadEntitlementEver => _hadEntitlementEver;
+  bool get forceLockedForTesting => _forceLockedForTesting;
+  bool get realAppleEntitlementActive => _isEntitled;
   String? get lastError => _lastError;
 
   ProductDetails? get product => _product;
@@ -317,6 +322,20 @@ class SubscriptionService extends ChangeNotifier {
     // on every launch. StoreKit purchase/restore events remain the source that
     // grants this flag, and startup/resume validation runs in the background.
     _isEntitled = prefs.getBool(_entitlementPrefsKey) == true;
+    _forceLockedForTesting =
+        prefs.getBool(_forceLockedPrefsKey) == true;
+  }
+
+  Future<void> setForceLockedForTesting(bool value) async {
+    if (_forceLockedForTesting == value) return;
+    _forceLockedForTesting = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_forceLockedPrefsKey, value);
+    notifyListeners();
+  }
+
+  Future<void> clearForceLockedForTesting() async {
+    await setForceLockedForTesting(false);
   }
 
   Future<bool> _beginEntitlementWait() async {
