@@ -2458,6 +2458,13 @@ class _PaywallScreen extends StatefulWidget {
 class _PaywallScreenState extends State<_PaywallScreen> {
   final SubscriptionService _sub = SubscriptionService();
   late final VoidCallback _listener;
+  bool _closed = false;
+
+  void _closePaywallOnce() {
+    if (_closed || !mounted) return;
+    _closed = true;
+    Navigator.of(context).pop();
+  }
 
   Future<void> _startPurchaseFromPaywall() async {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -2469,7 +2476,7 @@ class _PaywallScreenState extends State<_PaywallScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Purchase completed.')),
       );
-      Navigator.of(context).pop();
+      _closePaywallOnce();
       return;
     }
 
@@ -2489,7 +2496,7 @@ class _PaywallScreenState extends State<_PaywallScreen> {
     final restored = await _sub.restorePurchases();
     if (!mounted) return;
     if (restored || _sub.isEntitled) {
-      Navigator.of(context).pop();
+      _closePaywallOnce();
       return;
     }
     ScaffoldMessenger.of(context).showSnackBar(
@@ -2503,8 +2510,8 @@ class _PaywallScreenState extends State<_PaywallScreen> {
     _listener = () {
       if (!mounted) return;
       setState(() {});
-      // Auto-dismiss when entitlement is granted.
-      if (_sub.isEntitled && mounted) Navigator.of(context).pop();
+      // Auto-dismiss when entitlement is granted, but never pop twice.
+      if (_sub.isEntitled && mounted) _closePaywallOnce();
     };
     _sub.addListener(_listener);
     unawaited(_sub.refreshProductDetails());
@@ -2665,7 +2672,7 @@ class _PaywallScreenState extends State<_PaywallScreen> {
                   ],
                   const SizedBox(height: 8),
                   TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
+                    onPressed: _closePaywallOnce,
                     child: const Text('Not now - view my data'),
                   ),
                   const SizedBox(height: 8),
