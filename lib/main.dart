@@ -31,7 +31,7 @@ const String kLocalStatePrefsKey = 'cold_bore.local_state.v1';
 const String kPdfExportPresetsPrefsKey = 'cold_bore.pdf_export_presets.v1';
 const String kThemeModePrefsKey = 'cold_bore.theme_mode.v1';
 // TEMPORARY: true only for TestFlight subscription testing. Set false before App Store release.
-const bool kShowSubscriptionTestControls = true;
+const bool kShowSubscriptionTestControls = false;
 final AudioPlayer _shotTimerBeepPlayer = AudioPlayer();
 const MethodChannel _nearbyShareChannel = MethodChannel(
   'com.remington.coldbore/nearby_share',
