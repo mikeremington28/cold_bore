@@ -8660,11 +8660,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final entitlementText = _sub.forceLockedForTesting
-      ? 'TEST MODE: forced locked locally'
-      : (_sub.isEntitled
-          ? 'Trial Active or Pro Active'
-          : (_sub.hadEntitlementEver ? 'Expired' : 'Free Preview'));
+    final entitlementText = _sub.isEntitled
+        ? 'Pro Active'
+        : (_sub.hadEntitlementEver ? 'Expired' : 'Free Preview');
     final cloudError =
         _cloud.lastError != null && _cloud.lastError!.trim().isNotEmpty;
     final cloudConnected = !cloudError && _cloud.canSync;
@@ -8675,86 +8673,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         padding: const EdgeInsets.all(16),
         children: [
           const ColdBoreSectionHeader(
-            title: 'Account & Access',
-            subtitle: 'Subscription, restore purchases, users, and display.',
-          ),
-          const SizedBox(height: 8),
-          ColdBoreCard(
-            child: ListTile(
-              leading: const Icon(Icons.workspace_premium_outlined),
-              title: const Text('Cold Bore Pro'),
-              subtitle: Text(entitlementText),
-              onTap: () async {
-                await _sub.refresh();
-                if (mounted) {
-                  setState(() {});
-                }
-                if (_sub.isEntitled) {
-                  if (!mounted) return;
-                  await showDialog<void>(
-                    context: context,
-                    builder: (ctx) => AlertDialog(
-                      title: const Text('Cold Bore Pro is active'),
-                      content: const Text(
-                        'Your access is currently active. Purchases are managed by the App Store for your Apple ID.',
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.of(ctx).pop(),
-                          child: const Text('Close'),
-                        ),
-                      ],
-                    ),
-                  );
-                  return;
-                }
-                final mode = _sub.hadEntitlementEver
-                    ? _PaywallMode.expired
-                    : _PaywallMode.freePreview;
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => _PaywallScreen(mode: mode)),
-                );
-              },
-            ),
-          ),
-          ColdBoreCard(
-            child: ListTile(
-              leading: const Icon(Icons.refresh_outlined),
-              title: const Text('Restore purchases'),
-              subtitle: const Text(
-                'Use this after reinstall or new device setup.',
-              ),
-              onTap: _sub.loading ? null : _restorePurchases,
-            ),
-          ),
-          ColdBoreCard(
-            child: ListTile(
-              leading: const Icon(Icons.person_outline),
-              title: const Text('Manage users'),
-              subtitle: const Text(
-                'Switch active user or add another user profile.',
-              ),
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => UsersScreen(state: widget.state),
-                  ),
-                );
-              },
-            ),
-          ),
-          ColdBoreCard(
-            child: ListTile(
-              leading: const Icon(Icons.brightness_6_outlined),
-              title: const Text('Appearance'),
-              subtitle: Text('Theme: ${_themeModeLabel(_theme.mode)}'),
-              onTap: _pickThemeMode,
-            ),
-          ),
-          const SizedBox(height: 16),
-          const ColdBoreSectionHeader(
             title: 'Cloud & Backup',
-            subtitle: 'Keep your local data recoverable on this device and new devices.',
+            subtitle: 'Quick backup, restore, sync, and subscription status.',
           ),
           const SizedBox(height: 8),
           ColdBoreCard(
@@ -8843,16 +8763,100 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ? Icons.cloud_done_outlined
                           : Icons.cloud_queue_outlined),
               ),
-              title: const Text('Session sync'),
+              title: const Text('Sync status'),
               subtitle: Text(
                 cloudError
-                    ? 'Error: ${_cloud.lastError}'
+                    ? 'Disconnected - ${_cloud.lastError}'
                     : (cloudConnected
                           ? 'Connected${_cloud.lastSyncAt == null ? '' : ' - Last sync ${_fmtDateTime(_cloud.lastSyncAt!)}'}'
-                          : 'Connecting. Sync activates when your user identifier is available.'),
+                          : 'Disconnected - sign in or set a user identifier to sync.'),
               ),
             ),
           ),
+          ColdBoreCard(
+            child: ListTile(
+              leading: const Icon(Icons.workspace_premium_outlined),
+              title: const Text('Subscription'),
+              subtitle: Text(entitlementText),
+              onTap: () async {
+                await _sub.refresh();
+                if (mounted) {
+                  setState(() {});
+                }
+                if (_sub.isEntitled) {
+                  if (!mounted) return;
+                  await showDialog<void>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('Subscription active'),
+                      content: const Text(
+                        'Your access is currently active. Purchases are managed by the App Store for your Apple ID.',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(ctx).pop(),
+                          child: const Text('Close'),
+                        ),
+                      ],
+                    ),
+                  );
+                  return;
+                }
+                final mode = _sub.hadEntitlementEver
+                    ? _PaywallMode.expired
+                    : _PaywallMode.freePreview;
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => _PaywallScreen(mode: mode)),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 16),
+          const ColdBoreSectionHeader(
+            title: 'Account & Display',
+            subtitle: 'Restore purchases, users, and appearance.',
+          ),
+          const SizedBox(height: 8),
+          ColdBoreCard(
+            child: ListTile(
+              leading: const Icon(Icons.refresh_outlined),
+              title: const Text('Restore purchases'),
+              subtitle: const Text(
+                'Use this after reinstall or new device setup.',
+              ),
+              onTap: _sub.loading ? null : _restorePurchases,
+            ),
+          ),
+          ColdBoreCard(
+            child: ListTile(
+              leading: const Icon(Icons.person_outline),
+              title: const Text('Manage users'),
+              subtitle: const Text(
+                'Switch active user or add another user profile.',
+              ),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => UsersScreen(state: widget.state),
+                  ),
+                );
+              },
+            ),
+          ),
+          ColdBoreCard(
+            child: ListTile(
+              leading: const Icon(Icons.brightness_6_outlined),
+              title: const Text('Appearance'),
+              subtitle: Text('Theme: ${_themeModeLabel(_theme.mode)}'),
+              onTap: _pickThemeMode,
+            ),
+          ),
+          const SizedBox(height: 16),
+          const ColdBoreSectionHeader(
+            title: 'Data & Support',
+            subtitle: 'Manual backups, exports, feedback, and app information.',
+          ),
+          const SizedBox(height: 8),
           ColdBoreCard(
             child: ListTile(
               leading: const Icon(Icons.folder_zip_outlined),
@@ -8869,12 +8873,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               },
             ),
           ),
-          const SizedBox(height: 16),
-          const ColdBoreSectionHeader(
-            title: 'Reports & Support',
-            subtitle: 'Exports, feedback, and app information.',
-          ),
-          const SizedBox(height: 8),
           ColdBoreCard(
             child: ListTile(
               leading: const Icon(Icons.picture_as_pdf_outlined),
@@ -8912,6 +8910,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
+
 }
 
 class DataScreen extends StatefulWidget {
