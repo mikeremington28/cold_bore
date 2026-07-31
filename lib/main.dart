@@ -1831,9 +1831,7 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
       _promptUniqueIdentifierOnHome =
           _promptUniqueIdentifierOnHome || _shouldPromptForUniqueIdentifier();
       await _consumePendingIncomingShareFromPlatform();
-      if (_firebaseReady) {
-        await SubscriptionService().initialize();
-      }
+      await SubscriptionService().initialize();
       _state.addListener(_onStateChanged);
       _lastHandledDurableRevision = _state.durableRevision;
       _lastObservedActiveIdentifier = _state.activeUserIdentifier?.trim();
@@ -2342,9 +2340,7 @@ class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _appInForeground = true;
-      if (_firebaseReady) {
-        unawaited(SubscriptionService().refreshOnResume());
-      }
+      unawaited(SubscriptionService().refreshOnResume());
       if (_supportsMetaEvents) {
         unawaited(_metaAppEvents.onAppForegrounded());
       }

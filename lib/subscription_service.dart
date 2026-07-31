@@ -54,6 +54,16 @@ class SubscriptionService extends ChangeNotifier {
       return;
     }
 
+    _ensurePurchaseListener();
+    await refresh();
+
+    if (Platform.isIOS) {
+      unawaited(_restoreInternal(silent: true, reason: 'initialize'));
+    }
+  }
+
+  void _ensurePurchaseListener() {
+    if (kIsWeb) return;
     _purchaseSub ??= _iap.purchaseStream.listen(
       _onPurchaseUpdates,
       onError: (Object e) {
@@ -64,12 +74,11 @@ class SubscriptionService extends ChangeNotifier {
         notifyListeners();
       },
     );
-
-    await refresh();
   }
 
   Future<void> refresh() async {
     if (kIsWeb) return;
+    _ensurePurchaseListener();
 
     final now = DateTime.now();
     if (_lastRefreshAt != null &&
@@ -121,11 +130,6 @@ class SubscriptionService extends ChangeNotifier {
         return;
       }
       _lastError = null;
-
-      // Apple entitlement is the authority. Recheck on iOS startup/refresh.
-      if (!kIsWeb && Platform.isIOS) {
-        await _restoreInternal(silent: true, reason: 'refresh');
-      }
     } catch (e) {
       _lastError = e.toString();
     } finally {
@@ -136,6 +140,7 @@ class SubscriptionService extends ChangeNotifier {
 
   Future<bool> purchase() async {
     if (kIsWeb) return false;
+    _ensurePurchaseListener();
     if (_purchasing) return false;
 
     _purchasing = true;
@@ -197,6 +202,7 @@ class SubscriptionService extends ChangeNotifier {
     required String reason,
   }) async {
     if (kIsWeb) return false;
+    _ensurePurchaseListener();
     if (_restoring) return false;
 
     _restoring = true;
@@ -331,6 +337,9 @@ class SubscriptionService extends ChangeNotifier {
 
   Future<void> refreshOnResume() async {
     await refresh();
+    if (!kIsWeb && Platform.isIOS) {
+      unawaited(_restoreInternal(silent: true, reason: 'resume'));
+    }
   }
 
   Future<void> refreshProductDetails() async {
