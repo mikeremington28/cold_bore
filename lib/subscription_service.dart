@@ -337,6 +337,7 @@ class SubscriptionService extends ChangeNotifier {
     await prefs.setBool(_forceLockedPrefsKey, false);
     if (wasForceLocked) {
       // Keep notifier behavior deterministic while still clearing stale flag.
+      notifyListeners();
     }
     notifyListeners();
   }

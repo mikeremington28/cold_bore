@@ -8674,146 +8674,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          ColdBoreCard(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const ColdBoreSectionHeader(
-                  title: 'Control Center',
-                  subtitle:
-                      'Backup integrity, sync health, and account status.',
-                ),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    ColdBoreMetricTile(
-                      label: 'Sync',
-                      value: cloudError
-                          ? 'Error'
-                          : (cloudConnected ? 'Online' : 'Connecting'),
-                      icon: cloudError
-                          ? Icons.cloud_off_outlined
-                          : (cloudConnected
-                                ? Icons.cloud_done_outlined
-                                : Icons.cloud_queue_outlined),
-                    ),
-                    ColdBoreMetricTile(
-                      label: 'Backup',
-                      value: _isBackupOverdue ? 'Overdue' : 'Healthy',
-                      icon: _isBackupOverdue
-                          ? Icons.warning_amber_rounded
-                          : Icons.verified_outlined,
-                    ),
-                    ColdBoreMetricTile(
-                      label: 'Theme',
-                      value: _themeModeLabel(_theme.mode),
-                      icon: Icons.brightness_6_outlined,
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
           const ColdBoreSectionHeader(
-            title: 'Cloud & Recovery',
-            subtitle:
-                'Protect your local data and recover quickly on new devices.',
+            title: 'Account & Access',
+            subtitle: 'Subscription, restore purchases, users, and display.',
           ),
           const SizedBox(height: 8),
-          ColdBoreCard(
-            child: ListTile(
-              leading: const Icon(Icons.cloud_done_outlined),
-              title: const Text('Cloud Backup & Restore'),
-              subtitle: Text(
-                widget.cloudRecoverySupported
-                    ? (_lastCloudBackupAt == null
-                          ? 'Automatic iCloud backup is enabled. No completed backup yet.'
-                          : 'Last backup: ${_fmtDateTime(_lastCloudBackupAt!)}${_lastCloudRestoreAt == null ? '' : '\nLast restore: ${_fmtDateTime(_lastCloudRestoreAt!)}'}')
-                    : 'Automatic cloud recovery is currently available on iPhone.',
-              ),
-            ),
-          ),
-          ColdBoreCard(
-            child: ListTile(
-              leading: Icon(
-                cloudError
-                    ? Icons.cloud_off_outlined
-                    : (cloudConnected
-                          ? Icons.cloud_done_outlined
-                          : Icons.cloud_queue_outlined),
-              ),
-              title: const Text('Session sync status'),
-              subtitle: Text(
-                cloudError
-                    ? 'Error: ${_cloud.lastError}'
-                    : (cloudConnected
-                          ? 'Connected${_cloud.lastSyncAt == null ? '' : ' - Last sync ${_fmtDateTime(_cloud.lastSyncAt!)}'}'
-                          : 'Not connected yet. Sync activates when Firebase is configured and user identifier is available.'),
-              ),
-            ),
-          ),
-          ColdBoreCard(
-            child: ListTile(
-              leading: Icon(
-                _isBackupOverdue
-                    ? Icons.warning_amber_rounded
-                    : Icons.verified_outlined,
-              ),
-              title: Text(
-                _isBackupOverdue ? 'Backup warning' : 'Backup health',
-              ),
-              subtitle: Text(_backupHealthText),
-              trailing: widget.cloudRecoverySupported
-                  ? TextButton(
-                      onPressed: _cloudBusy ? null : _backupNow,
-                      child: const Text('Back up'),
-                    )
-                  : null,
-            ),
-          ),
-          if (widget.cloudRecoverySupported)
-            ColdBoreCard(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _cloudBusy ? null : _backupNow,
-                        icon: const Icon(Icons.cloud_upload_outlined),
-                        label: const Text('Back up now'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: FilledButton.tonalIcon(
-                        onPressed: _cloudBusy ? null : _restoreFromCloud,
-                        icon: const Icon(Icons.cloud_download_outlined),
-                        label: const Text('Restore'),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          const SizedBox(height: 12),
-          const ColdBoreSectionHeader(
-            title: 'App & Account',
-            subtitle: 'Appearance, subscription, and active profile controls.',
-          ),
-          const SizedBox(height: 8),
-          ColdBoreCard(
-            child: ListTile(
-              leading: const Icon(Icons.brightness_6_outlined),
-              title: const Text('Appearance'),
-              subtitle: Text('Theme: ${_themeModeLabel(_theme.mode)}'),
-              onTap: _pickThemeMode,
-            ),
-          ),
           ColdBoreCard(
             child: ListTile(
               leading: const Icon(Icons.workspace_premium_outlined),
@@ -8852,71 +8717,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               },
             ),
           ),
-          if (kShowSubscriptionTestControls)
-            ColdBoreCard(
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'TEMPORARY TEST CONTROL — REMOVE BEFORE APP STORE RELEASE',
-                      style: TextStyle(
-                        color: cbAmber,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Use this only to test the unsubscribed/paywall flow on a device that already has an active Apple/TestFlight subscription.',
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      'Real Apple entitlement: ${_sub.realAppleEntitlementActive}',
-                    ),
-                    Text(
-                      'Force locked for testing: ${_sub.forceLockedForTesting}',
-                    ),
-                    if (_sub.forceLockedForTesting) ...[
-                      const SizedBox(height: 8),
-                      const Text(
-                        'TEST MODE: app is forced locked locally.',
-                        style: TextStyle(
-                          color: cbAmber,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 8),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Force locked for testing'),
-                      subtitle: const Text(
-                        'When on, write actions should show the paywall even if Apple entitlement is active.',
-                      ),
-                      value: _sub.forceLockedForTesting,
-                      onChanged: (value) async {
-                        await _sub.setForceLockedForTesting(value);
-                        if (mounted) setState(() {});
-                      },
-                    ),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: OutlinedButton.icon(
-                        onPressed: _sub.forceLockedForTesting
-                            ? () async {
-                                await _sub.clearForceLockedForTesting();
-                                if (mounted) setState(() {});
-                              }
-                            : null,
-                        icon: const Icon(Icons.lock_open_outlined),
-                        label: const Text('Clear force locked test override'),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
           ColdBoreCard(
             child: ListTile(
               leading: const Icon(Icons.refresh_outlined),
@@ -8943,18 +8743,122 @@ class _SettingsScreenState extends State<SettingsScreen> {
               },
             ),
           ),
-          const SizedBox(height: 12),
+          ColdBoreCard(
+            child: ListTile(
+              leading: const Icon(Icons.brightness_6_outlined),
+              title: const Text('Appearance'),
+              subtitle: Text('Theme: ${_themeModeLabel(_theme.mode)}'),
+              onTap: _pickThemeMode,
+            ),
+          ),
+          const SizedBox(height: 16),
           const ColdBoreSectionHeader(
-            title: 'Data & Diagnostics',
-            subtitle: 'Manual archives, app version, and support visibility.',
+            title: 'Cloud & Backup',
+            subtitle: 'Keep your local data recoverable on this device and new devices.',
           ),
           const SizedBox(height: 8),
           ColdBoreCard(
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        _isBackupOverdue
+                            ? Icons.warning_amber_rounded
+                            : Icons.cloud_done_outlined,
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Cloud backup',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              widget.cloudRecoverySupported
+                                  ? _backupHealthText
+                                  : 'Automatic cloud recovery is currently available on iPhone.',
+                            ),
+                            if (_lastCloudBackupAt != null) ...[
+                              const SizedBox(height: 6),
+                              Text(
+                                'Last backup: ${_fmtDateTime(_lastCloudBackupAt!)}',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
+                            if (_lastCloudRestoreAt != null) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                'Last restore: ${_fmtDateTime(_lastCloudRestoreAt!)}',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (widget.cloudRecoverySupported) ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _cloudBusy ? null : _backupNow,
+                            icon: const Icon(Icons.cloud_upload_outlined),
+                            label: const Text('Back up now'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: FilledButton.tonalIcon(
+                            onPressed: _cloudBusy ? null : _restoreFromCloud,
+                            icon: const Icon(Icons.cloud_download_outlined),
+                            label: const Text('Restore'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          ColdBoreCard(
+            child: ListTile(
+              leading: Icon(
+                cloudError
+                    ? Icons.cloud_off_outlined
+                    : (cloudConnected
+                          ? Icons.cloud_done_outlined
+                          : Icons.cloud_queue_outlined),
+              ),
+              title: const Text('Session sync'),
+              subtitle: Text(
+                cloudError
+                    ? 'Error: ${_cloud.lastError}'
+                    : (cloudConnected
+                          ? 'Connected${_cloud.lastSyncAt == null ? '' : ' - Last sync ${_fmtDateTime(_cloud.lastSyncAt!)}'}'
+                          : 'Connecting. Sync activates when your user identifier is available.'),
+              ),
+            ),
+          ),
+          ColdBoreCard(
             child: ListTile(
               leading: const Icon(Icons.folder_zip_outlined),
-              title: const Text('Backup files (JSON)'),
+              title: const Text('Manual backup files'),
               subtitle: const Text(
-                'Create or restore manual backup files from one place.',
+                'Create or restore JSON backup files from one place.',
               ),
               onTap: () {
                 Navigator.of(context).push(
@@ -8965,6 +8869,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
               },
             ),
           ),
+          const SizedBox(height: 16),
+          const ColdBoreSectionHeader(
+            title: 'Reports & Support',
+            subtitle: 'Exports, feedback, and app information.',
+          ),
+          const SizedBox(height: 8),
           ColdBoreCard(
             child: ListTile(
               leading: const Icon(Icons.picture_as_pdf_outlined),
