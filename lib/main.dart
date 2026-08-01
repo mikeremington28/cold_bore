@@ -12118,6 +12118,11 @@ class _SessionsScreenState extends State<SessionsScreen> {
       folderName: res.folderName,
       dateTime: res.dateTime,
       notes: res.notes,
+      latitude: res.latitude,
+      longitude: res.longitude,
+      temperatureF: res.temperatureF,
+      windSpeedMph: res.windSpeedMph,
+      windDirectionDeg: res.windDirectionDeg,
     );
 
     if (created == null) return;
@@ -12130,83 +12135,267 @@ class _SessionsScreenState extends State<SessionsScreen> {
     );
   }
 
+  List<String> _sessionFolderOptions({String? include}) {
+    final folders = widget.state.sessions
+        .map((s) => s.folderName.trim())
+        .where((name) => name.isNotEmpty)
+        .toSet();
+    final extra = include?.trim() ?? '';
+    if (extra.isNotEmpty) folders.add(extra);
+    final out = folders.toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return out;
+  }
+
+  Future<String?> _promptForSessionFolderName(
+    BuildContext context, {
+    String title = 'Add new folder',
+    String initialValue = '',
+  }) async {
+    final ctrl = TextEditingController(text: initialValue.trim());
+    try {
+      return showDialog<String>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: Text(title),
+          content: TextField(
+            autofocus: true,
+            controller: ctrl,
+            textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(
+              labelText: 'Folder name',
+              hintText: 'Example: 2026 Season',
+            ),
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => Navigator.of(context).pop(ctrl.text.trim()),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(ctrl.text.trim()),
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      ctrl.dispose();
+    }
+  }
+
+  Future<String?> _chooseSessionFolder(
+    BuildContext context, {
+    required String title,
+    String currentFolder = '',
+    String saveLabel = 'Save',
+  }) async {
+    const newFolderValue = '__new_folder__';
+    var selected = currentFolder.trim();
+
+    return showDialog<String>(
+      context: context,
+      builder: (_) => StatefulBuilder(
+        builder: (dialogContext, setLocalState) {
+          final folders = _sessionFolderOptions(include: selected);
+          final dropdownValue = selected.isEmpty ? '' : selected;
+          return AlertDialog(
+            title: Text(title),
+            content: DropdownButtonFormField<String>(
+              value: dropdownValue,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Folder',
+                helperText: 'Choose a folder, add a new folder, or select No folder.',
+              ),
+              items: [
+                const DropdownMenuItem<String>(
+                  value: '',
+                  child: Text('No folder'),
+                ),
+                ...folders.map(
+                  (name) => DropdownMenuItem<String>(
+                    value: name,
+                    child: Text(name),
+                  ),
+                ),
+                const DropdownMenuItem<String>(
+                  value: newFolderValue,
+                  child: Text('+ Add new folder'),
+                ),
+              ],
+              onChanged: (value) async {
+                if (value == null) return;
+                if (value == newFolderValue) {
+                  final next = await _promptForSessionFolderName(dialogContext);
+                  if (next == null) return;
+                  final clean = next.trim();
+                  if (clean.isEmpty) return;
+                  setLocalState(() => selected = clean);
+                  return;
+                }
+                setLocalState(() => selected = value.trim());
+              },
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(selected.trim()),
+                child: Text(saveLabel),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _manageSessionFolders(BuildContext context) async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => StatefulBuilder(
+        builder: (dialogContext, setLocalState) {
+          final folders = _sessionFolderOptions();
+          return AlertDialog(
+            title: const Text('Manage folders'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: folders.isEmpty
+                  ? const Text('No folders have been created yet.')
+                  : ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: folders.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (_, index) {
+                        final folder = folders[index];
+                        final count = widget.state.sessions
+                            .where((s) => s.folderName.trim() == folder)
+                            .length;
+                        return ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.folder_outlined),
+                          title: Text(folder),
+                          subtitle: Text('$count session${count == 1 ? '' : 's'}'),
+                          trailing: Wrap(
+                            spacing: 4,
+                            children: [
+                              IconButton(
+                                tooltip: 'Rename folder',
+                                icon: const Icon(Icons.edit_outlined),
+                                onPressed: () async {
+                                  final next = await _promptForSessionFolderName(
+                                    dialogContext,
+                                    title: 'Rename folder',
+                                    initialValue: folder,
+                                  );
+                                  if (next == null) return;
+                                  final clean = next.trim();
+                                  if (clean.isEmpty || clean == folder) return;
+                                  if (!await _guardWrite(
+                                    context,
+                                    operation: 'Rename session folder',
+                                  )) {
+                                    return;
+                                  }
+                                  for (final session in widget.state.sessions) {
+                                    if (session.folderName.trim() == folder) {
+                                      widget.state.updateSessionFolder(
+                                        sessionId: session.id,
+                                        folderName: clean,
+                                      );
+                                    }
+                                  }
+                                  if (!mounted) return;
+                                  setState(() {
+                                    if (_folderFilter == folder) _folderFilter = clean;
+                                  });
+                                  setLocalState(() {});
+                                },
+                              ),
+                              IconButton(
+                                tooltip: 'Delete folder',
+                                icon: const Icon(Icons.delete_outline),
+                                onPressed: () async {
+                                  final confirmed = await showDialog<bool>(
+                                    context: dialogContext,
+                                    builder: (_) => AlertDialog(
+                                      title: Text('Delete $folder?'),
+                                      content: Text(
+                                        'This removes the folder from $count session${count == 1 ? '' : 's'}. The sessions will not be deleted.',
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.of(context).pop(false),
+                                          child: const Text('Cancel'),
+                                        ),
+                                        FilledButton(
+                                          onPressed: () => Navigator.of(context).pop(true),
+                                          child: const Text('Delete'),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                  if (confirmed != true) return;
+                                  if (!await _guardWrite(
+                                    context,
+                                    operation: 'Delete session folder',
+                                  )) {
+                                    return;
+                                  }
+                                  for (final session in widget.state.sessions) {
+                                    if (session.folderName.trim() == folder) {
+                                      widget.state.updateSessionFolder(
+                                        sessionId: session.id,
+                                        folderName: '',
+                                      );
+                                    }
+                                  }
+                                  if (!mounted) return;
+                                  setState(() {
+                                    if (_folderFilter == folder) _folderFilter = null;
+                                  });
+                                  setLocalState(() {});
+                                },
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Close'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   Future<void> _editFolder(
     BuildContext context,
     TrainingSession session,
   ) async {
-    final existingFolders =
-        widget.state.sessions
-            .map((s) => s.folderName.trim())
-            .where((name) => name.isNotEmpty)
-            .toSet()
-            .toList()
-          ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
-    final ctrl = TextEditingController(text: session.folderName.trim());
-    try {
-      final next = await showDialog<String>(
-        context: context,
-        builder: (_) => StatefulBuilder(
-          builder: (context, setLocalState) => AlertDialog(
-            title: const Text('Session folder'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (existingFolders.isNotEmpty) ...[
-                  const Text(
-                    'Quick pick',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: existingFolders
-                        .map(
-                          (name) => ActionChip(
-                            label: Text(name),
-                            onPressed: () {
-                              ctrl.text = name;
-                              setLocalState(() {});
-                            },
-                          ),
-                        )
-                        .toList(),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                TextField(
-                  textCapitalization: TextCapitalization.none,
-                  controller: ctrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Folder name',
-                    helperText: 'Leave empty to remove folder assignment.',
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(context).pop(ctrl.text.trim()),
-                child: const Text('Save'),
-              ),
-            ],
-          ),
-        ),
-      );
-      if (next == null) return;
-      if (!await _guardWrite(context, operation: 'Edit session folder')) return;
-      widget.state.updateSessionFolder(sessionId: session.id, folderName: next);
-      if (!mounted) return;
-      if (next.trim().isNotEmpty && _folderFilter == null) {
-        setState(() => _collapseFiledFolderGroup(next));
-      }
-    } finally {
-      ctrl.dispose();
+    final next = await _chooseSessionFolder(
+      context,
+      title: 'Session folder',
+      currentFolder: session.folderName,
+      saveLabel: 'Save',
+    );
+    if (next == null) return;
+    if (!await _guardWrite(context, operation: 'Edit session folder')) return;
+    widget.state.updateSessionFolder(sessionId: session.id, folderName: next);
+    if (!mounted) return;
+    if (next.trim().isNotEmpty && _folderFilter == null) {
+      setState(() => _collapseFiledFolderGroup(next));
     }
   }
 
@@ -12255,88 +12444,24 @@ class _SessionsScreenState extends State<SessionsScreen> {
     List<TrainingSession> sessions,
   ) async {
     if (sessions.isEmpty) return;
-    final existingFolders =
-        widget.state.sessions
-            .map((s) => s.folderName.trim())
-            .where((name) => name.isNotEmpty)
-            .toSet()
-            .toList()
-          ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
-    final ctrl = TextEditingController();
-    try {
-      final next = await showDialog<String>(
-        context: context,
-        builder: (_) => StatefulBuilder(
-          builder: (context, setLocalState) => AlertDialog(
-            title: Text(
-              'Move ${sessions.length} session${sessions.length == 1 ? '' : 's'}',
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (existingFolders.isNotEmpty) ...[
-                  const Text(
-                    'Quick pick',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: existingFolders
-                        .map(
-                          (name) => ActionChip(
-                            label: Text(name),
-                            onPressed: () {
-                              ctrl.text = name;
-                              setLocalState(() {});
-                            },
-                          ),
-                        )
-                        .toList(),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                TextField(
-                  textCapitalization: TextCapitalization.none,
-                  controller: ctrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Folder name',
-                    helperText: 'Leave empty to remove folder assignment.',
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(context).pop(ctrl.text.trim()),
-                child: const Text('Apply'),
-              ),
-            ],
-          ),
-        ),
+    final next = await _chooseSessionFolder(
+      context,
+      title: 'Move ${sessions.length} session${sessions.length == 1 ? '' : 's'}',
+      saveLabel: 'Apply',
+    );
+    if (next == null) return;
+    if (!await _guardWrite(context, operation: 'Move sessions to folder')) {
+      return;
+    }
+    for (final session in sessions) {
+      widget.state.updateSessionFolder(
+        sessionId: session.id,
+        folderName: next,
       );
-      if (next == null) return;
-      if (!await _guardWrite(context, operation: 'Move sessions to folder')) {
-        return;
-      }
-      for (final session in sessions) {
-        widget.state.updateSessionFolder(
-          sessionId: session.id,
-          folderName: next,
-        );
-      }
-      if (!mounted) return;
-      if (next.trim().isNotEmpty && _folderFilter == null) {
-        setState(() => _collapseFiledFolderGroup(next));
-      }
-    } finally {
-      ctrl.dispose();
+    }
+    if (!mounted) return;
+    if (next.trim().isNotEmpty && _folderFilter == null) {
+      setState(() => _collapseFiledFolderGroup(next));
     }
   }
 
@@ -12390,7 +12515,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
 
     final weatherBits = <String>[];
     if (s.temperatureF != null) {
-      weatherBits.add('${s.temperatureF!.toStringAsFixed(0)} F');
+      weatherBits.add('${s.temperatureF!.toStringAsFixed(0)}°F');
     }
     if (s.windSpeedMph != null) {
       weatherBits.add('${s.windSpeedMph!.toStringAsFixed(0)} mph');
@@ -13032,6 +13157,10 @@ class _SessionsScreenState extends State<SessionsScreen> {
                           await _bulkMoveToFolder(context, filtered);
                           return;
                         }
+                        if (value == 'manageFolders') {
+                          await _manageSessionFolders(context);
+                          return;
+                        }
                         if (value == 'archiveFiltered') {
                           await _bulkArchive(context, filtered, true);
                           return;
@@ -13056,6 +13185,10 @@ class _SessionsScreenState extends State<SessionsScreen> {
                         PopupMenuItem(
                           value: 'moveFiltered',
                           child: Text('Move all visible to folder'),
+                        ),
+                        PopupMenuItem(
+                          value: 'manageFolders',
+                          child: Text('Manage folders'),
                         ),
                         PopupMenuItem(
                           value: 'archiveFiltered',
