@@ -11948,6 +11948,8 @@ class _SessionsScreenState extends State<SessionsScreen> {
   bool _homeWeatherRefreshing = false;
   final Set<String> _collapsedGroups = <String>{};
   final Set<String> _initializedCollapsedGroups = <String>{};
+  final Set<String> _selectedSessionIds = <String>{};
+  bool _sessionSelectionMode = false;
 
   @override
   void initState() {
@@ -12071,11 +12073,41 @@ class _SessionsScreenState extends State<SessionsScreen> {
     return parts.join('  -  ');
   }
 
+  void _clearSessionSelection() {
+    setState(() {
+      _sessionSelectionMode = false;
+      _selectedSessionIds.clear();
+    });
+  }
+
+  void _toggleSessionSelection(String sessionId) {
+    setState(() {
+      _sessionSelectionMode = true;
+      if (_selectedSessionIds.contains(sessionId)) {
+        _selectedSessionIds.remove(sessionId);
+        if (_selectedSessionIds.isEmpty) _sessionSelectionMode = false;
+      } else {
+        _selectedSessionIds.add(sessionId);
+      }
+    });
+  }
+
+  List<TrainingSession> _selectedSessionsFrom(List<TrainingSession> sessions) =>
+      sessions
+          .where((session) => _selectedSessionIds.contains(session.id))
+          .toList();
+
   Future<void> _newSession(BuildContext context) async {
     if (!await _guardWrite(context, operation: 'Add session')) return;
+    final existingFolders = widget.state.sessions
+        .map((s) => s.folderName.trim())
+        .where((name) => name.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
     final res = await showDialog<_NewSessionResult>(
       context: context,
-      builder: (_) => const _NewSessionDialog(),
+      builder: (_) => _NewSessionDialog(existingFolders: existingFolders),
     );
     if (res == null) return;
     final created = widget.state.addSession(
@@ -12337,7 +12369,12 @@ class _SessionsScreenState extends State<SessionsScreen> {
     ).showSnackBar(const SnackBar(content: Text('Session deleted.')));
   }
 
-  Widget _sessionTile(BuildContext context, TrainingSession s) {
+  Widget _sessionTile(
+    BuildContext context,
+    TrainingSession s, {
+    bool selectionMode = false,
+  }) {
+    final selected = _selectedSessionIds.contains(s.id);
     final rifle = widget.state.rifleById(s.rifleId);
     final ammo = widget.state.ammoById(s.ammoLotId);
     final subtitleBits = <String?>[
@@ -12366,6 +12403,10 @@ class _SessionsScreenState extends State<SessionsScreen> {
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () {
+          if (selectionMode) {
+            _toggleSessionSelection(s.id);
+            return;
+          }
           Navigator.of(context).push(
             MaterialPageRoute(
               builder: (_) =>
@@ -12373,6 +12414,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
             ),
           );
         },
+        onLongPress: () => _toggleSessionSelection(s.id),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -12380,9 +12422,16 @@ class _SessionsScreenState extends State<SessionsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Icon(
-                  s.shots.any((x) => x.isColdBore)
-                      ? Icons.ac_unit_outlined
-                      : Icons.event_note_outlined,
+                  selectionMode
+                      ? (selected
+                            ? Icons.check_circle
+                            : Icons.radio_button_unchecked)
+                      : (s.shots.any((x) => x.isColdBore)
+                            ? Icons.ac_unit_outlined
+                            : Icons.event_note_outlined),
+                  color: selectionMode && selected
+                      ? Theme.of(context).colorScheme.primary
+                      : null,
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -12414,7 +12463,8 @@ class _SessionsScreenState extends State<SessionsScreen> {
                     ],
                   ),
                 ),
-                PopupMenuButton<String>(
+                if (!selectionMode)
+                  PopupMenuButton<String>(
                   onSelected: (value) async {
                     if (value == 'folder') {
                       await _editFolder(context, s);
@@ -12922,16 +12972,36 @@ class _SessionsScreenState extends State<SessionsScreen> {
               children: [
                 Row(
                   children: [
-                    const Expanded(
+                    Expanded(
                       child: Text(
-                        'SESSIONS',
-                        style: TextStyle(
+                        _sessionSelectionMode
+                            ? '${_selectedSessionIds.length} selected'
+                            : 'SESSIONS',
+                        style: const TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
                           letterSpacing: 0.5,
                         ),
                       ),
                     ),
+                    if (_sessionSelectionMode) ...[
+                      TextButton(
+                        onPressed: _clearSessionSelection,
+                        child: const Text('Cancel'),
+                      ),
+                      const SizedBox(width: 6),
+                      FilledButton.tonalIcon(
+                        onPressed: _selectedSessionIds.isEmpty
+                            ? null
+                            : () async {
+                                final selected = _selectedSessionsFrom(filtered);
+                                await _bulkMoveToFolder(context, selected);
+                                if (mounted) _clearSessionSelection();
+                              },
+                        icon: const Icon(Icons.drive_file_move_outline),
+                        label: const Text('Move'),
+                      ),
+                    ] else ...[
                     PopupMenuButton<String>(
                       tooltip: 'Session actions',
                       onSelected: (value) async {
@@ -12945,6 +13015,13 @@ class _SessionsScreenState extends State<SessionsScreen> {
                             _yearFilter = null;
                             _monthFilter = null;
                             _folderFilter = null;
+                          });
+                          return;
+                        }
+                        if (value == 'select') {
+                          setState(() {
+                            _sessionSelectionMode = true;
+                            _selectedSessionIds.clear();
                           });
                           return;
                         }
@@ -12970,8 +13047,12 @@ class _SessionsScreenState extends State<SessionsScreen> {
                           child: Text('Clear filters'),
                         ),
                         PopupMenuItem(
+                          value: 'select',
+                          child: Text('Select sessions'),
+                        ),
+                        PopupMenuItem(
                           value: 'moveFiltered',
-                          child: Text('Move filtered to folder'),
+                          child: Text('Move all visible to folder'),
                         ),
                         PopupMenuItem(
                           value: 'archiveFiltered',
@@ -12988,6 +13069,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
                       icon: const Icon(Icons.note_add_outlined),
                       label: const Text('New Session'),
                     ),
+                    ],
                   ],
                 ),
                 const SizedBox(height: 8),
@@ -13026,7 +13108,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
                     message: 'Create your first session to start tracking.',
                   )
                 else if (_groupBy == 'none')
-                  ...filtered.map((s) => _sessionTile(context, s))
+                  ...filtered.map((s) => _sessionTile(context, s, selectionMode: _sessionSelectionMode))
                 else
                   ...groupKeys.expand((key) {
                     final collapsedKey = _groupStorageKey(_groupBy, key);
@@ -13065,7 +13147,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
                         ),
                       ),
                       if (!collapsed)
-                        ...items.map((s) => _sessionTile(context, s)),
+                        ...items.map((s) => _sessionTile(context, s, selectionMode: _sessionSelectionMode)),
                     ];
                   }),
               ],
@@ -22421,6 +22503,7 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
         final ammoCount = widget.state.ammoLots.length;
 
         return ColdBoreScaffold(
+          appBar: AppBar(title: const Text('Export reports')),
           body: ListView(
             padding: const EdgeInsets.all(12),
             children: [
@@ -23155,7 +23238,9 @@ class _EditUserNameDialogState extends State<_EditUserNameDialog> {
 }
 
 class _NewSessionDialog extends StatefulWidget {
-  const _NewSessionDialog();
+  final List<String> existingFolders;
+
+  const _NewSessionDialog({this.existingFolders = const <String>[]});
 
   @override
   State<_NewSessionDialog> createState() => _NewSessionDialogState();
@@ -23290,149 +23375,434 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('New session'),
-      content: ConstrainedBox(
-        constraints: const BoxConstraints(minWidth: 320, maxWidth: 520),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              textCapitalization: TextCapitalization.none,
-              controller: _location,
-              decoration: const InputDecoration(labelText: 'Location *'),
-              maxLines: 1,
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              textCapitalization: TextCapitalization.none,
-              controller: _folder,
-              decoration: const InputDecoration(
-                labelText: 'Folder (optional)',
-                helperText: 'Examples: 2026 Season, PRS Matches, Team Practice',
+    final media = MediaQuery.of(context);
+    final bottomInset = media.viewInsets.bottom;
+    final maxDialogHeight = media.size.height - bottomInset - 36;
+    final existingFolders = widget.existingFolders;
+    final hasWeather = _tempF.text.trim().isNotEmpty ||
+        _windMph.text.trim().isNotEmpty ||
+        _windDir.text.trim().isNotEmpty;
+
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
+      padding: EdgeInsets.only(bottom: bottomInset),
+      child: Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+        backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            minWidth: 320,
+            maxWidth: 540,
+            maxHeight: maxDialogHeight.clamp(420.0, media.size.height),
+          ),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(30),
+              border: Border.all(color: cbBorder.withValues(alpha: 0.9)),
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFF222735), Color(0xFF171A21)],
               ),
-              maxLines: 1,
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              textCapitalization: TextCapitalization.none,
-              controller: _notes,
-              decoration: const InputDecoration(labelText: 'Notes (optional)'),
-              maxLines: 2,
-            ),
-
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(child: Text('Date/Time: ${_fmtDateTime(_dateTime)}')),
-                TextButton.icon(
-                  onPressed: _pickDateTime,
-                  icon: const Icon(Icons.event),
-                  label: const Text('Change'),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.42),
+                  blurRadius: 28,
+                  offset: const Offset(0, 16),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _lat == null || _lon == null
-                      ? (_gpsError ?? 'GPS: not set')
-                      : 'GPS: ${_lat!.toStringAsFixed(5)}, ${_lon!.toStringAsFixed(5)}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    FilledButton.tonal(
-                      onPressed: _busy ? null : _fillGps,
-                      child: Text(_busy ? '...' : 'Use GPS'),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(30),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(22, 20, 14, 12),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 42,
+                          height: 42,
+                          decoration: BoxDecoration(
+                            color: cbBlue.withValues(alpha: 0.18),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: cbBlue.withValues(alpha: 0.35),
+                            ),
+                          ),
+                          child: const Icon(Icons.add_circle_outline, color: cbBlue),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'New session',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .headlineSmall
+                                    ?.copyWith(
+                                      fontWeight: FontWeight.w800,
+                                      color: cbText,
+                                    ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                'Log the location, folder, date, and starting conditions.',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(color: cbMuted),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Close',
+                          onPressed: () => Navigator.of(context).pop(),
+                          icon: const Icon(Icons.close),
+                        ),
+                      ],
                     ),
-                    FilledButton.tonal(
-                      onPressed: _busy ? null : _grabWeather,
-                      child: Text(_busy ? '...' : 'Grab Weather'),
+                  ),
+                  Flexible(
+                    child: SingleChildScrollView(
+                      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                      padding: const EdgeInsets.fromLTRB(22, 4, 22, 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _NewSessionPanel(
+                            title: 'Session details',
+                            icon: Icons.location_on_outlined,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                TextField(
+                                  textCapitalization: TextCapitalization.words,
+                                  controller: _location,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Location *',
+                                    helperText: 'Range, property, club, or coordinates.',
+                                  ),
+                                  maxLines: 1,
+                                  textInputAction: TextInputAction.next,
+                                ),
+                                const SizedBox(height: 12),
+                                TextField(
+                                  textCapitalization: TextCapitalization.words,
+                                  controller: _folder,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Folder',
+                                    helperText: 'Type a new folder or pick one below.',
+                                  ),
+                                  maxLines: 1,
+                                  textInputAction: TextInputAction.next,
+                                ),
+                                if (existingFolders.isNotEmpty) ...[
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    'Existing folders'.toUpperCase(),
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      letterSpacing: 0.8,
+                                      fontWeight: FontWeight.w800,
+                                      color: cbMuted.withValues(alpha: 0.9),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: existingFolders
+                                        .map(
+                                          (name) => ActionChip(
+                                            avatar: const Icon(Icons.folder_outlined, size: 18),
+                                            label: Text(name),
+                                            onPressed: () => setState(() => _folder.text = name),
+                                          ),
+                                        )
+                                        .toList(),
+                                  ),
+                                ],
+                                const SizedBox(height: 12),
+                                TextField(
+                                  textCapitalization: TextCapitalization.sentences,
+                                  controller: _notes,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Notes',
+                                    helperText: 'Optional starting notes for this session.',
+                                  ),
+                                  minLines: 2,
+                                  maxLines: 4,
+                                  textInputAction: TextInputAction.newline,
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          _NewSessionPanel(
+                            title: 'Date and conditions',
+                            icon: Icons.wb_twilight_outlined,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: cbCardAlt.withValues(alpha: 0.56),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(color: cbBorder),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.event_outlined, color: cbBlue),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              'Date / time'.toUpperCase(),
+                                              style: const TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w800,
+                                                letterSpacing: 0.7,
+                                                color: cbMuted,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              _fmtDateTime(_dateTime),
+                                              style: const TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w700,
+                                                color: cbText,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      TextButton(
+                                        onPressed: _pickDateTime,
+                                        child: const Text('Change'),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: cbCardAlt.withValues(alpha: 0.56),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(color: cbBorder),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Icon(
+                                            _lat == null || _lon == null
+                                                ? Icons.gps_not_fixed_outlined
+                                                : Icons.gps_fixed_outlined,
+                                            color: _lat == null || _lon == null ? cbMuted : cbGreen,
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: Text(
+                                              _lat == null || _lon == null
+                                                  ? (_gpsError ?? 'GPS not set')
+                                                  : 'GPS ${_lat!.toStringAsFixed(5)}, ${_lon!.toStringAsFixed(5)}',
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                color: _gpsError == null ? cbText : cbAmber,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 12),
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: OutlinedButton.icon(
+                                              onPressed: _busy ? null : _fillGps,
+                                              icon: const Icon(Icons.my_location_outlined),
+                                              label: Text(_busy ? 'Working...' : 'Use GPS'),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: FilledButton.icon(
+                                              onPressed: _busy ? null : _grabWeather,
+                                              icon: const Icon(Icons.cloud_sync_outlined),
+                                              label: Text(_busy ? 'Working...' : 'Weather'),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                if (hasWeather) ...[
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    'Weather values can be edited before creating the session.',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(color: cbMuted),
+                                  ),
+                                ],
+                                const SizedBox(height: 12),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: TextField(
+                                        textCapitalization: TextCapitalization.none,
+                                        controller: _tempF,
+                                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                        decoration: const InputDecoration(labelText: 'Temp °F'),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: TextField(
+                                        textCapitalization: TextCapitalization.none,
+                                        controller: _windMph,
+                                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                        decoration: const InputDecoration(labelText: 'Wind mph'),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: TextField(
+                                        textCapitalization: TextCapitalization.none,
+                                        controller: _windDir,
+                                        keyboardType: TextInputType.number,
+                                        decoration: const InputDecoration(labelText: 'Dir °'),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ],
-                ),
-              ],
+                  ),
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(22, 12, 22, 20),
+                    decoration: BoxDecoration(
+                      color: cbSurface.withValues(alpha: 0.72),
+                      border: Border(top: BorderSide(color: cbBorder.withValues(alpha: 0.8))),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            child: const Text('Cancel'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: () {
+                              final loc = _location.text.trim();
+                              if (loc.isEmpty) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Enter a location first.')),
+                                );
+                                return;
+                              }
+                              Navigator.of(context).pop(
+                                _NewSessionResult(
+                                  locationName: loc,
+                                  folderName: _folder.text.trim(),
+                                  dateTime: _dateTime,
+                                  notes: _notes.text,
+                                  latitude: _lat,
+                                  longitude: _lon,
+                                  temperatureF: double.tryParse(_tempF.text.trim()),
+                                  windSpeedMph: double.tryParse(_windMph.text.trim()),
+                                  windDirectionDeg: int.tryParse(_windDir.text.trim()),
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.check_circle_outline),
+                            label: const Text('Create'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
-
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    textCapitalization: TextCapitalization.none,
-                    controller: _tempF,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: const InputDecoration(labelText: 'Temp (°F)'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    textCapitalization: TextCapitalization.none,
-                    controller: _windMph,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: const InputDecoration(labelText: 'Wind (mph)'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    textCapitalization: TextCapitalization.none,
-                    controller: _windDir,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Wind dir (°)',
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
+          ),
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        ElevatedButton(
-          onPressed: () {
-            final loc = _location.text.trim();
-            if (loc.isEmpty) return;
-            Navigator.of(context).pop(
-              _NewSessionResult(
-                locationName: loc,
-                folderName: _folder.text.trim(),
-                dateTime: _dateTime,
-                notes: _notes.text,
-                latitude: _lat,
-                longitude: _lon,
-                temperatureF: double.tryParse(_tempF.text.trim()),
-                windSpeedMph: double.tryParse(_windMph.text.trim()),
-                windDirectionDeg: int.tryParse(_windDir.text.trim()),
-              ),
-            );
-          },
-          child: const Text('Create'),
-        ),
-      ],
     );
   }
 }
 
+class _NewSessionPanel extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final Widget child;
+
+  const _NewSessionPanel({
+    required this.title,
+    required this.icon,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: cbCard.withValues(alpha: 0.78),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: cbBorder.withValues(alpha: 0.88)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 20, color: cbMuted),
+              const SizedBox(width: 8),
+              Text(
+                title.toUpperCase(),
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.8,
+                  color: cbMuted,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          child,
+        ],
+      ),
+    );
+  }
+}
 class _ColdBoreResult {
   final DateTime time;
   final String distance;
