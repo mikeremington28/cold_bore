@@ -2647,31 +2647,6 @@ class _PaywallScreenState extends State<_PaywallScreen> {
                         : _restorePurchasesFromPaywall,
                     child: const Text('Restore purchases'),
                   ),
-                  if (isIos && kReleaseMode) ...[
-                    const SizedBox(height: 12),
-                    ColdBoreCard(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'TestFlight diagnostics',
-                            style: TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          const SizedBox(height: 8),
-                          Text('Product loaded: ${_sub.product != null}'),
-                          Text('Store available: ${_sub.storeAvailable}'),
-                          Text('Product ID: ${_sub.product?.id ?? kSubscriptionProductId}'),
-                          Text('Entitled: ${_sub.isEntitled}'),
-                          Text('Purchasing: ${_sub.purchasing}'),
-                          Text('Restoring: ${_sub.restoring}'),
-                          Text('Last purchase status: ${_sub.lastPurchaseStatus}'),
-                          Text('Last restore status: ${_sub.lastRestoreStatus}'),
-                          Text('Last error: ${_sub.lastError ?? '-'}'),
-                        ],
-                      ),
-                    ),
-                  ],
                   const SizedBox(height: 8),
                   TextButton(
                     onPressed: _closePaywallOnce,
