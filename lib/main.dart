@@ -682,20 +682,20 @@ Future<String?> _pickWebJsonFile() async {
 String _cleanText(String s) {
   // Fix common mojibake / smart punctuation that can show up from copy/paste.
   return s
-  .replaceAll('├óΓé¼┬ó', ' - ')
-      .replaceAll('├óΓé¼Γäó', "'")
-      .replaceAll('├óΓé¼╦£', "'")
-      .replaceAll('├óΓé¼┼ô', '"')
-      .replaceAll('├óΓé¼∩┐╜', '"')
-      .replaceAll('├óΓé¼ΓÇ¥', '-')
-      .replaceAll('├óΓÇáΓÇÖ', '->')
-      .replaceAll('ΓÇ£', '"')
-      .replaceAll('ΓÇ¥', '"')
-      .replaceAll('ΓÇÖ', "'")
+  .replaceAll('â”œÃ³Î“Ã©Â¼â”¬Ã³', ' - ')
+      .replaceAll('â”œÃ³Î“Ã©Â¼Î“Ã¤Ã³', "'")
+      .replaceAll('â”œÃ³Î“Ã©Â¼â•¦Â£', "'")
+      .replaceAll('â”œÃ³Î“Ã©Â¼â”¼Ã´', '"')
+      .replaceAll('â”œÃ³Î“Ã©Â¼âˆ©â”â•œ', '"')
+      .replaceAll('â”œÃ³Î“Ã©Â¼Î“Ã‡Â¥', '-')
+      .replaceAll('â”œÃ³Î“Ã‡Ã¡Î“Ã‡Ã–', '->')
+      .replaceAll('Î“Ã‡Â£', '"')
+      .replaceAll('Î“Ã‡Â¥', '"')
+      .replaceAll('Î“Ã‡Ã–', "'")
       .replaceAll('-', '-')
-      .replaceAll('ΓåÆ', '->')
+      .replaceAll('Î“Ã¥Ã†', '->')
   .replaceAll(' - ', ' - ')
-  .replaceAll('°', '°');
+  .replaceAll('Â°', 'Â°');
 }
 
 // --- Export helpers (no extra packages required) -----------------------------
@@ -1045,9 +1045,9 @@ String _buildSessionReportText(
       s.windDirectionDeg != null) {
     b.writeln(
       ' -  Weather: '
-      '${s.temperatureF != null ? '${s.temperatureF!.toStringAsFixed(1)}°F' : '-'}; '
+      '${s.temperatureF != null ? '${s.temperatureF!.toStringAsFixed(1)}Â°F' : '-'}; '
       '${s.windSpeedMph != null ? '${s.windSpeedMph!.toStringAsFixed(1)} mph' : '-'} '
-      '${s.windDirectionDeg != null ? '@ ${s.windDirectionDeg}°' : ''}',
+      '${s.windDirectionDeg != null ? '@ ${s.windDirectionDeg}Â°' : ''}',
     );
   }
 
@@ -4429,7 +4429,7 @@ class AppState extends ChangeNotifier {
             id: _newId(),
             time: time,
             bytes: photoBytes,
-            caption: 'Cold bore • ${distance.trim()}',
+            caption: 'Cold bore â€¢ ${distance.trim()}',
           );
 
     _sessions[idx] = s.copyWith(
@@ -9198,7 +9198,7 @@ class _DataScreenState extends State<DataScreen> {
                     ...dks.map((dk) {
                       final e = inner[dk]!;
                       final elevationText = _cleanText(
-                        '${e.elevation} ${e.elevationUnit.name.toUpperCase()}${e.elevationNotes.isNotEmpty ? ' · ${e.elevationNotes}' : ''}',
+                        '${e.elevation} ${e.elevationUnit.name.toUpperCase()}${e.elevationNotes.isNotEmpty ? ' Â· ${e.elevationNotes}' : ''}',
                       );
                       final windageText = (() {
                         final left = e.windageLeft;
@@ -9409,42 +9409,6 @@ class _DataScreenState extends State<DataScreen> {
               ),
               const SizedBox(height: 12),
               ColdBoreCard(
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const ColdBoreSectionHeader(
-                      title: 'Library Snapshot',
-                      subtitle:
-                          'Live totals for quick reference and validation progress.',
-                    ),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        ColdBoreMetricTile(
-                          label: 'Quick Ref',
-                          value: '${withDope.length}',
-                          icon: Icons.my_location_outlined,
-                        ),
-                        ColdBoreMetricTile(
-                          label: 'Working',
-                          value: '$workingEntryCount',
-                          icon: Icons.table_chart_outlined,
-                        ),
-                        ColdBoreMetricTile(
-                          label: 'Verified',
-                          value: '$verifiedBallisticCount',
-                          icon: Icons.verified_outlined,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              ColdBoreCard(
                 child: ListTile(
                   leading: const Icon(Icons.calculate_outlined),
                   title: const Text('Ballistic Assistant'),
@@ -9502,7 +9466,7 @@ class _DataScreenState extends State<DataScreen> {
                                   children: [
                                     Expanded(
                                       child: Text(
-                                        '${r.name ?? 'Rifle'} • ${r.caliber}',
+                                        '${r.name ?? 'Rifle'} â€¢ ${r.caliber}',
                                         style: const TextStyle(
                                           fontWeight: FontWeight.w700,
                                         ),
@@ -9682,7 +9646,7 @@ class _DataScreenState extends State<DataScreen> {
                       subtitle: Text(
                         snapshots.isEmpty
                             ? 'Add rifles to start tracking cleaning, torque, zero, and barrel reminders.'
-                            : '$overdue overdue • $dueSoon due soon across ${snapshots.length} rifle${snapshots.length == 1 ? '' : 's'}',
+                            : '$overdue overdue â€¢ $dueSoon due soon across ${snapshots.length} rifle${snapshots.length == 1 ? '' : 's'}',
                       ),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () {
@@ -10117,8 +10081,8 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
     setState(() {
       _activeRecord = saved;
       _validationOutcome = BallisticValidationOutcome.confirmedAccurate;
-      _elevationCorrectionCtrl.text = '0';
-      _windCorrectionCtrl.text = '0';
+      _elevationCorrectionCtrl.text = saved.calculatedElevation.toStringAsFixed(2);
+      _windCorrectionCtrl.text = saved.calculatedWind.toStringAsFixed(2);
       _validationNotesCtrl.clear();
     });
   }
@@ -10429,8 +10393,12 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
     if (savedRow == null || savedRow.recordId == null) return;
 
     var outcome = BallisticValidationOutcome.confirmedAccurate;
-    final elevCtrl = TextEditingController(text: '0');
-    final windCtrl = TextEditingController(text: '0');
+    final elevCtrl = TextEditingController(
+      text: savedRow.calculatedElevation.toStringAsFixed(2),
+    );
+    final windCtrl = TextEditingController(
+      text: savedRow.calculatedWind.toStringAsFixed(2),
+    );
     final notesCtrl = TextEditingController();
     var date = DateTime.now();
 
@@ -10489,7 +10457,9 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                         textInputAction: TextInputAction.next,
                         decoration: InputDecoration(
                           labelText:
-                              'Actual elevation correction (${_elevationUnitLabel(savedRow.outputUnit)})',
+                              'Actual elevation used (${_elevationUnitLabel(savedRow.outputUnit)})',
+                          helperText:
+                              'Enter the actual elevation used when the shot was confirmed. This replaces the calculated value. It is not added to it.',
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -10502,7 +10472,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                         textInputAction: TextInputAction.next,
                         decoration: InputDecoration(
                           labelText:
-                              'Actual wind correction (${_elevationUnitLabel(savedRow.outputUnit)})',
+                              'Actual wind used (${_elevationUnitLabel(savedRow.outputUnit)})',
                         ),
                       ),
                     ],
@@ -10561,8 +10531,10 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
       return;
     }
 
-    final elevationCorrection = double.tryParse(elevCtrl.text.trim()) ?? 0.0;
-    final windCorrection = double.tryParse(windCtrl.text.trim()) ?? 0.0;
+    final actualElevation = double.tryParse(elevCtrl.text.trim()) ?? savedRow.calculatedElevation;
+    final actualWind = double.tryParse(windCtrl.text.trim()) ?? savedRow.calculatedWind;
+    final elevationCorrection = actualElevation - savedRow.calculatedElevation;
+    final windCorrection = actualWind - savedRow.calculatedWind;
 
     final updated = widget.state.validateBallisticDope(
       recordId: savedRow.recordId!,
@@ -10607,10 +10579,12 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
     final record = _activeRecord;
     if (record == null) return;
 
-    final elevationCorrection =
-        double.tryParse(_elevationCorrectionCtrl.text.trim()) ?? 0.0;
-    final windCorrection =
-        double.tryParse(_windCorrectionCtrl.text.trim()) ?? 0.0;
+    final actualElevation =
+        double.tryParse(_elevationCorrectionCtrl.text.trim()) ?? record.calculatedElevation;
+    final actualWind =
+        double.tryParse(_windCorrectionCtrl.text.trim()) ?? record.calculatedWind;
+    final elevationCorrection = actualElevation - record.calculatedElevation;
+    final windCorrection = actualWind - record.calculatedWind;
 
     final updated = widget.state.validateBallisticDope(
       recordId: record.id,
@@ -10685,6 +10659,11 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Verified DOPE written to Working DOPE.')),
     );
+  }
+
+  String _formatWindage(double value, ElevationUnit unit) {
+    final direction = value < 0 ? 'Left' : 'Right';
+    return '$direction ${value.abs().toStringAsFixed(2)} ${_elevationUnitLabel(unit)}';
   }
 
   Widget _sectionTitle(String title) {
@@ -11058,17 +11037,165 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                             icon: Icons.calculate_outlined,
                             label: 'Generate Calculated DOPE',
                           ),
-                          FilledButton.tonalIcon(
-                            onPressed: _generateChart,
-                            icon: const Icon(Icons.table_chart_outlined),
-                            label: const Text('Generate DOPE Chart'),
-                          ),
                         ],
                       ),
                     ],
                   ),
                 ),
               ),
+              if (active != null) ...[
+                const SizedBox(height: 12),
+                ColdBoreCard(
+                  color: active.isVerified ? verifiedCardBg : unverifiedCardBg,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _sectionTitle('Result'),
+                        Text(
+                          active.isVerified
+                              ? 'Verified DOPE${activeConfirmations > 0 ? ' - $activeConfirmations confirmation${activeConfirmations == 1 ? '' : 's'}' : ''}'
+                              : 'Calculated estimate (Unverified)',
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 6),
+                        ColdBoreStatusPill(
+                          label: active.isVerified
+                              ? 'Verified'
+                              : 'Calculated estimate',
+                          tone: active.isVerified
+                              ? ColdBoreStatusTone.verified
+                              : ColdBoreStatusTone.calculated,
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Elevation: ${(active.isVerified ? active.verifiedElevation : active.calculatedElevation).toStringAsFixed(2)} ${active.outputUnit.name.toUpperCase()}',
+                        ),
+                        Text(
+                          'Wind hold: ${_formatWindage(active.isVerified ? active.verifiedWind : active.calculatedWind, active.outputUnit)}',
+                        ),
+                        Text(
+                          'Drag model: ${active.dragModel.name.toUpperCase()}',
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ColdBoreCard(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _sectionTitle('Validation'),
+                        if (!active.isVerified) ...[
+                          DropdownButtonFormField<BallisticValidationOutcome>(
+                            initialValue: _validationOutcome,
+                            decoration: const InputDecoration(
+                              labelText: 'Validation outcome',
+                            ),
+                            items: const [
+                              DropdownMenuItem(
+                                value: BallisticValidationOutcome
+                                    .confirmedAccurate,
+                                child: Text('Confirmed accurate'),
+                              ),
+                              DropdownMenuItem(
+                                value: BallisticValidationOutcome
+                                    .adjustmentRequired,
+                                child: Text('Adjustment required'),
+                              ),
+                            ],
+                            onChanged: (v) => setState(
+                              () => _validationOutcome =
+                                  v ??
+                                  BallisticValidationOutcome.confirmedAccurate,
+                            ),
+                          ),
+                          if (_validationOutcome ==
+                              BallisticValidationOutcome
+                                  .adjustmentRequired) ...[
+                            const SizedBox(height: 8),
+                            TextField(
+                              textCapitalization: TextCapitalization.none,
+                              controller: _elevationCorrectionCtrl,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              decoration: InputDecoration(
+                                labelText:
+                                    'Actual elevation used (${active.outputUnit.name.toUpperCase()})',
+                                helperText:
+                                    'Enter the actual elevation used when the shot was confirmed. This replaces the calculated value. It is not added to it.',
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            TextField(
+                              textCapitalization: TextCapitalization.none,
+                              controller: _windCorrectionCtrl,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              decoration: InputDecoration(
+                                labelText:
+                                    'Actual wind used (${active.outputUnit.name.toUpperCase()})',
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 8),
+                          TextField(
+                            textCapitalization: TextCapitalization.none,
+                            controller: _validationNotesCtrl,
+                            decoration: const InputDecoration(
+                              labelText: 'Notes',
+                            ),
+                            maxLines: 2,
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  'Date: ${_verificationDate.month}/${_verificationDate.day}/${_verificationDate.year}',
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: _pickVerificationDate,
+                                child: const Text('Change'),
+                              ),
+                            ],
+                          ),
+                          SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
+                            value: _includeWeatherSnapshot,
+                            onChanged: (v) =>
+                                setState(() => _includeWeatherSnapshot = v),
+                            title: const Text('Attach weather snapshot'),
+                          ),
+                          const SizedBox(height: 8),
+                          FilledButton(
+                            onPressed: _saveValidation,
+                            child: const Text('Save Verified DOPE'),
+                          ),
+                        ] else ...[
+                          Text(
+                            'Verified on ${active.verificationDate == null ? _formatDate(active.createdAt) : _formatDate(active.verificationDate!)}',
+                          ),
+                          const SizedBox(height: 8),
+                          FilledButton.tonal(
+                            onPressed: _writeVerifiedToWorkingDope,
+                            child: const Text('Write Verified to Working DOPE'),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
               ColdBoreCard(
                 child: Padding(
@@ -11077,6 +11204,10 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _sectionTitle('DOPE Chart Builder'),
+                      const Text(
+                        'Build a full distance chart using the same rifle, ammo, weather, zero, and bullet data above.',
+                      ),
+                      const SizedBox(height: 10),
                       Row(
                         children: [
                           Expanded(
@@ -11130,6 +11261,12 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                             context,
                           ).colorScheme.onSurface.withValues(alpha: 0.75),
                         ),
+                      ),
+                      const SizedBox(height: 10),
+                      FilledButton.tonalIcon(
+                        onPressed: _generateChart,
+                        icon: const Icon(Icons.table_chart_outlined),
+                        label: const Text('Generate DOPE Chart'),
                       ),
                       const SizedBox(height: 10),
                       SwitchListTile(
@@ -11215,7 +11352,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                                     ),
                                     DataCell(
                                       Text(
-                                        '${wind.toStringAsFixed(2)} ${_elevationUnitLabel(row.outputUnit)}',
+                                        _formatWindage(wind, row.outputUnit),
                                       ),
                                     ),
                                     DataCell(
@@ -11279,157 +11416,6 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                   ),
                 ),
               ),
-              if (active != null) ...[
-                const SizedBox(height: 12),
-                ColdBoreCard(
-                  color: active.isVerified ? verifiedCardBg : unverifiedCardBg,
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _sectionTitle('Result'),
-                        Text(
-                          active.isVerified
-                              ? 'Verified DOPE${activeConfirmations > 0 ? ' - $activeConfirmations confirmation${activeConfirmations == 1 ? '' : 's'}' : ''}'
-                              : 'Calculated estimate (Unverified)',
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                        const SizedBox(height: 6),
-                        ColdBoreStatusPill(
-                          label: active.isVerified
-                              ? 'Verified'
-                              : 'Calculated estimate',
-                          tone: active.isVerified
-                              ? ColdBoreStatusTone.verified
-                              : ColdBoreStatusTone.calculated,
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          'Elevation: ${(active.isVerified ? active.verifiedElevation : active.calculatedElevation).toStringAsFixed(2)} ${active.outputUnit.name.toUpperCase()}',
-                        ),
-                        Text(
-                          'Wind hold: ${(active.isVerified ? active.verifiedWind : active.calculatedWind).toStringAsFixed(2)} ${active.outputUnit.name.toUpperCase()}',
-                        ),
-                        Text(
-                          'Drag model: ${active.dragModel.name.toUpperCase()}',
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                ColdBoreCard(
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _sectionTitle('Validation'),
-                        if (!active.isVerified) ...[
-                          DropdownButtonFormField<BallisticValidationOutcome>(
-                            initialValue: _validationOutcome,
-                            decoration: const InputDecoration(
-                              labelText: 'Validation outcome',
-                            ),
-                            items: const [
-                              DropdownMenuItem(
-                                value: BallisticValidationOutcome
-                                    .confirmedAccurate,
-                                child: Text('Confirmed accurate'),
-                              ),
-                              DropdownMenuItem(
-                                value: BallisticValidationOutcome
-                                    .adjustmentRequired,
-                                child: Text('Adjustment required'),
-                              ),
-                            ],
-                            onChanged: (v) => setState(
-                              () => _validationOutcome =
-                                  v ??
-                                  BallisticValidationOutcome.confirmedAccurate,
-                            ),
-                          ),
-                          if (_validationOutcome ==
-                              BallisticValidationOutcome
-                                  .adjustmentRequired) ...[
-                            const SizedBox(height: 8),
-                            TextField(
-                              textCapitalization: TextCapitalization.none,
-                              controller: _elevationCorrectionCtrl,
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                    decimal: true,
-                                  ),
-                              decoration: InputDecoration(
-                                labelText:
-                                    'Actual elevation correction (${active.outputUnit.name.toUpperCase()})',
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            TextField(
-                              textCapitalization: TextCapitalization.none,
-                              controller: _windCorrectionCtrl,
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                    decimal: true,
-                                  ),
-                              decoration: InputDecoration(
-                                labelText:
-                                    'Actual wind correction (${active.outputUnit.name.toUpperCase()})',
-                              ),
-                            ),
-                          ],
-                          const SizedBox(height: 8),
-                          TextField(
-                            textCapitalization: TextCapitalization.none,
-                            controller: _validationNotesCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'Notes',
-                            ),
-                            maxLines: 2,
-                          ),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  'Date: ${_verificationDate.month}/${_verificationDate.day}/${_verificationDate.year}',
-                                ),
-                              ),
-                              TextButton(
-                                onPressed: _pickVerificationDate,
-                                child: const Text('Change'),
-                              ),
-                            ],
-                          ),
-                          SwitchListTile(
-                            contentPadding: EdgeInsets.zero,
-                            value: _includeWeatherSnapshot,
-                            onChanged: (v) =>
-                                setState(() => _includeWeatherSnapshot = v),
-                            title: const Text('Attach weather snapshot'),
-                          ),
-                          const SizedBox(height: 8),
-                          FilledButton(
-                            onPressed: _saveValidation,
-                            child: const Text('Save Verified DOPE'),
-                          ),
-                        ] else ...[
-                          Text(
-                            'Verified on ${active.verificationDate == null ? _formatDate(active.createdAt) : _formatDate(active.verificationDate!)}',
-                          ),
-                          const SizedBox(height: 8),
-                          FilledButton.tonal(
-                            onPressed: _writeVerifiedToWorkingDope,
-                            child: const Text('Write Verified to Working DOPE'),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-              ],
               const SizedBox(height: 12),
               ColdBoreCard(
                 child: Padding(
@@ -11488,7 +11474,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                                   children: [
                                     Expanded(
                                       child: Text(
-                                        '${recRifle?.name ?? recRifle?.caliber ?? 'Rifle'} • ${recAmmo?.name ?? recAmmo?.bullet ?? 'Ammo'}',
+                                        '${recRifle?.name ?? recRifle?.caliber ?? 'Rifle'} â€¢ ${recAmmo?.name ?? recAmmo?.bullet ?? 'Ammo'}',
                                         style: const TextStyle(
                                           fontWeight: FontWeight.w700,
                                         ),
@@ -11508,7 +11494,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                                 ),
                                 const SizedBox(height: 6),
                                 Text(
-                                  'Distance ${record.distance.toStringAsFixed(0)} ${_distanceUnitLabel(record.distanceUnit)} • ${_formatDate(record.createdAt)}',
+                                  'Distance ${record.distance.toStringAsFixed(0)} ${_distanceUnitLabel(record.distanceUnit)} â€¢ ${_formatDate(record.createdAt)}',
                                 ),
                                 const SizedBox(height: 6),
                                 Wrap(
@@ -11521,7 +11507,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                                     ),
                                     ColdBoreStatusPill(
                                       label:
-                                          'Wind ${(record.isVerified ? record.verifiedWind : record.calculatedWind).toStringAsFixed(2)} ${_elevationUnitLabel(record.outputUnit)}',
+                                          'Wind ${_formatWindage(record.isVerified ? record.verifiedWind : record.calculatedWind, record.outputUnit)}',
                                     ),
                                     if (record.isVerified)
                                       ColdBoreStatusPill(
@@ -11658,7 +11644,7 @@ class WeatherDetailsScreen extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      temp == null ? 'Temperature: --' : 'Temperature: ${temp.toStringAsFixed(1)}°F',
+                      temp == null ? 'Temperature: --' : 'Temperature: ${temp.toStringAsFixed(1)}Â°F',
                     ),
                     const SizedBox(height: 6),
                     Text(
@@ -12490,7 +12476,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
 
     final weatherBits = <String>[];
     if (s.temperatureF != null) {
-      weatherBits.add('${s.temperatureF!.toStringAsFixed(0)}°F');
+      weatherBits.add('${s.temperatureF!.toStringAsFixed(0)}Â°F');
     }
     if (s.windSpeedMph != null) {
       weatherBits.add('${s.windSpeedMph!.toStringAsFixed(0)} mph');
@@ -13839,7 +13825,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
                           Text(
                             recentSession == null
                                 ? 'No completed session'
-                                : '${_fmtDateIso(recentSession.dateTime)} • ${fmtTime(recentSession.dateTime)}',
+                                : '${_fmtDateIso(recentSession.dateTime)} â€¢ ${fmtTime(recentSession.dateTime)}',
                             style: TextStyle(
                               color: Colors.white.withValues(alpha: 0.82),
                             ),
@@ -14250,8 +14236,6 @@ class _WorkingDopeEditDialogState extends State<_WorkingDopeEditDialog> {
     );
   }
 }
-
-enum _WorkingDopeConflictChoice { replace, addBoth }
 
 class _DopeEntryDialog extends StatefulWidget {
   const _DopeEntryDialog({
@@ -14788,7 +14772,6 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
           final now = DateTime.now();
           final shouldMark =
               _audioAssistEnabled &&
-              _isRunning &&
               maxDb >= _audioThresholdDb &&
               (_lastAudioShotAt == null ||
                   now.difference(_lastAudioShotAt!).inMilliseconds >= 250);
@@ -14797,11 +14780,17 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
             _latestDb = maxDb;
             if (shouldMark) {
               _lastAudioShotAt = now;
-              _recordShotAt(_currentElapsedMs());
+              if (_isRunning) {
+                _recordShotAt(_currentElapsedMs());
+              }
               _audioShotCount += 1;
             }
           });
           if (shouldMark) {
+            widget.state.saveSessionShotCount(
+              sessionId: widget.sessionId,
+              shotCount: _audioShotCount,
+            );
             _persist();
           }
         },
@@ -14819,7 +14808,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
       setState(() {
         _audioAssistEnabled = true;
         _audioAssistMessage =
-            'Audio assist armed. Loud impulses can auto-mark shots.';
+            'Audio assist armed. Loud impulses will be counted while this is on.';
       });
     } catch (_) {
       if (!mounted) return;
@@ -14971,6 +14960,57 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
     ].where((v) => v.isNotEmpty).toList();
     if (modelBits.isNotEmpty) return modelBits.join(' ');
     return rifle.caliber.trim().isEmpty ? 'Rifle' : rifle.caliber.trim();
+  }
+
+  Future<void> _adjustShotCount() async {
+    final ctrl = TextEditingController(text: _audioShotCount.toString());
+    final noteCtrl = TextEditingController();
+    final adjusted = await showDialog<int>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('Adjust shot count'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: ctrl,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Final shot count'),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: noteCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Reason / note (optional)',
+              ),
+              maxLines: 2,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final count = int.tryParse(ctrl.text.trim());
+              if (count == null || count < 0) return;
+              Navigator.of(dialogCtx).pop(count);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    noteCtrl.dispose();
+    if (adjusted == null) return;
+    setState(() => _audioShotCount = adjusted);
+    widget.state.saveSessionShotCount(
+      sessionId: widget.sessionId,
+      shotCount: adjusted,
+    );
   }
 
   String _runSummary(SessionTimerRun run) {
@@ -15251,6 +15291,12 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
               Text(
                 'Audio-shot detections: $_audioShotCount',
                 style: const TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: isEnded ? null : _adjustShotCount,
+                icon: const Icon(Icons.edit_outlined),
+                label: const Text('Adjust shot count'),
               ),
             ],
             Row(
@@ -17017,7 +17063,8 @@ class SessionDetailScreen extends StatelessWidget {
     );
     if (res == null) return;
 
-    if (res.promote) {
+    var promoteToWorking = res.promote;
+    if (promoteToWorking) {
       if (s.rifleId == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -17041,51 +17088,38 @@ class SessionDetailScreen extends StatelessWidget {
       final existingBucket = res.rifleOnly
           ? state.workingDopeRifleOnly[key]
           : state.workingDopeRifleAmmo[key];
+      final distanceKey = DistanceKey(res.entry.distance, res.entry.distanceUnit);
 
-      if (existingBucket != null && existingBucket.isNotEmpty) {
-        final choice = await showDialog<_WorkingDopeConflictChoice>(
+      if (existingBucket?.containsKey(distanceKey) == true) {
+        final overwrite = await showDialog<bool>(
           context: context,
           builder: (_) => AlertDialog(
-            title: const Text('Working DOPE already exists'),
-            content: Text(
-              'This ${res.rifleOnly ? 'rifle' : 'rifle + ammo'} combo already has working DOPE. Replace existing entries or add both?',
+            title: const Text('Replace existing Working DOPE?'),
+            content: const Text(
+              'A Working DOPE entry already exists for this rifle/ammo/distance. Replace it with this training DOPE?',
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel'),
-              ),
-              OutlinedButton(
-                onPressed: () =>
-                    Navigator.pop(context, _WorkingDopeConflictChoice.addBoth),
-                child: const Text('Add Both'),
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Save training only'),
               ),
               FilledButton(
-                onPressed: () =>
-                    Navigator.pop(context, _WorkingDopeConflictChoice.replace),
-                child: const Text('Replace'),
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Replace Working DOPE'),
               ),
             ],
           ),
         );
-        if (choice == null) return;
-        if (choice == _WorkingDopeConflictChoice.replace) {
-          state.clearWorkingDopeBucket(
-            rifleOnly: res.rifleOnly,
-            bucketKey: key,
-          );
-        }
+        promoteToWorking = overwrite == true;
       }
-
-      state.addTrainingDope(
-        sessionId: s.id,
-        entry: res.entry,
-        promote: res.promote,
-        rifleOnly: res.rifleOnly,
-      );
-    } else {
-      state.addTrainingDope(sessionId: s.id, entry: res.entry);
     }
+
+    state.addTrainingDope(
+      sessionId: s.id,
+      entry: res.entry,
+      promote: promoteToWorking,
+      rifleOnly: res.rifleOnly,
+    );
   }
 
   Future<void> promoteSuggestedDope(
@@ -18537,7 +18571,7 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
                                             .trim()
                                             .isNotEmpty)
                                           (rifle.name ?? '').trim(),
-                                      ].join(' • '),
+                                      ].join(' â€¢ '),
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
@@ -18584,7 +18618,7 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
                                         if (ammo.grain > 0) '${ammo.grain}gr',
                                         if ((ammo.name ?? '').trim().isNotEmpty)
                                           (ammo.name ?? '').trim(),
-                                      ].join(' • '),
+                                      ].join(' â€¢ '),
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
@@ -18673,9 +18707,9 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
                               ),
                             ] else ...[
                               for (final s in top) ...[
-                                Text('${s['rifle']} • ${s['ammo']}'),
+                                Text('${s['rifle']} â€¢ ${s['ammo']}'),
                                 Text(
-                                  'Avg drift: ${(s['avg'] as double).toStringAsFixed(2)} MOA • Latest: ${dir(s['dx'] as double, 'Right', 'Left')} • ${dir(s['dy'] as double, 'Up', 'Down')}',
+                                  'Avg drift: ${(s['avg'] as double).toStringAsFixed(2)} MOA â€¢ Latest: ${dir(s['dx'] as double, 'Right', 'Left')} â€¢ ${dir(s['dy'] as double, 'Up', 'Down')}',
                                   style: TextStyle(
                                     color: Theme.of(context)
                                         .colorScheme
@@ -18710,7 +18744,7 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
                       r.shot.isBaseline ? Icons.star : Icons.ac_unit_outlined,
                     ),
                     title: Text(
-                      '${r.shot.distance} • ${r.shot.result}${r.shot.photos.isEmpty ? '' : ' • ${r.shot.photos.length} photo(s)'}',
+                      '${r.shot.distance} â€¢ ${r.shot.result}${r.shot.photos.isEmpty ? '' : ' â€¢ ${r.shot.photos.length} photo(s)'}',
                     ),
                     subtitle: Text(
                       [
@@ -18719,7 +18753,7 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
                         if (rifle != null) rifle.name ?? '',
                         if (ammo != null) ammo.name ?? '',
                         if (stringIndex >= 0) 'String ${stringIndex + 1}',
-                      ].join(' • '),
+                      ].join(' â€¢ '),
                     ),
                     onTap: () {
                       Navigator.of(context).push(
@@ -18790,7 +18824,7 @@ class _ColdBoreTargetCard extends StatelessWidget {
         return 'Unknown ammo';
       })();
 
-      return '$rifleLabel • $ammoLabel';
+      return '$rifleLabel â€¢ $ammoLabel';
     }
 
     final combosByKey = <String, _ColdBoreRow>{};
@@ -23749,7 +23783,7 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
                                   textCapitalization: TextCapitalization.none,
                                   controller: _tempF,
                                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                  decoration: const InputDecoration(labelText: 'Temp (°F)'),
+                                  decoration: const InputDecoration(labelText: 'Temp (Â°F)'),
                                 ),
                               ),
                               const SizedBox(width: 8),
@@ -25151,7 +25185,7 @@ class DopeManagerScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final entries = rifle.dopeEntries;
     return ColdBoreScaffold(
-      appBar: AppBar(title: Text('DOPE • ${rifle.name}')),
+      appBar: AppBar(title: Text('DOPE â€¢ ${rifle.name}')),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
           if (!await _guardWrite(context, operation: 'Add DOPE row/history')) {
@@ -25207,7 +25241,7 @@ class DopeManagerScreen extends StatelessWidget {
                 final e = entries[i];
                 return ListTile(
                   title: Text(
-                    '${e.distance} • Elev ${e.elevation} • Wind ${e.windage}',
+                    '${e.distance} â€¢ Elev ${e.elevation} â€¢ Wind ${e.windage}',
                   ),
                   subtitle: e.notes.trim().isEmpty ? null : Text(e.notes),
                   onTap: () async {
@@ -25896,7 +25930,7 @@ class _RifleServiceLogScreenState extends State<RifleServiceLogScreen> {
                         children: [
                           Expanded(
                             child: Text(
-                              '${rifle.caliber} • $rifleModelLabel',
+                              '${rifle.caliber} â€¢ $rifleModelLabel',
                               style: Theme.of(context).textTheme.titleMedium,
                             ),
                           ),

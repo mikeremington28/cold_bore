@@ -331,10 +331,13 @@ class SubscriptionService extends ChangeNotifier {
   Future<void> setForceLockedForTesting(bool value) async {
     // Force-lock testing is disabled in this build. Always clear the local
     // override so it cannot block a valid Apple entitlement.
+    final bool wasForceLocked = _forceLockedForTesting;
     _forceLockedForTesting = false;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_forceLockedPrefsKey, false);
-    notifyListeners();
+    if (wasForceLocked) {
+      notifyListeners();
+    }
   }
 
   Future<void> clearForceLockedForTesting() async {
