@@ -4161,6 +4161,14 @@ class AppState extends ChangeNotifier {
     return updated;
   }
 
+  bool deleteBallisticDopeRecord(String recordId) {
+    final before = _ballisticDopeRecords.length;
+    _ballisticDopeRecords.removeWhere((x) => x.id == recordId);
+    if (_ballisticDopeRecords.length == before) return false;
+    notifyListeners();
+    return true;
+  }
+
   int verifiedBallisticConfirmationCount(BallisticDopeRecord record) {
     final userId = _activeUser?.id;
     if (userId == null) return 0;
@@ -4572,6 +4580,58 @@ class AppState extends ChangeNotifier {
         entry.key: entry.value.where((e) => e.id != dopeEntryId).toList(),
     };
 
+    _sessions[idx] = s.copyWith(
+      trainingDope: updatedTrainingDope,
+      trainingDopeByString: updatedByString,
+    );
+    notifyListeners();
+    return true;
+  }
+
+
+  bool updateTrainingDopeEntry({
+    required String sessionId,
+    required String dopeEntryId,
+    required DopeEntry entry,
+  }) {
+    final idx = _sessions.indexWhere((s) => s.id == sessionId);
+    if (idx < 0) return false;
+    final s = _sessions[idx];
+
+    DopeEntry updatedFrom(DopeEntry oldEntry) => DopeEntry(
+      id: oldEntry.id,
+      time: DateTime.now(),
+      rifleId: entry.rifleId ?? oldEntry.rifleId,
+      ammoLotId: entry.ammoLotId ?? oldEntry.ammoLotId,
+      distance: entry.distance,
+      distanceUnit: entry.distanceUnit,
+      elevation: entry.elevation,
+      elevationUnit: entry.elevationUnit,
+      elevationNotes: entry.elevationNotes,
+      windType: entry.windType,
+      windValue: entry.windValue,
+      windNotes: entry.windNotes,
+      windageLeft: entry.windageLeft,
+      windageRight: entry.windageRight,
+    );
+
+    var found = false;
+    final updatedTrainingDope = s.trainingDope.map((e) {
+      if (e.id != dopeEntryId) return e;
+      found = true;
+      return updatedFrom(e);
+    }).toList();
+
+    final updatedByString = <String, List<DopeEntry>>{};
+    for (final bucket in s.trainingDopeByString.entries) {
+      updatedByString[bucket.key] = bucket.value.map((e) {
+        if (e.id != dopeEntryId) return e;
+        found = true;
+        return updatedFrom(e);
+      }).toList();
+    }
+
+    if (!found) return false;
     _sessions[idx] = s.copyWith(
       trainingDope: updatedTrainingDope,
       trainingDopeByString: updatedByString,
@@ -9155,6 +9215,65 @@ class _DataScreenState extends State<DataScreen> {
           (sum, entries) => sum + entries.length,
         );
 
+        String distanceUnitShort(DistanceUnit unit) =>
+            unit == DistanceUnit.yards ? 'yd' : 'm';
+        String elevationUnitShort(ElevationUnit unit) {
+          switch (unit) {
+            case ElevationUnit.mil:
+              return 'MIL';
+            case ElevationUnit.moa:
+              return 'MOA';
+            case ElevationUnit.inches:
+              return 'IN';
+          }
+        }
+        String windageLabel(BallisticDopeRecord record) {
+          final value = record.isVerified
+              ? record.verifiedWind
+              : record.calculatedWind;
+          final direction = value < 0 ? 'Left' : 'Right';
+          return '$direction ${value.abs().toStringAsFixed(2)} ${elevationUnitShort(record.outputUnit)}';
+        }
+        String elevationLabel(BallisticDopeRecord record) {
+          final value = record.isVerified
+              ? record.verifiedElevation
+              : record.calculatedElevation;
+          return '${value.toStringAsFixed(2)} ${elevationUnitShort(record.outputUnit)}';
+        }
+        Future<void> deleteBallisticHistoryRow(BallisticDopeRecord record) async {
+          if (!await _guardWrite(context, operation: 'Delete ballistic DOPE history row')) {
+            return;
+          }
+          final ok = await showDialog<bool>(
+            context: context,
+            builder: (_) => AlertDialog(
+              title: const Text('Delete ballistic DOPE history row?'),
+              content: const Text('This removes the saved estimate/validation row from Ballistic DOPE history. Working DOPE entries are not changed.'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: const Text('Delete'),
+                ),
+              ],
+            ),
+          );
+          if (ok == true) {
+            widget.state.deleteBallisticDopeRecord(record.id);
+          }
+        }
+
+        final chartGroups = <String, List<BallisticDopeRecord>>{};
+        for (final record in ballisticRecords) {
+          final key = '${_fmtDateIso(record.createdAt)}|${record.rifleId}|${record.ammoLotId}';
+          chartGroups.putIfAbsent(key, () => <BallisticDopeRecord>[]).add(record);
+        }
+        final chartGroupEntries = chartGroups.entries.toList()
+          ..sort((a, b) => b.value.first.createdAt.compareTo(a.value.first.createdAt));
+
         final workingSections = <Widget>[];
         if (wmap.isNotEmpty) {
           final sortedKeys = wmap.keys.toList()..sort();
@@ -9471,6 +9590,26 @@ class _DataScreenState extends State<DataScreen> {
               ),
               const SizedBox(height: 12),
               ColdBoreCard(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.warning_amber_outlined, color: cbAmber),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Ballistic solutions are estimates. Confirm all calculated DOPE through live fire before relying on it.',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.86),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              ColdBoreCard(
                 child: ListTile(
                   leading: const Icon(Icons.calculate_outlined),
                   title: const Text('Ballistic Assistant'),
@@ -9486,6 +9625,136 @@ class _DataScreenState extends State<DataScreen> {
                       ),
                     );
                   },
+                ),
+              ),
+              const SizedBox(height: 12),
+              ColdBoreCard(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const ColdBoreSectionHeader(
+                      title: 'Saved Ballistic Charts',
+                      subtitle: 'Saved generated chart rows grouped by date, rifle, and ammo.',
+                    ),
+                    const SizedBox(height: 8),
+                    if (chartGroupEntries.isEmpty)
+                      Text(
+                        'No saved ballistic charts yet. Open Ballistic Assistant, generate a chart, then save it to history.',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+                        ),
+                      )
+                    else
+                      ...chartGroupEntries.map((group) {
+                        final rows = [...group.value]
+                          ..sort((a, b) => a.distance.compareTo(b.distance));
+                        final first = rows.first;
+                        final title = '${_fmtDateIso(first.createdAt)} - ${rifleTitle(first.rifleId)} / ${ammoTitle(first.ammoLotId)}';
+                        final distanceText = rows
+                            .map((r) => '${r.distance.toStringAsFixed(0)} ${distanceUnitShort(r.distanceUnit)}')
+                            .join(', ');
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: cbBorder),
+                            color: cbCard.withValues(alpha: 0.62),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                title,
+                                style: const TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                              const SizedBox(height: 4),
+                              Text('${rows.length} row${rows.length == 1 ? '' : 's'}: $distanceText'),
+                            ],
+                          ),
+                        );
+                      }),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              ColdBoreCard(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const ColdBoreSectionHeader(
+                      title: 'Saved Ballistic DOPE History',
+                      subtitle: 'Single-distance estimates and saved chart rows. Delete rows here when needed.',
+                    ),
+                    const SizedBox(height: 8),
+                    if (ballisticRecords.isEmpty)
+                      Text(
+                        'No ballistic history rows yet.',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+                        ),
+                      )
+                    else
+                      ...ballisticRecords.map((record) {
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: cbBorder),
+                            color: cbCard.withValues(alpha: 0.62),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            '${rifleTitle(record.rifleId)} / ${ammoTitle(record.ammoLotId)}',
+                                            style: const TextStyle(fontWeight: FontWeight.w700),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        ColdBoreStatusPill(
+                                          label: record.isVerified ? 'Verified' : 'Calculated',
+                                          tone: record.isVerified ? ColdBoreStatusTone.verified : ColdBoreStatusTone.calculated,
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '${record.distance.toStringAsFixed(0)} ${distanceUnitShort(record.distanceUnit)} - ${_fmtDateIso(record.createdAt)}',
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Wrap(
+                                      spacing: 6,
+                                      runSpacing: 6,
+                                      children: [
+                                        ColdBoreStatusPill(label: 'Elev ${elevationLabel(record)}'),
+                                        ColdBoreStatusPill(label: 'Wind ${windageLabel(record)}'),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              IconButton(
+                                tooltip: 'Delete history row',
+                                icon: const Icon(Icons.delete_outline),
+                                onPressed: () => deleteBallisticHistoryRow(record),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                  ],
                 ),
               ),
               const SizedBox(height: 12),
@@ -12551,13 +12820,20 @@ class _SessionsScreenState extends State<SessionsScreen> {
     bool selectionMode = false,
   }) {
     final selected = _selectedSessionIds.contains(s.id);
-    final rifle = widget.state.rifleById(s.rifleId);
-    final ammo = widget.state.ammoById(s.ammoLotId);
+    Rifle? rifle = widget.state.rifleById(s.rifleId);
+    if (rifle == null) {
+      for (final stringMeta in s.strings.reversed) {
+        rifle = widget.state.rifleById(stringMeta.rifleId);
+        if (rifle != null) break;
+      }
+    }
+    final sessionTitle = rifle == null
+        ? (s.locationName.trim().isEmpty ? '(No firearm selected)' : s.locationName.trim())
+        : _riflePrimaryLabel(rifle);
     final subtitleBits = <String?>[
+      if (s.locationName.trim().isNotEmpty) s.locationName.trim(),
       _fmtDateTime(s.dateTime),
       if (s.folderName.trim().isNotEmpty) 'Folder: ${s.folderName.trim()}',
-      if (rifle != null) rifle.name,
-      if (ammo != null) ammo.name,
       if (s.archived) 'Archived',
     ];
 
@@ -12615,9 +12891,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        s.locationName.trim().isEmpty
-                            ? '(No location)'
-                            : s.locationName,
+                        sessionTitle,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -17253,6 +17527,123 @@ class SessionDetailScreen extends StatelessWidget {
     }
   }
 
+
+  Future<void> editTrainingDopeEntry(
+    BuildContext context, {
+    required TrainingSession session,
+    required DopeEntry entry,
+  }) async {
+    if (!await _guardWrite(context, operation: 'Edit training DOPE entry')) {
+      return;
+    }
+    final edited = await showDialog<DopeEntry>(
+      context: context,
+      builder: (_) => _WorkingDopeEditDialog(initial: entry),
+    );
+    if (edited == null) return;
+    final ok = state.updateTrainingDopeEntry(
+      sessionId: session.id,
+      dopeEntryId: entry.id,
+      entry: edited,
+    );
+    if (context.mounted && !ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not update that training DOPE entry.')),
+      );
+    }
+  }
+
+  Future<void> promoteTrainingDopeEntry(
+    BuildContext context, {
+    required TrainingSession session,
+    required DopeEntry entry,
+  }) async {
+    if (!await _guardWrite(context, operation: 'Promote training DOPE entry')) {
+      return;
+    }
+    final rifleId = entry.rifleId ?? session.rifleId;
+    if (rifleId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select a rifle before promoting DOPE.')),
+      );
+      return;
+    }
+
+    var rifleOnly = entry.ammoLotId == null;
+    if (entry.ammoLotId != null) {
+      final choice = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Promote to Working DOPE'),
+          content: const Text('Save this entry as Rifle + Ammo Working DOPE, or Rifle only?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Rifle only'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Rifle + Ammo'),
+            ),
+          ],
+        ),
+      );
+      if (choice == null) return;
+      rifleOnly = choice;
+    }
+
+    final key = rifleOnly ? rifleId : '${rifleId}_${entry.ammoLotId}';
+    final existingBucket = rifleOnly
+        ? state.workingDopeRifleOnly[key]
+        : state.workingDopeRifleAmmo[key];
+    final distanceKey = DistanceKey(entry.distance, entry.distanceUnit);
+    if (existingBucket?.containsKey(distanceKey) == true) {
+      final overwrite = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Replace existing Working DOPE?'),
+          content: const Text(
+            'A Working DOPE entry already exists for this rifle/ammo/distance. Replace it with this training DOPE?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Replace'),
+            ),
+          ],
+        ),
+      );
+      if (overwrite != true) return;
+    }
+
+    final promoted = DopeEntry(
+      id: entry.id,
+      time: DateTime.now(),
+      rifleId: rifleId,
+      ammoLotId: entry.ammoLotId,
+      distance: entry.distance,
+      distanceUnit: entry.distanceUnit,
+      elevation: entry.elevation,
+      elevationUnit: entry.elevationUnit,
+      elevationNotes: entry.elevationNotes,
+      windType: entry.windType,
+      windValue: entry.windValue,
+      windNotes: entry.windNotes,
+      windageLeft: entry.windageLeft,
+      windageRight: entry.windageRight,
+    );
+    state.promoteExistingDope(entry: promoted, rifleOnly: rifleOnly);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Training DOPE promoted to Working DOPE.')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -17972,43 +18363,79 @@ class SessionDetailScreen extends StatelessWidget {
                         subtitle: Text(
                           'Wind: $wind${e.windNotes.trim().isEmpty ? '' : '  -  ${e.windNotes.trim()}'}',
                         ),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete_outline),
-                          tooltip: 'Delete DOPE',
-                          onPressed: () async {
-                            final ok = await showDialog<bool>(
-                              context: context,
-                              builder: (_) => AlertDialog(
-                                title: const Text(
-                                  'Delete training DOPE entry?',
-                                ),
-                                content: const Text('This cannot be undone.'),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () =>
-                                        Navigator.pop(context, false),
-                                    child: const Text('Cancel'),
-                                  ),
-                                  FilledButton(
-                                    onPressed: () =>
-                                        Navigator.pop(context, true),
-                                    child: const Text('Delete'),
-                                  ),
-                                ],
-                              ),
-                            );
-                            if (ok != true) return;
-                            if (!await _guardWrite(
-                              context,
-                              operation: 'Delete DOPE entry',
-                            )) {
+                        onTap: () => editTrainingDopeEntry(
+                          context,
+                          session: s,
+                          entry: e,
+                        ),
+                        trailing: PopupMenuButton<String>(
+                          tooltip: 'Training DOPE actions',
+                          onSelected: (value) async {
+                            if (value == 'edit') {
+                              await editTrainingDopeEntry(
+                                context,
+                                session: s,
+                                entry: e,
+                              );
                               return;
                             }
-                            state.deleteTrainingDopeEntry(
-                              sessionId: s.id,
-                              dopeEntryId: e.id,
-                            );
+                            if (value == 'promote') {
+                              await promoteTrainingDopeEntry(
+                                context,
+                                session: s,
+                                entry: e,
+                              );
+                              return;
+                            }
+                            if (value == 'delete') {
+                              final ok = await showDialog<bool>(
+                                context: context,
+                                builder: (_) => AlertDialog(
+                                  title: const Text(
+                                    'Delete training DOPE entry?',
+                                  ),
+                                  content: const Text('This cannot be undone.'),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(context, false),
+                                      child: const Text('Cancel'),
+                                    ),
+                                    FilledButton(
+                                      onPressed: () =>
+                                          Navigator.pop(context, true),
+                                      child: const Text('Delete'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                              if (ok != true) return;
+                              if (!await _guardWrite(
+                                context,
+                                operation: 'Delete DOPE entry',
+                              )) {
+                                return;
+                              }
+                              state.deleteTrainingDopeEntry(
+                                sessionId: s.id,
+                                dopeEntryId: e.id,
+                              );
+                            }
                           },
+                          itemBuilder: (_) => const [
+                            PopupMenuItem(
+                              value: 'edit',
+                              child: Text('Edit'),
+                            ),
+                            PopupMenuItem(
+                              value: 'promote',
+                              child: Text('Promote to Working DOPE'),
+                            ),
+                            PopupMenuItem(
+                              value: 'delete',
+                              child: Text('Delete'),
+                            ),
+                          ],
                         ),
                       ),
                     );
