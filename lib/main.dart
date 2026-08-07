@@ -682,20 +682,20 @@ Future<String?> _pickWebJsonFile() async {
 String _cleanText(String s) {
   // Fix common mojibake / smart punctuation that can show up from copy/paste.
   return s
-  .replaceAll('â”œÃ³Î“Ã©Â¼â”¬Ã³', ' - ')
-      .replaceAll('â”œÃ³Î“Ã©Â¼Î“Ã¤Ã³', "'")
-      .replaceAll('â”œÃ³Î“Ã©Â¼â•¦Â£', "'")
-      .replaceAll('â”œÃ³Î“Ã©Â¼â”¼Ã´', '"')
-      .replaceAll('â”œÃ³Î“Ã©Â¼âˆ©â”â•œ', '"')
-      .replaceAll('â”œÃ³Î“Ã©Â¼Î“Ã‡Â¥', '-')
-      .replaceAll('â”œÃ³Î“Ã‡Ã¡Î“Ã‡Ã–', '->')
-      .replaceAll('Î“Ã‡Â£', '"')
-      .replaceAll('Î“Ã‡Â¥', '"')
-      .replaceAll('Î“Ã‡Ã–', "'")
+  .replaceAll('├óΓé¼┬ó', ' - ')
+      .replaceAll('├óΓé¼Γäó', "'")
+      .replaceAll('├óΓé¼╦£', "'")
+      .replaceAll('├óΓé¼┼ô', '"')
+      .replaceAll('├óΓé¼∩┐╜', '"')
+      .replaceAll('├óΓé¼ΓÇ¥', '-')
+      .replaceAll('├óΓÇáΓÇÖ', '->')
+      .replaceAll('ΓÇ£', '"')
+      .replaceAll('ΓÇ¥', '"')
+      .replaceAll('ΓÇÖ', "'")
       .replaceAll('-', '-')
-      .replaceAll('Î“Ã¥Ã†', '->')
+      .replaceAll('ΓåÆ', '->')
   .replaceAll(' - ', ' - ')
-  .replaceAll('Â°', 'Â°');
+  .replaceAll('°', '°');
 }
 
 // --- Export helpers (no extra packages required) -----------------------------
@@ -1045,9 +1045,9 @@ String _buildSessionReportText(
       s.windDirectionDeg != null) {
     b.writeln(
       ' -  Weather: '
-      '${s.temperatureF != null ? '${s.temperatureF!.toStringAsFixed(1)}Â°F' : '-'}; '
+      '${s.temperatureF != null ? '${s.temperatureF!.toStringAsFixed(1)}°F' : '-'}; '
       '${s.windSpeedMph != null ? '${s.windSpeedMph!.toStringAsFixed(1)} mph' : '-'} '
-      '${s.windDirectionDeg != null ? '@ ${s.windDirectionDeg}Â°' : ''}',
+      '${s.windDirectionDeg != null ? '@ ${s.windDirectionDeg}°' : ''}',
     );
   }
 
@@ -4429,7 +4429,7 @@ class AppState extends ChangeNotifier {
             id: _newId(),
             time: time,
             bytes: photoBytes,
-            caption: 'Cold bore â€¢ ${distance.trim()}',
+            caption: 'Cold bore - ${distance.trim()}',
           );
 
     _sessions[idx] = s.copyWith(
@@ -7297,6 +7297,63 @@ class _AudioCounterScreenState extends State<AudioCounterScreen> {
     setState(() => _totalShotsDetected = 0);
   }
 
+  Future<void> _adjustDetectedShotCount() async {
+    final countCtrl = TextEditingController(
+      text: _totalShotsDetected.toString(),
+    );
+    final noteCtrl = TextEditingController();
+
+    final updatedCount = await showDialog<int>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Adjust shot count'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: countCtrl,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Actual shots fired',
+                  helperText: 'Use this to correct false detections or missed shots.',
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: noteCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Reason / note optional',
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final parsed = int.tryParse(countCtrl.text.trim());
+              if (parsed == null || parsed < 0) return;
+              Navigator.of(context).pop(parsed);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    countCtrl.dispose();
+    noteCtrl.dispose();
+
+    if (updatedCount == null) return;
+    if (!mounted) return;
+    setState(() => _totalShotsDetected = updatedCount);
+  }
+
   String _rifleDropdownLabel(Rifle rifle) {
     final name = (rifle.name ?? '').trim();
     if (name.isNotEmpty) return name;
@@ -7382,7 +7439,7 @@ class _AudioCounterScreenState extends State<AudioCounterScreen> {
                         contentPadding: EdgeInsets.zero,
                         title: const Text('Apply shots immediately'),
                         subtitle: const Text(
-                          'Track detections, then apply with the button below',
+                          'Track detections here, then apply or adjust the final count below.',
                         ),
                         value: _applyToRifleOnDetection,
                         onChanged: (v) =>
@@ -7434,6 +7491,11 @@ class _AudioCounterScreenState extends State<AudioCounterScreen> {
                                 : null,
                             icon: const Icon(Icons.refresh),
                             label: const Text('Reset'),
+                          ),
+                          OutlinedButton.icon(
+                            onPressed: _adjustDetectedShotCount,
+                            icon: const Icon(Icons.edit_outlined),
+                            label: const Text('Adjust shot count'),
                           ),
                           if (_totalShotsDetected > 0 &&
                               _selectedRifleId != null)
@@ -9198,7 +9260,7 @@ class _DataScreenState extends State<DataScreen> {
                     ...dks.map((dk) {
                       final e = inner[dk]!;
                       final elevationText = _cleanText(
-                        '${e.elevation} ${e.elevationUnit.name.toUpperCase()}${e.elevationNotes.isNotEmpty ? ' Â· ${e.elevationNotes}' : ''}',
+                        '${e.elevation} ${e.elevationUnit.name.toUpperCase()}${e.elevationNotes.isNotEmpty ? ' - ${e.elevationNotes}' : ''}',
                       );
                       final windageText = (() {
                         final left = e.windageLeft;
@@ -9466,7 +9528,7 @@ class _DataScreenState extends State<DataScreen> {
                                   children: [
                                     Expanded(
                                       child: Text(
-                                        '${r.name ?? 'Rifle'} â€¢ ${r.caliber}',
+                                        '${r.name ?? 'Rifle'} - ${r.caliber}',
                                         style: const TextStyle(
                                           fontWeight: FontWeight.w700,
                                         ),
@@ -9646,7 +9708,7 @@ class _DataScreenState extends State<DataScreen> {
                       subtitle: Text(
                         snapshots.isEmpty
                             ? 'Add rifles to start tracking cleaning, torque, zero, and barrel reminders.'
-                            : '$overdue overdue â€¢ $dueSoon due soon across ${snapshots.length} rifle${snapshots.length == 1 ? '' : 's'}',
+                            : '$overdue overdue - $dueSoon due soon across ${snapshots.length} rifle${snapshots.length == 1 ? '' : 's'}',
                       ),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () {
@@ -9711,6 +9773,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
   BallisticDopeRecord? _activeRecord;
   List<_GeneratedDopeRow> _chartRows = const <_GeneratedDopeRow>[];
   int? _selectedChartRowIndex;
+  bool _showAllBallisticHistory = false;
   String _windDirectionValue = 'Full crosswind';
 
   final TextEditingController _distanceCtrl = TextEditingController(
@@ -10697,6 +10760,9 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
         }
 
         final records = widget.state.ballisticDopeRecords;
+        final visibleBallisticRecords = _showAllBallisticHistory
+            ? records
+            : records.take(10).toList(growable: false);
 
         String rifleLabel(Rifle r) {
           return _rifleDisplayLabel(r, includeSerial: true);
@@ -11437,7 +11503,28 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _sectionTitle('Recent Ballistic DOPE'),
+                      Row(
+                        children: [
+                          const Expanded(
+                            child: ColdBoreSectionHeader(
+                              title: 'Saved Ballistic DOPE History',
+                              subtitle: 'Saved single-distance results and saved chart rows.',
+                            ),
+                          ),
+                          if (records.length > 10)
+                            TextButton(
+                              onPressed: () => setState(
+                                () => _showAllBallisticHistory =
+                                    !_showAllBallisticHistory,
+                              ),
+                              child: Text(
+                                _showAllBallisticHistory
+                                    ? 'Show recent'
+                                    : 'Show all',
+                              ),
+                            ),
+                        ],
+                      ),
                       const SizedBox(height: 8),
                       if (records.isEmpty)
                         Text(
@@ -11449,7 +11536,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                           ),
                         )
                       else
-                        ...records.take(10).map((record) {
+                        ...visibleBallisticRecords.map((record) {
                           final recRifle = widget.state.rifleById(
                             record.rifleId,
                           );
@@ -11474,7 +11561,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                                   children: [
                                     Expanded(
                                       child: Text(
-                                        '${recRifle?.name ?? recRifle?.caliber ?? 'Rifle'} â€¢ ${recAmmo?.name ?? recAmmo?.bullet ?? 'Ammo'}',
+                                        '${recRifle?.name ?? recRifle?.caliber ?? 'Rifle'} - ${recAmmo?.name ?? recAmmo?.bullet ?? 'Ammo'}',
                                         style: const TextStyle(
                                           fontWeight: FontWeight.w700,
                                         ),
@@ -11494,7 +11581,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                                 ),
                                 const SizedBox(height: 6),
                                 Text(
-                                  'Distance ${record.distance.toStringAsFixed(0)} ${_distanceUnitLabel(record.distanceUnit)} â€¢ ${_formatDate(record.createdAt)}',
+                                  'Distance ${record.distance.toStringAsFixed(0)} ${_distanceUnitLabel(record.distanceUnit)} - ${_formatDate(record.createdAt)}',
                                 ),
                                 const SizedBox(height: 6),
                                 Wrap(
@@ -11644,7 +11731,7 @@ class WeatherDetailsScreen extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      temp == null ? 'Temperature: --' : 'Temperature: ${temp.toStringAsFixed(1)}Â°F',
+                      temp == null ? 'Temperature: --' : 'Temperature: ${temp.toStringAsFixed(1)}°F',
                     ),
                     const SizedBox(height: 6),
                     Text(
@@ -12476,7 +12563,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
 
     final weatherBits = <String>[];
     if (s.temperatureF != null) {
-      weatherBits.add('${s.temperatureF!.toStringAsFixed(0)}Â°F');
+      weatherBits.add('${s.temperatureF!.toStringAsFixed(0)}°F');
     }
     if (s.windSpeedMph != null) {
       weatherBits.add('${s.windSpeedMph!.toStringAsFixed(0)} mph');
@@ -13825,7 +13912,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
                           Text(
                             recentSession == null
                                 ? 'No completed session'
-                                : '${_fmtDateIso(recentSession.dateTime)} â€¢ ${fmtTime(recentSession.dateTime)}',
+                                : '${_fmtDateIso(recentSession.dateTime)} - ${fmtTime(recentSession.dateTime)}',
                             style: TextStyle(
                               color: Colors.white.withValues(alpha: 0.82),
                             ),
@@ -14236,6 +14323,8 @@ class _WorkingDopeEditDialogState extends State<_WorkingDopeEditDialog> {
     );
   }
 }
+
+enum _WorkingDopeConflictChoice { replace, addBoth }
 
 class _DopeEntryDialog extends StatefulWidget {
   const _DopeEntryDialog({
@@ -18571,7 +18660,7 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
                                             .trim()
                                             .isNotEmpty)
                                           (rifle.name ?? '').trim(),
-                                      ].join(' â€¢ '),
+                                      ].join(' - '),
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
@@ -18618,7 +18707,7 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
                                         if (ammo.grain > 0) '${ammo.grain}gr',
                                         if ((ammo.name ?? '').trim().isNotEmpty)
                                           (ammo.name ?? '').trim(),
-                                      ].join(' â€¢ '),
+                                      ].join(' - '),
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
@@ -18707,9 +18796,9 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
                               ),
                             ] else ...[
                               for (final s in top) ...[
-                                Text('${s['rifle']} â€¢ ${s['ammo']}'),
+                                Text('${s['rifle']} - ${s['ammo']}'),
                                 Text(
-                                  'Avg drift: ${(s['avg'] as double).toStringAsFixed(2)} MOA â€¢ Latest: ${dir(s['dx'] as double, 'Right', 'Left')} â€¢ ${dir(s['dy'] as double, 'Up', 'Down')}',
+                                  'Avg drift: ${(s['avg'] as double).toStringAsFixed(2)} MOA - Latest: ${dir(s['dx'] as double, 'Right', 'Left')} - ${dir(s['dy'] as double, 'Up', 'Down')}',
                                   style: TextStyle(
                                     color: Theme.of(context)
                                         .colorScheme
@@ -18744,7 +18833,7 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
                       r.shot.isBaseline ? Icons.star : Icons.ac_unit_outlined,
                     ),
                     title: Text(
-                      '${r.shot.distance} â€¢ ${r.shot.result}${r.shot.photos.isEmpty ? '' : ' â€¢ ${r.shot.photos.length} photo(s)'}',
+                      '${r.shot.distance} - ${r.shot.result}${r.shot.photos.isEmpty ? '' : ' - ${r.shot.photos.length} photo(s)'}',
                     ),
                     subtitle: Text(
                       [
@@ -18753,7 +18842,7 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
                         if (rifle != null) rifle.name ?? '',
                         if (ammo != null) ammo.name ?? '',
                         if (stringIndex >= 0) 'String ${stringIndex + 1}',
-                      ].join(' â€¢ '),
+                      ].join(' - '),
                     ),
                     onTap: () {
                       Navigator.of(context).push(
@@ -18824,7 +18913,7 @@ class _ColdBoreTargetCard extends StatelessWidget {
         return 'Unknown ammo';
       })();
 
-      return '$rifleLabel â€¢ $ammoLabel';
+      return '$rifleLabel - $ammoLabel';
     }
 
     final combosByKey = <String, _ColdBoreRow>{};
@@ -23783,7 +23872,7 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
                                   textCapitalization: TextCapitalization.none,
                                   controller: _tempF,
                                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                  decoration: const InputDecoration(labelText: 'Temp (Â°F)'),
+                                  decoration: const InputDecoration(labelText: 'Temp (°F)'),
                                 ),
                               ),
                               const SizedBox(width: 8),
@@ -25185,7 +25274,7 @@ class DopeManagerScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final entries = rifle.dopeEntries;
     return ColdBoreScaffold(
-      appBar: AppBar(title: Text('DOPE â€¢ ${rifle.name}')),
+      appBar: AppBar(title: Text('DOPE - ${rifle.name}')),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
           if (!await _guardWrite(context, operation: 'Add DOPE row/history')) {
@@ -25241,7 +25330,7 @@ class DopeManagerScreen extends StatelessWidget {
                 final e = entries[i];
                 return ListTile(
                   title: Text(
-                    '${e.distance} â€¢ Elev ${e.elevation} â€¢ Wind ${e.windage}',
+                    '${e.distance} - Elev ${e.elevation} - Wind ${e.windage}',
                   ),
                   subtitle: e.notes.trim().isEmpty ? null : Text(e.notes),
                   onTap: () async {
@@ -25930,7 +26019,7 @@ class _RifleServiceLogScreenState extends State<RifleServiceLogScreen> {
                         children: [
                           Expanded(
                             child: Text(
-                              '${rifle.caliber} â€¢ $rifleModelLabel',
+                              '${rifle.caliber} - $rifleModelLabel',
                               style: Theme.of(context).textTheme.titleMedium,
                             ),
                           ),
