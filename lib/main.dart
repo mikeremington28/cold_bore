@@ -1557,6 +1557,42 @@ class BallisticDopeRecord {
   }
 }
 
+
+class SavedBallisticChart {
+  final String id;
+  final String userId;
+  final String title;
+  final DateTime createdAt;
+  final String rifleId;
+  final String ammoLotId;
+  final List<String> recordIds;
+
+  const SavedBallisticChart({
+    required this.id,
+    required this.userId,
+    required this.title,
+    required this.createdAt,
+    required this.rifleId,
+    required this.ammoLotId,
+    required this.recordIds,
+  });
+
+  SavedBallisticChart copyWith({
+    String? title,
+    List<String>? recordIds,
+  }) {
+    return SavedBallisticChart(
+      id: id,
+      userId: userId,
+      title: title ?? this.title,
+      createdAt: createdAt,
+      rifleId: rifleId,
+      ammoLotId: ammoLotId,
+      recordIds: recordIds ?? this.recordIds,
+    );
+  }
+}
+
 // Separate DOPE entry model for Rifle DOPE list (simple text fields).
 // This avoids colliding with the main DopeEntry model used for working/training DOPE.
 class RifleDopeEntry {
@@ -2735,6 +2771,7 @@ class AppState extends ChangeNotifier {
   final List<AmmoLot> _ammoLots = [];
   final List<TrainingSession> _sessions = [];
   final List<BallisticDopeRecord> _ballisticDopeRecords = [];
+  final List<SavedBallisticChart> _savedBallisticCharts = [];
   final Map<String, Map<DistanceKey, DopeEntry>> _workingDopeRifleOnly = {};
   final Map<String, Map<DistanceKey, DopeEntry>> _workingDopeRifleAmmo = {};
   final Map<String, Map<String, bool>> _acceptedSharedFieldsBySession = {};
@@ -2902,6 +2939,30 @@ class AppState extends ChangeNotifier {
     return List.unmodifiable(out);
   }
 
+  List<SavedBallisticChart> get savedBallisticCharts {
+    final userId = _activeUser?.id;
+    if (userId == null) return const <SavedBallisticChart>[];
+    final out = _savedBallisticCharts.where((x) => x.userId == userId).toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return List.unmodifiable(out);
+  }
+
+  BallisticDopeRecord? ballisticDopeRecordById(String id) {
+    try {
+      return _ballisticDopeRecords.firstWhere((x) => x.id == id);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  SavedBallisticChart? savedBallisticChartById(String id) {
+    try {
+      return _savedBallisticCharts.firstWhere((x) => x.id == id);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Convenience lookups used by exports/session reports.
   Rifle? findRifleById(String id) {
     try {
@@ -3004,6 +3065,9 @@ class AppState extends ChangeNotifier {
       'ballisticDopeRecords': _ballisticDopeRecords
           .map(_ballisticDopeRecordToMap)
           .toList(),
+      'savedBallisticCharts': _savedBallisticCharts
+          .map(_savedBallisticChartToMap)
+          .toList(),
       'workingDopeRifleOnly': _workingDopeRifleOnly.map(
         (key, value) =>
             MapEntry(key, value.values.map(_dopeEntryToMap).toList()),
@@ -3055,6 +3119,13 @@ class AppState extends ChangeNotifier {
         ((map['ballisticDopeRecords'] as List?) ?? const []).map(
           (x) =>
               _ballisticDopeRecordFromMap(Map<String, dynamic>.from(x as Map)),
+        ),
+      );
+    _savedBallisticCharts
+      ..clear()
+      ..addAll(
+        ((map['savedBallisticCharts'] as List?) ?? const []).map(
+          (x) => _savedBallisticChartFromMap(Map<String, dynamic>.from(x as Map)),
         ),
       );
 
@@ -4157,6 +4228,69 @@ class AppState extends ChangeNotifier {
     final before = _ballisticDopeRecords.length;
     _ballisticDopeRecords.removeWhere((x) => x.id == recordId);
     if (_ballisticDopeRecords.length == before) return false;
+    for (var i = 0; i < _savedBallisticCharts.length; i++) {
+      final chart = _savedBallisticCharts[i];
+      if (!chart.recordIds.contains(recordId)) continue;
+      _savedBallisticCharts[i] = chart.copyWith(
+        recordIds: chart.recordIds.where((id) => id != recordId).toList(),
+      );
+    }
+    _savedBallisticCharts.removeWhere((chart) => chart.recordIds.isEmpty);
+    notifyListeners();
+    return true;
+  }
+
+  SavedBallisticChart addSavedBallisticChart({
+    required String title,
+    required String rifleId,
+    required String ammoLotId,
+    required List<String> recordIds,
+  }) {
+    final user = _activeUser;
+    if (user == null) {
+      throw StateError('No active user selected');
+    }
+    final cleanIds = recordIds
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+    if (cleanIds.isEmpty) {
+      throw StateError('No chart rows to save.');
+    }
+    final chart = SavedBallisticChart(
+      id: _newId(),
+      userId: user.id,
+      title: title.trim().isEmpty ? 'Saved ballistic chart' : title.trim(),
+      createdAt: DateTime.now(),
+      rifleId: rifleId,
+      ammoLotId: ammoLotId,
+      recordIds: cleanIds,
+    );
+    _savedBallisticCharts.add(chart);
+    notifyListeners();
+    return chart;
+  }
+
+  bool renameSavedBallisticChart({
+    required String chartId,
+    required String title,
+  }) {
+    final idx = _savedBallisticCharts.indexWhere((x) => x.id == chartId);
+    if (idx < 0) return false;
+    final cleanTitle = title.trim();
+    if (cleanTitle.isEmpty) return false;
+    _savedBallisticCharts[idx] = _savedBallisticCharts[idx].copyWith(
+      title: cleanTitle,
+    );
+    notifyListeners();
+    return true;
+  }
+
+  bool deleteSavedBallisticChart(String chartId) {
+    final before = _savedBallisticCharts.length;
+    _savedBallisticCharts.removeWhere((x) => x.id == chartId);
+    if (_savedBallisticCharts.length == before) return false;
     notifyListeners();
     return true;
   }
@@ -6173,6 +6307,32 @@ BallisticDopeRecord _ballisticDopeRecordFromMap(
       : _parseDateTime(map['verificationDate']),
   weatherSnapshot: (map['weatherSnapshot'] ?? '').toString(),
 );
+
+
+Map<String, dynamic> _savedBallisticChartToMap(SavedBallisticChart chart) =>
+    <String, dynamic>{
+      'id': chart.id,
+      'userId': chart.userId,
+      'title': chart.title,
+      'createdAt': chart.createdAt.toIso8601String(),
+      'rifleId': chart.rifleId,
+      'ammoLotId': chart.ammoLotId,
+      'recordIds': chart.recordIds,
+    };
+
+SavedBallisticChart _savedBallisticChartFromMap(Map<String, dynamic> map) =>
+    SavedBallisticChart(
+      id: (map['id'] ?? '').toString(),
+      userId: (map['userId'] ?? '').toString(),
+      title: (map['title'] ?? 'Saved ballistic chart').toString(),
+      createdAt: _parseDateTime(map['createdAt']),
+      rifleId: (map['rifleId'] ?? '').toString(),
+      ammoLotId: (map['ammoLotId'] ?? '').toString(),
+      recordIds: ((map['recordIds'] as List?) ?? const <Object>[])
+          .map((e) => e.toString())
+          .where((id) => id.trim().isNotEmpty)
+          .toList(growable: false),
+    );
 
 Map<String, dynamic> _coldBorePhotoToMap(ColdBorePhoto photo) =>
     <String, dynamic>{
@@ -9363,7 +9523,7 @@ class _DataScreenState extends State<DataScreen> {
                   ...dks.map((dk) {
                     final e = selectedBucket![dk]!;
                     final elevationText = _cleanText(
-                      '${e.elevation} ${e.elevationUnit.name.toUpperCase()}${e.elevationNotes.isNotEmpty ? ' - ${e.elevationNotes}' : ''}',
+                      '${e.elevation.toStringAsFixed(2)} ${e.elevationUnit.name.toUpperCase()}',
                     );
                     final windageText = (() {
                       final left = e.windageLeft;
@@ -9407,6 +9567,48 @@ class _DataScreenState extends State<DataScreen> {
                       }
                     }
 
+                    Future<void> showEntryDetails() async {
+                      await showDialog<void>(
+                        context: context,
+                        builder: (_) => AlertDialog(
+                          title: Text(
+                            '${dk.value.toStringAsFixed(0)} ${distanceUnitShort(dk.unit)} Working DOPE',
+                          ),
+                          content: SingleChildScrollView(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Elevation: $elevationText'),
+                                Text('Windage: $windageText'),
+                                if (e.elevationNotes.trim().isNotEmpty) ...[
+                                  const SizedBox(height: 10),
+                                  Text(_cleanText(e.elevationNotes.trim())),
+                                ],
+                                if (e.windNotes.trim().isNotEmpty) ...[
+                                  const SizedBox(height: 8),
+                                  Text(_cleanText(e.windNotes.trim())),
+                                ],
+                              ],
+                            ),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.of(context).pop(),
+                              child: const Text('Close'),
+                            ),
+                            FilledButton(
+                              onPressed: () {
+                                Navigator.of(context).pop();
+                                unawaited(editEntry());
+                              },
+                              child: const Text('Edit'),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+
                     Future<void> deleteEntry() async {
                       if (!await _guardWrite(
                         context,
@@ -9448,7 +9650,7 @@ class _DataScreenState extends State<DataScreen> {
 
                     return InkWell(
                       borderRadius: BorderRadius.circular(14),
-                      onTap: editEntry,
+                      onTap: showEntryDetails,
                       onLongPress: deleteEntry,
                       child: Container(
                         margin: const EdgeInsets.only(bottom: 6),
@@ -9503,6 +9705,7 @@ class _DataScreenState extends State<DataScreen> {
         }
 
         Widget savedChartsSection() {
+          final charts = widget.state.savedBallisticCharts;
           return ColdBoreCard(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -9510,18 +9713,72 @@ class _DataScreenState extends State<DataScreen> {
               children: [
                 const ColdBoreSectionHeader(
                   title: 'Saved Ballistic Charts',
-                  subtitle: 'Full saved chart cards will appear here after chart saving is added.',
+                  subtitle: 'Open a saved chart to edit, validate, or commit selected rows to Working DOPE.',
                 ),
                 const SizedBox(height: 8),
-                Text(
-                  'No saved charts yet. Generate a chart in Ballistic Assistant, then save it when chart saving is available.',
-                  style: TextStyle(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .onSurface
-                        .withValues(alpha: 0.7),
-                  ),
-                ),
+                if (charts.isEmpty)
+                  Text(
+                    'No saved charts yet. Generate a chart in Ballistic Assistant, then tap Save Chart.',
+                    style: TextStyle(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withValues(alpha: 0.7),
+                    ),
+                  )
+                else
+                  ...charts.map((chart) {
+                    final records = chart.recordIds
+                        .map(widget.state.ballisticDopeRecordById)
+                        .whereType<BallisticDopeRecord>()
+                        .toList()
+                      ..sort((a, b) => a.distance.compareTo(b.distance));
+                    final minDistance = records.isEmpty ? null : records.first.distance;
+                    final maxDistance = records.isEmpty ? null : records.last.distance;
+                    final unit = records.isEmpty
+                        ? DistanceUnit.yards
+                        : records.first.distanceUnit;
+                    final verifiedCount = records.where((r) => r.isVerified).length;
+                    final subtitleParts = <String>[
+                      '${rifleTitle(chart.rifleId)} / ${ammoTitle(chart.ammoLotId)}',
+                      if (minDistance != null && maxDistance != null)
+                        '${minDistance.toStringAsFixed(0)}-${maxDistance.toStringAsFixed(0)} ${distanceUnitShort(unit)}',
+                      '${records.length} row${records.length == 1 ? '' : 's'}',
+                      if (verifiedCount > 0) '$verifiedCount validated',
+                    ];
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: cbBorder),
+                        color: cbCard.withValues(alpha: 0.62),
+                      ),
+                      child: ListTile(
+                        title: Text(
+                          chart.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        subtitle: Text(
+                          _cleanText(subtitleParts.join(' - ')),
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => SavedBallisticChartScreen(
+                                state: widget.state,
+                                chartId: chart.id,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    );
+                  }),
               ],
             ),
           );
@@ -9754,6 +10011,8 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
   BallisticDopeRecord? _activeRecord;
   List<_GeneratedDopeRow> _chartRows = const <_GeneratedDopeRow>[];
   int? _selectedChartRowIndex;
+  bool _chartCommitSelectionMode = false;
+  final Set<int> _selectedChartRowIndexes = <int>{};
   bool _showAllBallisticHistory = false;
   String _windDirectionValue = 'Full crosswind';
 
@@ -10168,6 +10427,8 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
     setState(() {
       _chartRows = rows;
       _selectedChartRowIndex = rows.isEmpty ? null : 0;
+      _chartCommitSelectionMode = false;
+      _selectedChartRowIndexes.clear();
     });
   }
 
@@ -10209,8 +10470,30 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
     return updated;
   }
 
+  String _rifleChartTitle(String? rifleId) {
+    final rifle = widget.state.rifleById(rifleId);
+    if (rifle == null) return 'Unknown Rifle';
+    return _rifleDisplayLabel(rifle);
+  }
+
+  String _ammoChartTitle(String? ammoId) {
+    final ammo = widget.state.ammoById(ammoId);
+    if (ammo == null) return 'Unknown Ammo';
+    final name = (ammo.name ?? '').trim();
+    if (name.isNotEmpty) return name;
+    final bullet = '${ammo.grain > 0 ? '${ammo.grain}gr ' : ''}${ammo.bullet}'.trim();
+    if (bullet.isNotEmpty) return bullet;
+    return ammo.caliber.trim().isEmpty ? 'Ammo' : ammo.caliber.trim();
+  }
+
+  String _defaultSavedChartTitle() {
+    if (_chartRows.isEmpty) return 'Saved ballistic chart';
+    final first = _chartRows.first;
+    return '${_formatDate(DateTime.now())} - ${_rifleChartTitle(first.rifleId)} - ${_ammoChartTitle(first.ammoLotId)}';
+  }
+
   Future<void> _saveChartToHistory() async {
-    if (!await _guardWrite(context, operation: 'Save ballistic chart history')) {
+    if (!await _guardWrite(context, operation: 'Save ballistic chart')) {
       return;
     }
     if (_chartRows.isEmpty) {
@@ -10220,25 +10503,50 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
       return;
     }
 
-    var savedCount = 0;
+    final titleCtrl = TextEditingController(text: _defaultSavedChartTitle());
+    final title = await showDialog<String>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('Save Chart'),
+        content: TextField(
+          textCapitalization: TextCapitalization.words,
+          controller: titleCtrl,
+          decoration: const InputDecoration(labelText: 'Chart title'),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(titleCtrl.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    titleCtrl.dispose();
+    if (title == null || title.trim().isEmpty) return;
+
+    final recordIds = <String>[];
     for (var i = 0; i < _chartRows.length; i++) {
-      final before = _chartRows[i];
-      if (before.recordId != null) continue;
       final updated = await _ensureChartRowSavedToHistory(i);
-      if (updated != null && updated.recordId != null) {
-        savedCount++;
-      }
+      if (updated?.recordId != null) recordIds.add(updated!.recordId!);
     }
+    if (recordIds.isEmpty) return;
+
+    final first = _chartRows.first;
+    final chart = widget.state.addSavedBallisticChart(
+      title: title,
+      rifleId: first.rifleId,
+      ammoLotId: first.ammoLotId,
+      recordIds: recordIds,
+    );
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          savedCount == 0
-              ? 'All chart rows are already saved in Ballistic DOPE history.'
-              : 'Saved $savedCount chart row${savedCount == 1 ? '' : 's'} to Ballistic DOPE history.',
-        ),
-      ),
+      SnackBar(content: Text('Saved chart: ${chart.title}')),
     );
   }
 
@@ -10308,6 +10616,56 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
     return overwrite == true;
   }
 
+  Future<void> _commitSelectedChartRowsToWorkingDope() async {
+    if (!await _guardWrite(context, operation: 'Commit selected chart rows to Working DOPE')) {
+      return;
+    }
+    final selectedIndexes = _selectedChartRowIndexes
+        .where((idx) => idx >= 0 && idx < _chartRows.length)
+        .toList()
+      ..sort();
+    if (selectedIndexes.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select one or more chart rows first.')),
+      );
+      return;
+    }
+
+    final recordsById = {
+      for (final r in widget.state.ballisticDopeRecords) r.id: r,
+    };
+
+    var savedCount = 0;
+    var skippedCount = 0;
+    for (final idx in selectedIndexes) {
+      final row = _chartRows[idx];
+      final key = '${row.rifleId}_${row.ammoLotId}';
+      final dk = DistanceKey(row.distance, row.distanceUnit);
+      final ok = await _confirmOverwriteIfNeeded(key: key, dk: dk);
+      if (!ok) {
+        skippedCount++;
+        continue;
+      }
+      final rec = row.recordId == null ? null : recordsById[row.recordId!];
+      final entry = _dopeEntryFromChartRow(row, rec);
+      widget.state.promoteExistingDope(entry: entry, rifleOnly: false);
+      savedCount++;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _chartCommitSelectionMode = false;
+      _selectedChartRowIndexes.clear();
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Committed $savedCount row${savedCount == 1 ? '' : 's'} to Working DOPE${skippedCount > 0 ? ' ($skippedCount skipped)' : ''}.',
+        ),
+      ),
+    );
+  }
+
   Future<void> _saveSelectedRowToWorkingDope() async {
     if (!await _guardWrite(context, operation: 'Save selected DOPE row')) {
       return;
@@ -10321,9 +10679,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
     }
 
     final row = _chartRows[selected];
-    final key = _writeRifleOnly
-        ? row.rifleId
-        : '${row.rifleId}_${row.ammoLotId}';
+    final key = '${row.rifleId}_${row.ammoLotId}';
     final dk = DistanceKey(row.distance, row.distanceUnit);
     final ok = await _confirmOverwriteIfNeeded(key: key, dk: dk);
     if (!ok) return;
@@ -10333,7 +10689,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
     };
     final rec = row.recordId == null ? null : recordsById[row.recordId!];
     final entry = _dopeEntryFromChartRow(row, rec);
-    widget.state.promoteExistingDope(entry: entry, rifleOnly: _writeRifleOnly);
+    widget.state.promoteExistingDope(entry: entry, rifleOnly: false);
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -10356,13 +10712,9 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
 
     final existingConflicts = <_GeneratedDopeRow>[];
     for (final row in _chartRows) {
-      final key = _writeRifleOnly
-          ? row.rifleId
-          : '${row.rifleId}_${row.ammoLotId}';
+      final key = '${row.rifleId}_${row.ammoLotId}';
       final dk = DistanceKey(row.distance, row.distanceUnit);
-      final existing = _writeRifleOnly
-          ? widget.state.workingDopeRifleOnly[key]
-          : widget.state.workingDopeRifleAmmo[key];
+      final existing = widget.state.workingDopeRifleAmmo[key];
       if (existing?.containsKey(dk) == true) {
         existingConflicts.add(row);
       }
@@ -10399,13 +10751,9 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
     var savedCount = 0;
     var skippedCount = 0;
     for (final row in _chartRows) {
-      final key = _writeRifleOnly
-          ? row.rifleId
-          : '${row.rifleId}_${row.ammoLotId}';
+      final key = '${row.rifleId}_${row.ammoLotId}';
       final dk = DistanceKey(row.distance, row.distanceUnit);
-      final existing = _writeRifleOnly
-          ? widget.state.workingDopeRifleOnly[key]
-          : widget.state.workingDopeRifleAmmo[key];
+      final existing = widget.state.workingDopeRifleAmmo[key];
       final hasConflict = existing?.containsKey(dk) == true;
       if (hasConflict && !overwriteConflicts) {
         skippedCount++;
@@ -10415,7 +10763,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
       final entry = _dopeEntryFromChartRow(row, rec);
       widget.state.promoteExistingDope(
         entry: entry,
-        rifleOnly: _writeRifleOnly,
+        rifleOnly: false,
       );
       savedCount++;
     }
@@ -10493,7 +10841,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                         BallisticValidationOutcome.adjustmentRequired) ...[
                       const SizedBox(height: 8),
                       TextField(
-                        textCapitalization: TextCapitalization.none,
+                        textCapitalization: TextCapitalization.words,
                         controller: elevCtrl,
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
@@ -10508,7 +10856,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                       ),
                       const SizedBox(height: 8),
                       TextField(
-                        textCapitalization: TextCapitalization.none,
+                        textCapitalization: TextCapitalization.words,
                         controller: windCtrl,
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
@@ -10522,7 +10870,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                     ],
                     const SizedBox(height: 8),
                     TextField(
-                      textCapitalization: TextCapitalization.none,
+                      textCapitalization: TextCapitalization.words,
                       controller: notesCtrl,
                       maxLines: 2,
                       textInputAction: TextInputAction.done,
@@ -10698,7 +11046,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
       if (overwrite != true) return;
     }
 
-    widget.state.promoteExistingDope(entry: entry, rifleOnly: _writeRifleOnly);
+    widget.state.promoteExistingDope(entry: entry, rifleOnly: false);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Verified DOPE written to Working DOPE.')),
@@ -10855,7 +11203,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                         children: [
                           Expanded(
                             child: TextField(
-                              textCapitalization: TextCapitalization.none,
+                              textCapitalization: TextCapitalization.words,
                               controller: _distanceCtrl,
                               keyboardType:
                                   const TextInputType.numberWithOptions(
@@ -10893,7 +11241,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                         children: [
                           Expanded(
                             child: TextField(
-                              textCapitalization: TextCapitalization.none,
+                              textCapitalization: TextCapitalization.words,
                               controller: _zeroDistanceCtrl,
                               keyboardType:
                                   const TextInputType.numberWithOptions(
@@ -10946,7 +11294,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                         children: [
                           Expanded(
                             child: TextField(
-                              textCapitalization: TextCapitalization.none,
+                              textCapitalization: TextCapitalization.words,
                               controller: _windSpeedCtrl,
                               keyboardType:
                                   const TextInputType.numberWithOptions(
@@ -10985,7 +11333,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                         children: [
                           Expanded(
                             child: TextField(
-                              textCapitalization: TextCapitalization.none,
+                              textCapitalization: TextCapitalization.words,
                               controller: _temperatureCtrl,
                               keyboardType:
                                   const TextInputType.numberWithOptions(
@@ -10999,7 +11347,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                           const SizedBox(width: 8),
                           Expanded(
                             child: TextField(
-                              textCapitalization: TextCapitalization.none,
+                              textCapitalization: TextCapitalization.words,
                               controller: _pressureCtrl,
                               keyboardType:
                                   const TextInputType.numberWithOptions(
@@ -11013,7 +11361,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                           const SizedBox(width: 8),
                           Expanded(
                             child: TextField(
-                              textCapitalization: TextCapitalization.none,
+                              textCapitalization: TextCapitalization.words,
                               controller: _humidityCtrl,
                               keyboardType:
                                   const TextInputType.numberWithOptions(
@@ -11032,7 +11380,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                         children: [
                           Expanded(
                             child: TextField(
-                              textCapitalization: TextCapitalization.none,
+                              textCapitalization: TextCapitalization.words,
                               controller: _sightHeightCtrl,
                               keyboardType:
                                   const TextInputType.numberWithOptions(
@@ -11046,7 +11394,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                           const SizedBox(width: 8),
                           Expanded(
                             child: TextField(
-                              textCapitalization: TextCapitalization.none,
+                              textCapitalization: TextCapitalization.words,
                               controller: _muzzleVelocityCtrl,
                               keyboardType:
                                   const TextInputType.numberWithOptions(
@@ -11064,7 +11412,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                         children: [
                           Expanded(
                             child: TextField(
-                              textCapitalization: TextCapitalization.none,
+                              textCapitalization: TextCapitalization.words,
                               controller: _bcCtrl,
                               keyboardType:
                                   const TextInputType.numberWithOptions(
@@ -11189,7 +11537,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                                   .adjustmentRequired) ...[
                             const SizedBox(height: 8),
                             TextField(
-                              textCapitalization: TextCapitalization.none,
+                              textCapitalization: TextCapitalization.words,
                               controller: _elevationCorrectionCtrl,
                               keyboardType:
                                   const TextInputType.numberWithOptions(
@@ -11204,7 +11552,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                             ),
                             const SizedBox(height: 8),
                             TextField(
-                              textCapitalization: TextCapitalization.none,
+                              textCapitalization: TextCapitalization.words,
                               controller: _windCorrectionCtrl,
                               keyboardType:
                                   const TextInputType.numberWithOptions(
@@ -11218,7 +11566,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                           ],
                           const SizedBox(height: 8),
                           TextField(
-                            textCapitalization: TextCapitalization.none,
+                            textCapitalization: TextCapitalization.words,
                             controller: _validationNotesCtrl,
                             decoration: const InputDecoration(
                               labelText: 'Notes',
@@ -11282,7 +11630,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                         children: [
                           Expanded(
                             child: TextField(
-                              textCapitalization: TextCapitalization.none,
+                              textCapitalization: TextCapitalization.words,
                               controller: _chartStartDistanceCtrl,
                               keyboardType:
                                   const TextInputType.numberWithOptions(
@@ -11296,7 +11644,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                           const SizedBox(width: 8),
                           Expanded(
                             child: TextField(
-                              textCapitalization: TextCapitalization.none,
+                              textCapitalization: TextCapitalization.words,
                               controller: _chartEndDistanceCtrl,
                               keyboardType:
                                   const TextInputType.numberWithOptions(
@@ -11310,7 +11658,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                           const SizedBox(width: 8),
                           Expanded(
                             child: TextField(
-                              textCapitalization: TextCapitalization.none,
+                              textCapitalization: TextCapitalization.words,
                               controller: _chartIncrementCtrl,
                               keyboardType:
                                   const TextInputType.numberWithOptions(
@@ -11339,13 +11687,10 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                         label: const Text('Generate DOPE Chart'),
                       ),
                       const SizedBox(height: 10),
-                      SwitchListTile(
-                        contentPadding: EdgeInsets.zero,
-                        value: _writeRifleOnly,
-                        onChanged: (v) => setState(() => _writeRifleOnly = v),
-                        title: const Text('Save Working DOPE as Rifle only'),
-                        subtitle: const Text(
-                          'Off = save as Rifle + Ammo working DOPE',
+                      Text(
+                        'Working DOPE commits use the selected firearm + ammo only.',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.75),
                         ),
                       ),
                       if (_chartRows.isNotEmpty) ...[
@@ -11359,7 +11704,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                           child: SingleChildScrollView(
                             scrollDirection: Axis.horizontal,
                             child: DataTable(
-                              showCheckboxColumn: false,
+                              showCheckboxColumn: _chartCommitSelectionMode,
                               columnSpacing: 14,
                               horizontalMargin: 10,
                               headingRowHeight: 38,
@@ -11393,7 +11738,9 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                                     : row.calculatedWind;
 
                                 return DataRow(
-                                  selected: _selectedChartRowIndex == idx,
+                                  selected: _chartCommitSelectionMode
+                                      ? _selectedChartRowIndexes.contains(idx)
+                                      : _selectedChartRowIndex == idx,
                                   color: MaterialStateProperty.resolveWith((
                                     states,
                                   ) {
@@ -11403,6 +11750,16 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                                     return Colors.transparent;
                                   }),
                                   onSelectChanged: (_) {
+                                    if (_chartCommitSelectionMode) {
+                                      setState(() {
+                                        if (_selectedChartRowIndexes.contains(idx)) {
+                                          _selectedChartRowIndexes.remove(idx);
+                                        } else {
+                                          _selectedChartRowIndexes.add(idx);
+                                        }
+                                      });
+                                      return;
+                                    }
                                     setState(() => _selectedChartRowIndex = idx);
                                     _validateChartRow(idx);
                                   },
@@ -11450,31 +11807,45 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                             OutlinedButton.icon(
                               onPressed: _saveChartToHistory,
                               icon: const Icon(Icons.save_outlined),
-                              label: const Text(
-                                'Save generated chart to history',
-                              ),
-                            ),
-                            OutlinedButton.icon(
-                              onPressed: _saveSelectedRowToWorkingDope,
-                              icon: const Icon(Icons.file_upload_outlined),
-                              label: const Text(
-                                'Save selected row to Working DOPE',
-                              ),
+                              label: const Text('Save Chart'),
                             ),
                             FilledButton.tonalIcon(
-                              onPressed: _saveAllRowsToWorkingDope,
-                              icon: const Icon(
-                                Icons.playlist_add_check_outlined,
+                              onPressed: () {
+                                if (!_chartCommitSelectionMode) {
+                                  setState(() {
+                                    _chartCommitSelectionMode = true;
+                                    _selectedChartRowIndexes.clear();
+                                  });
+                                  return;
+                                }
+                                unawaited(_commitSelectedChartRowsToWorkingDope());
+                              },
+                              icon: Icon(
+                                _chartCommitSelectionMode
+                                    ? Icons.playlist_add_check_outlined
+                                    : Icons.checklist_outlined,
                               ),
-                              label: const Text(
-                                'Save all rows to Working DOPE',
+                              label: Text(
+                                _chartCommitSelectionMode
+                                    ? 'Commit selected (${_selectedChartRowIndexes.length})'
+                                    : 'Select rows to commit',
                               ),
                             ),
+                            if (_chartCommitSelectionMode)
+                              TextButton(
+                                onPressed: () => setState(() {
+                                  _chartCommitSelectionMode = false;
+                                  _selectedChartRowIndexes.clear();
+                                }),
+                                child: const Text('Cancel selection'),
+                              ),
                           ],
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Tip: tap any chart row to validate it with live-fire feedback.',
+                          _chartCommitSelectionMode
+                              ? 'Select the rows you want to commit, then tap Commit selected.'
+                              : 'Tip: tap any chart row to validate or adjust it with live-fire feedback.',
                           style: TextStyle(
                             color: Theme.of(
                               context,
@@ -11604,6 +11975,566 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                   ),
                 ),
               ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+
+class SavedBallisticChartScreen extends StatefulWidget {
+  final AppState state;
+  final String chartId;
+
+  const SavedBallisticChartScreen({
+    super.key,
+    required this.state,
+    required this.chartId,
+  });
+
+  @override
+  State<SavedBallisticChartScreen> createState() =>
+      _SavedBallisticChartScreenState();
+}
+
+class _SavedBallisticChartScreenState extends State<SavedBallisticChartScreen> {
+  final Set<String> _selectedRecordIds = <String>{};
+
+  String _distanceUnitLabel(DistanceUnit unit) =>
+      unit == DistanceUnit.yards ? 'yd' : 'm';
+
+  String _elevationUnitLabel(ElevationUnit unit) {
+    switch (unit) {
+      case ElevationUnit.mil:
+        return 'MIL';
+      case ElevationUnit.moa:
+        return 'MOA';
+      case ElevationUnit.inches:
+        return 'IN';
+    }
+  }
+
+  String _statusLabel(BallisticDopeRecord record) {
+    if (!record.isVerified) return 'Estimated';
+    if (record.validationOutcome == BallisticValidationOutcome.adjustmentRequired) {
+      return 'Adjusted';
+    }
+    return 'Validated';
+  }
+
+  ColdBoreStatusTone _statusTone(BallisticDopeRecord record) {
+    if (!record.isVerified) return ColdBoreStatusTone.calculated;
+    if (record.validationOutcome == BallisticValidationOutcome.adjustmentRequired) {
+      return ColdBoreStatusTone.warning;
+    }
+    return ColdBoreStatusTone.verified;
+  }
+
+  double _displayElevation(BallisticDopeRecord record) =>
+      record.isVerified ? record.verifiedElevation : record.calculatedElevation;
+
+  double _displayWind(BallisticDopeRecord record) =>
+      record.isVerified ? record.verifiedWind : record.calculatedWind;
+
+  String _formatWindage(double value, ElevationUnit unit) {
+    final direction = value < 0 ? 'Left' : 'Right';
+    return '$direction ${value.abs().toStringAsFixed(2)} ${_elevationUnitLabel(unit)}';
+  }
+
+  String _rifleTitle(String? rifleId) {
+    final rifle = widget.state.rifleById(rifleId);
+    if (rifle == null) return 'Deleted rifle';
+    return _rifleDisplayLabel(rifle);
+  }
+
+  String _ammoTitle(String? ammoId) {
+    final ammo = widget.state.ammoById(ammoId);
+    if (ammo == null) return 'Deleted ammo';
+    final name = (ammo.name ?? '').trim();
+    if (name.isNotEmpty) return name;
+    final bullet = '${ammo.grain > 0 ? '${ammo.grain}gr ' : ''}${ammo.bullet}'.trim();
+    if (bullet.isNotEmpty) return bullet;
+    return ammo.caliber.trim().isEmpty ? 'Ammo' : ammo.caliber.trim();
+  }
+
+  Future<void> _renameChart(SavedBallisticChart chart) async {
+    if (!await _guardWrite(context, operation: 'Rename saved ballistic chart')) {
+      return;
+    }
+    final ctrl = TextEditingController(text: chart.title);
+    final title = await showDialog<String>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('Rename Chart'),
+        content: TextField(
+          textCapitalization: TextCapitalization.words,
+          controller: ctrl,
+          decoration: const InputDecoration(labelText: 'Chart title'),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(ctrl.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    if (title == null || title.trim().isEmpty) return;
+    widget.state.renameSavedBallisticChart(chartId: chart.id, title: title);
+  }
+
+  Future<void> _deleteChart(SavedBallisticChart chart) async {
+    if (!await _guardWrite(context, operation: 'Delete saved ballistic chart')) {
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Delete saved chart?'),
+        content: const Text(
+          'This permanently deletes the saved chart. Working DOPE entries already committed from it are not changed.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final removed = widget.state.deleteSavedBallisticChart(chart.id);
+    if (!mounted) return;
+    if (removed) Navigator.of(context).pop();
+  }
+
+  Future<void> _editOrValidateRow(BallisticDopeRecord record) async {
+    if (!await _guardWrite(context, operation: 'Edit or validate saved chart row')) {
+      return;
+    }
+    var outcome = record.validationOutcome ??
+        BallisticValidationOutcome.adjustmentRequired;
+    final elevCtrl = TextEditingController(
+      text: _displayElevation(record).toStringAsFixed(2),
+    );
+    final windCtrl = TextEditingController(
+      text: _displayWind(record).toStringAsFixed(2),
+    );
+    final notesCtrl = TextEditingController(text: record.verifiedNotes);
+    var date = record.verificationDate ?? DateTime.now();
+
+    final didSave = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (context, setLocalState) => AlertDialog(
+          title: Text(
+            'Edit ${record.distance.toStringAsFixed(0)} ${_distanceUnitLabel(record.distanceUnit)}',
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Estimated elevation ${record.calculatedElevation.toStringAsFixed(2)} ${_elevationUnitLabel(record.outputUnit)}',
+                ),
+                Text(
+                  'Estimated wind ${_formatWindage(record.calculatedWind, record.outputUnit)}',
+                ),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<BallisticValidationOutcome>(
+                  initialValue: outcome,
+                  decoration: const InputDecoration(labelText: 'Row status'),
+                  items: const [
+                    DropdownMenuItem(
+                      value: BallisticValidationOutcome.adjustmentRequired,
+                      child: Text('Adjusted'),
+                    ),
+                    DropdownMenuItem(
+                      value: BallisticValidationOutcome.confirmedAccurate,
+                      child: Text('Validated'),
+                    ),
+                  ],
+                  onChanged: (v) => setLocalState(
+                    () => outcome =
+                        v ?? BallisticValidationOutcome.adjustmentRequired,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  textCapitalization: TextCapitalization.words,
+                  controller: elevCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    labelText: 'Actual elevation used (${_elevationUnitLabel(record.outputUnit)})',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  textCapitalization: TextCapitalization.words,
+                  controller: windCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    labelText: 'Actual wind used (${_elevationUnitLabel(record.outputUnit)})',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  textCapitalization: TextCapitalization.sentences,
+                  controller: notesCtrl,
+                  maxLines: 2,
+                  decoration: const InputDecoration(labelText: 'Notes'),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(child: Text('Date: ${_fmtDateIso(date)}')),
+                    TextButton(
+                      onPressed: () async {
+                        final picked = await showDatePicker(
+                          context: dialogCtx,
+                          initialDate: date,
+                          firstDate: DateTime(2000),
+                          lastDate: DateTime(2100),
+                        );
+                        if (picked != null) setLocalState(() => date = picked);
+                      },
+                      child: const Text('Change'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogCtx).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogCtx).pop(true),
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (didSave != true) {
+      elevCtrl.dispose();
+      windCtrl.dispose();
+      notesCtrl.dispose();
+      return;
+    }
+
+    final actualElevation =
+        double.tryParse(elevCtrl.text.trim()) ?? record.calculatedElevation;
+    final actualWind = double.tryParse(windCtrl.text.trim()) ?? record.calculatedWind;
+    widget.state.validateBallisticDope(
+      recordId: record.id,
+      outcome: outcome,
+      elevationCorrection: outcome == BallisticValidationOutcome.adjustmentRequired
+          ? actualElevation - record.calculatedElevation
+          : 0,
+      windCorrection: outcome == BallisticValidationOutcome.adjustmentRequired
+          ? actualWind - record.calculatedWind
+          : 0,
+      notes: notesCtrl.text,
+      verificationDate: date,
+      weatherSnapshot: record.weatherSnapshot,
+    );
+
+    elevCtrl.dispose();
+    windCtrl.dispose();
+    notesCtrl.dispose();
+  }
+
+  DopeEntry _workingDopeEntryFromRecord(
+    BallisticDopeRecord record,
+    SavedBallisticChart chart,
+  ) {
+    final wind = _displayWind(record);
+    final status = _statusLabel(record);
+    return DopeEntry(
+      id: widget.state.newChildId(),
+      time: DateTime.now(),
+      rifleId: record.rifleId,
+      ammoLotId: record.ammoLotId,
+      distance: record.distance,
+      distanceUnit: record.distanceUnit,
+      elevation: _displayElevation(record),
+      elevationUnit: record.outputUnit,
+      elevationNotes: 'Source: ${chart.title} | Status: $status',
+      windType: WindType.fullValue,
+      windValue: '${record.windSpeedMph.toStringAsFixed(1)} mph',
+      windNotes: record.verifiedNotes.trim().isEmpty
+          ? 'Source: ${chart.title}'
+          : '${record.verifiedNotes.trim()} | Source: ${chart.title}',
+      windageLeft: wind < 0 ? wind.abs() : 0,
+      windageRight: wind >= 0 ? wind.abs() : 0,
+    );
+  }
+
+  String _entryWindText(DopeEntry entry) {
+    if (entry.windageLeft > 0 && entry.windageRight <= 0) {
+      return 'Left ${entry.windageLeft.toStringAsFixed(2)} ${_elevationUnitLabel(entry.elevationUnit)}';
+    }
+    if (entry.windageRight > 0 && entry.windageLeft <= 0) {
+      return 'Right ${entry.windageRight.toStringAsFixed(2)} ${_elevationUnitLabel(entry.elevationUnit)}';
+    }
+    if (entry.windageLeft > 0 && entry.windageRight > 0) {
+      return 'Left ${entry.windageLeft.toStringAsFixed(2)} / Right ${entry.windageRight.toStringAsFixed(2)} ${_elevationUnitLabel(entry.elevationUnit)}';
+    }
+    return 'Right 0.00 ${_elevationUnitLabel(entry.elevationUnit)}';
+  }
+
+  Future<bool> _confirmReplaceWorkingDope({
+    required BallisticDopeRecord record,
+    required DopeEntry existing,
+    required DopeEntry selected,
+  }) async {
+    final unit = _elevationUnitLabel(selected.elevationUnit);
+    final replace = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(
+          'Replace ${record.distance.toStringAsFixed(0)} ${_distanceUnitLabel(record.distanceUnit)} Working DOPE?',
+        ),
+        content: Text(
+          'Existing:\n'
+          'Elevation: ${existing.elevation.toStringAsFixed(2)} $unit\n'
+          'Wind: ${_entryWindText(existing)}\n\n'
+          'Selected:\n'
+          'Elevation: ${selected.elevation.toStringAsFixed(2)} $unit\n'
+          'Wind: ${_entryWindText(selected)}\n\n'
+          'Replace existing Working DOPE?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Replace'),
+          ),
+        ],
+      ),
+    );
+    return replace == true;
+  }
+
+  Future<void> _commitSelectedRows(SavedBallisticChart chart) async {
+    if (!await _guardWrite(context, operation: 'Commit saved chart rows to Working DOPE')) {
+      return;
+    }
+    final records = _selectedRecordIds
+        .map(widget.state.ballisticDopeRecordById)
+        .whereType<BallisticDopeRecord>()
+        .toList()
+      ..sort((a, b) => a.distance.compareTo(b.distance));
+    if (records.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select one or more rows first.')),
+      );
+      return;
+    }
+
+    var committed = 0;
+    var skipped = 0;
+    for (final record in records) {
+      final entry = _workingDopeEntryFromRecord(record, chart);
+      final key = '${record.rifleId}_${record.ammoLotId}';
+      final dk = DistanceKey(record.distance, record.distanceUnit);
+      final existing = widget.state.workingDopeRifleAmmo[key]?[dk];
+      if (existing != null) {
+        final replace = await _confirmReplaceWorkingDope(
+          record: record,
+          existing: existing,
+          selected: entry,
+        );
+        if (!replace) {
+          skipped++;
+          continue;
+        }
+      }
+      widget.state.promoteExistingDope(entry: entry, rifleOnly: false);
+      committed++;
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Committed $committed row${committed == 1 ? '' : 's'} to Working DOPE${skipped > 0 ? ' ($skipped skipped)' : ''}.',
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: widget.state,
+      builder: (context, _) {
+        final chart = widget.state.savedBallisticChartById(widget.chartId);
+        if (chart == null) {
+          return ColdBoreScaffold(
+            appBar: AppBar(title: const Text('Saved Chart')),
+            body: const Center(child: Text('Saved chart not found.')),
+          );
+        }
+        final records = chart.recordIds
+            .map(widget.state.ballisticDopeRecordById)
+            .whereType<BallisticDopeRecord>()
+            .toList()
+          ..sort((a, b) => a.distance.compareTo(b.distance));
+
+        return ColdBoreScaffold(
+          appBar: AppBar(
+            title: Text(chart.title),
+            actions: [
+              IconButton(
+                tooltip: 'Rename',
+                icon: const Icon(Icons.edit_outlined),
+                onPressed: () => _renameChart(chart),
+              ),
+              IconButton(
+                tooltip: 'Delete',
+                icon: const Icon(Icons.delete_outline),
+                onPressed: () => _deleteChart(chart),
+              ),
+            ],
+          ),
+          body: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              ColdBoreCard(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ColdBoreSectionHeader(
+                      title: chart.title,
+                      subtitle:
+                          '${_rifleTitle(chart.rifleId)} / ${_ammoTitle(chart.ammoLotId)}',
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        ColdBoreStatusPill(
+                          label: '${records.length} row${records.length == 1 ? '' : 's'}',
+                        ),
+                        ColdBoreStatusPill(
+                          label:
+                              '${records.where((r) => r.isVerified).length} adjusted/validated',
+                          tone: ColdBoreStatusTone.verified,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    FilledButton.icon(
+                      onPressed: records.isEmpty
+                          ? null
+                          : () => _commitSelectedRows(chart),
+                      icon: const Icon(Icons.file_upload_outlined),
+                      label: const Text('Commit selected to Working DOPE'),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (records.isEmpty)
+                ColdBoreCard(
+                  padding: const EdgeInsets.all(16),
+                  child: const Text('This chart has no rows.'),
+                )
+              else
+                ...records.map((record) {
+                  final selected = _selectedRecordIds.contains(record.id);
+                  return ColdBoreCard(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.all(10),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Checkbox(
+                          value: selected,
+                          onChanged: (value) {
+                            setState(() {
+                              if (value == true) {
+                                _selectedRecordIds.add(record.id);
+                              } else {
+                                _selectedRecordIds.remove(record.id);
+                              }
+                            });
+                          },
+                        ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      '${record.distance.toStringAsFixed(0)} ${_distanceUnitLabel(record.distanceUnit)}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                  ColdBoreStatusPill(
+                                    label: _statusLabel(record),
+                                    tone: _statusTone(record),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                'Elevation ${_displayElevation(record).toStringAsFixed(2)} ${_elevationUnitLabel(record.outputUnit)}',
+                              ),
+                              Text(
+                                'Wind ${_formatWindage(_displayWind(record), record.outputUnit)}',
+                              ),
+                              if (record.verifiedNotes.trim().isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  record.verifiedNotes.trim(),
+                                  style: TextStyle(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurface
+                                        .withValues(alpha: 0.7),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Edit / validate',
+                          icon: const Icon(Icons.tune_outlined),
+                          onPressed: () => _editOrValidateRow(record),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
             ],
           ),
         );
@@ -13864,37 +14795,19 @@ class _SessionsScreenState extends State<SessionsScreen> {
                             ),
                           ),
                           const SizedBox(height: 8),
-                          Text(
-                            currentRifle == null
-                                ? 'No firearm selected'
-                                : _rifleDisplayLabel(currentRifle),
-                            style: const TextStyle(
-                              fontSize: 30,
-                              fontWeight: FontWeight.w600,
-                              height: 1,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _homeStatsRifleManuallySelected
-                                ? 'Manually selected dashboard firearm'
-                                : 'Recent firearm dashboard',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.72),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          DropdownButtonFormField<String?>(
-                            initialValue: currentRifle?.id,
-                            isExpanded: true,
-                            decoration: const InputDecoration(
-                              labelText: 'Displayed firearm',
-                            ),
-                            items: widget.state.rifles
+                          PopupMenuButton<String>(
+                            enabled: widget.state.rifles.isNotEmpty,
+                            tooltip: 'Change firearm',
+                            onSelected: (value) {
+                              setState(() {
+                                _homeStatsRifleId = value;
+                                _homeStatsRifleManuallySelected = true;
+                              });
+                              unawaited(_saveHomeStatsRiflePreference());
+                            },
+                            itemBuilder: (context) => widget.state.rifles
                                 .map(
-                                  (r) => DropdownMenuItem<String?>(
+                                  (r) => PopupMenuItem<String>(
                                     value: r.id,
                                     child: Text(
                                       _rifleDisplayLabel(r),
@@ -13903,16 +14816,39 @@ class _SessionsScreenState extends State<SessionsScreen> {
                                   ),
                                 )
                                 .toList(),
-                            onChanged: widget.state.rifles.isEmpty
-                                ? null
-                                : (value) {
-                                    setState(() {
-                                      _homeStatsRifleId = value;
-                                      _homeStatsRifleManuallySelected =
-                                          value != null;
-                                    });
-                                    unawaited(_saveHomeStatsRiflePreference());
-                                  },
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    currentRifle == null
+                                        ? 'No firearm selected'
+                                        : _rifleDisplayLabel(currentRifle),
+                                    style: const TextStyle(
+                                      fontSize: 30,
+                                      fontWeight: FontWeight.w600,
+                                      height: 1,
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                const Padding(
+                                  padding: EdgeInsets.only(top: 4),
+                                  child: Icon(Icons.expand_more, size: 24),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _homeStatsRifleManuallySelected
+                                ? 'Tap firearm name to change dashboard firearm'
+                                : 'Recent firearm dashboard - tap firearm name to change',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.72),
+                            ),
                           ),
                           const SizedBox(height: 10),
                           Row(
@@ -14238,7 +15174,7 @@ class _WorkingDopeEditDialogState extends State<_WorkingDopeEditDialog> {
               children: [
                 Expanded(
                   child: TextField(
-                    textCapitalization: TextCapitalization.none,
+                    textCapitalization: TextCapitalization.words,
                     controller: _distanceCtrl,
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
@@ -14263,7 +15199,7 @@ class _WorkingDopeEditDialogState extends State<_WorkingDopeEditDialog> {
               children: [
                 Expanded(
                   child: TextField(
-                    textCapitalization: TextCapitalization.none,
+                    textCapitalization: TextCapitalization.words,
                     controller: _elevationCtrl,
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
@@ -14287,7 +15223,7 @@ class _WorkingDopeEditDialogState extends State<_WorkingDopeEditDialog> {
               ],
             ),
             TextField(
-              textCapitalization: TextCapitalization.none,
+              textCapitalization: TextCapitalization.words,
               controller: _elevationNotesCtrl,
               textInputAction: TextInputAction.next,
               decoration: const InputDecoration(
@@ -14314,7 +15250,7 @@ class _WorkingDopeEditDialogState extends State<_WorkingDopeEditDialog> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: TextField(
-                    textCapitalization: TextCapitalization.none,
+                    textCapitalization: TextCapitalization.words,
                     controller: _windageCtrl,
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
@@ -14325,14 +15261,14 @@ class _WorkingDopeEditDialogState extends State<_WorkingDopeEditDialog> {
               ],
             ),
             TextField(
-              textCapitalization: TextCapitalization.none,
+              textCapitalization: TextCapitalization.words,
               controller: _windValueCtrl,
               decoration: const InputDecoration(
                 labelText: 'Wind value (optional)',
               ),
             ),
             TextField(
-              textCapitalization: TextCapitalization.none,
+              textCapitalization: TextCapitalization.words,
               controller: _windNotesCtrl,
               decoration: const InputDecoration(
                 labelText: 'Wind notes (optional)',
@@ -14478,7 +15414,7 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
               children: [
                 Expanded(
                   child: TextField(
-                    textCapitalization: TextCapitalization.none,
+                    textCapitalization: TextCapitalization.words,
                     controller: _distanceCtrl,
                     decoration: const InputDecoration(labelText: 'Distance'),
                     keyboardType: TextInputType.number,
@@ -14505,7 +15441,7 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
                   children: [
                     Expanded(
                       child: TextField(
-                        textCapitalization: TextCapitalization.none,
+                        textCapitalization: TextCapitalization.words,
                         controller: _elevationCtrl,
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
@@ -14531,7 +15467,7 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
                   ],
                 ),
                 TextField(
-                  textCapitalization: TextCapitalization.none,
+                  textCapitalization: TextCapitalization.words,
                   controller: _elevationNotesCtrl,
                   textInputAction: TextInputAction.next,
                   decoration: const InputDecoration(
@@ -14568,7 +15504,7 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: TextField(
-                            textCapitalization: TextCapitalization.none,
+                            textCapitalization: TextCapitalization.words,
                             controller: _windageCtrl,
                             keyboardType: const TextInputType.numberWithOptions(
                               decimal: true,
@@ -14582,7 +15518,7 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
                       ],
                     ),
                     TextField(
-                      textCapitalization: TextCapitalization.none,
+                      textCapitalization: TextCapitalization.words,
                       controller: _windValueCtrl,
                       textInputAction: TextInputAction.next,
                       decoration: const InputDecoration(
@@ -14590,7 +15526,7 @@ class _DopeEntryDialogState extends State<_DopeEntryDialog> {
                       ),
                     ),
                     TextField(
-                      textCapitalization: TextCapitalization.none,
+                      textCapitalization: TextCapitalization.words,
                       controller: _windNotesCtrl,
                       textInputAction: TextInputAction.done,
                       decoration: const InputDecoration(
@@ -15273,7 +16209,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
               children: [
                 Expanded(
                   child: TextFormField(
-                    textCapitalization: TextCapitalization.none,
+                    textCapitalization: TextCapitalization.words,
                     controller: _delayCtrl,
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
@@ -15288,7 +16224,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: TextFormField(
-                    textCapitalization: TextCapitalization.none,
+                    textCapitalization: TextCapitalization.words,
                     controller: _goalCtrl,
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
@@ -16044,7 +16980,7 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
               children: [
                 Expanded(
                   child: TextFormField(
-                    textCapitalization: TextCapitalization.none,
+                    textCapitalization: TextCapitalization.words,
                     controller: _delayCtrl,
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
@@ -16059,7 +16995,7 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: TextFormField(
-                    textCapitalization: TextCapitalization.none,
+                    textCapitalization: TextCapitalization.words,
                     controller: _goalCtrl,
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
@@ -20004,7 +20940,7 @@ class _EndSessionDialogState extends State<_EndSessionDialog> {
                       ),
                       const SizedBox(height: 6),
                       TextField(
-                        textCapitalization: TextCapitalization.none,
+                        textCapitalization: TextCapitalization.words,
                         controller: _shotCountCtrls[index],
                         keyboardType: TextInputType.number,
                         inputFormatters: [
@@ -20392,28 +21328,6 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                                             await _editRifle(r);
                                             return;
                                           }
-                                          if (v == 'dope') {
-                                            final updated =
-                                                await showDialog<String>(
-                                                  context: context,
-                                                  builder: (_) =>
-                                                      _EditDopeDialog(
-                                                        initialValue: r.dope,
-                                                      ),
-                                                );
-                                            if (updated == null) return;
-                                            if (!await _guardWrite(
-                                              context,
-                                              operation: 'Edit rifle DOPE text',
-                                            )) {
-                                              return;
-                                            }
-                                            widget.state.updateRifleDope(
-                                              rifleId: r.id,
-                                              dope: updated,
-                                            );
-                                            return;
-                                          }
                                           if (v == 'service') {
                                             await Navigator.of(context).push(
                                               MaterialPageRoute(
@@ -20435,10 +21349,6 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                                           PopupMenuItem(
                                             value: 'edit',
                                             child: Text('Edit rifle'),
-                                          ),
-                                          PopupMenuItem(
-                                            value: 'dope',
-                                            child: Text('Edit DOPE'),
                                           ),
                                           PopupMenuItem(
                                             value: 'service',
@@ -20888,7 +21798,7 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
         builder: (_) => AlertDialog(
           title: const Text('Save PDF preset'),
           content: TextField(
-            textCapitalization: TextCapitalization.none,
+            textCapitalization: TextCapitalization.words,
             controller: controller,
             decoration: const InputDecoration(labelText: 'Preset name'),
             textInputAction: TextInputAction.done,
@@ -23526,7 +24436,7 @@ class _NewUserDialogState extends State<_NewUserDialog> {
           ),
 
           TextField(
-            textCapitalization: TextCapitalization.none,
+            textCapitalization: TextCapitalization.words,
             controller: _name,
             decoration: const InputDecoration(labelText: 'Name (optional)'),
           ),
@@ -24049,7 +24959,7 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
                             children: [
                               Expanded(
                                 child: TextField(
-                                  textCapitalization: TextCapitalization.none,
+                                  textCapitalization: TextCapitalization.words,
                                   controller: _tempF,
                                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                   decoration: const InputDecoration(labelText: 'Temp (°F)'),
@@ -24058,7 +24968,7 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
                               const SizedBox(width: 8),
                               Expanded(
                                 child: TextField(
-                                  textCapitalization: TextCapitalization.none,
+                                  textCapitalization: TextCapitalization.words,
                                   controller: _windMph,
                                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                   decoration: const InputDecoration(labelText: 'Wind (mph)'),
@@ -24067,7 +24977,7 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
                               const SizedBox(width: 8),
                               Expanded(
                                 child: TextField(
-                                  textCapitalization: TextCapitalization.none,
+                                  textCapitalization: TextCapitalization.words,
                                   controller: _windDir,
                                   keyboardType: TextInputType.number,
                                   decoration: const InputDecoration(labelText: 'Wind dir'),
@@ -24257,13 +25167,13 @@ class _ColdBoreDialogState extends State<_ColdBoreDialog> {
                 ],
               ),
               TextField(
-                textCapitalization: TextCapitalization.none,
+                textCapitalization: TextCapitalization.words,
                 controller: _distance,
                 decoration: const InputDecoration(labelText: 'Distance'),
                 textInputAction: TextInputAction.next,
               ),
               TextField(
-                textCapitalization: TextCapitalization.none,
+                textCapitalization: TextCapitalization.words,
                 controller: _result,
                 decoration: const InputDecoration(
                   labelText: 'Result',
@@ -24290,7 +25200,7 @@ class _ColdBoreDialogState extends State<_ColdBoreDialog> {
                 ),
               ),
               TextField(
-                textCapitalization: TextCapitalization.none,
+                textCapitalization: TextCapitalization.words,
                 controller: _notes,
                 decoration: const InputDecoration(
                   labelText: 'Notes (optional)',
@@ -24388,7 +25298,7 @@ class _ColdBoreDialogState extends State<_ColdBoreDialog> {
                     ),
                     const SizedBox(height: 8),
                     TextField(
-                      textCapitalization: TextCapitalization.none,
+                      textCapitalization: TextCapitalization.words,
                       controller: _hOffsetCtrl,
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
@@ -24419,7 +25329,7 @@ class _ColdBoreDialogState extends State<_ColdBoreDialog> {
                     ),
                     const SizedBox(height: 8),
                     TextField(
-                      textCapitalization: TextCapitalization.none,
+                      textCapitalization: TextCapitalization.words,
                       controller: _vOffsetCtrl,
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
@@ -24522,7 +25432,7 @@ class _EditNotesDialogState extends State<_EditNotesDialog> {
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
-              textCapitalization: TextCapitalization.none,
+              textCapitalization: TextCapitalization.words,
               controller: _c,
               decoration: const InputDecoration(
                 labelText: 'Session notes (optional)',
@@ -24573,7 +25483,7 @@ class _PhotoNoteDialogState extends State<_PhotoNoteDialog> {
       content: SizedBox(
         width: 520,
         child: TextField(
-          textCapitalization: TextCapitalization.none,
+          textCapitalization: TextCapitalization.words,
           controller: _c,
           decoration: const InputDecoration(labelText: 'Caption (optional)'),
           textInputAction: TextInputAction.done,
@@ -24623,7 +25533,7 @@ class _EditDopeDialogState extends State<_EditDopeDialog> {
       content: SizedBox(
         width: 520,
         child: TextField(
-          textCapitalization: TextCapitalization.none,
+          textCapitalization: TextCapitalization.words,
           controller: _c,
           decoration: const InputDecoration(labelText: 'DOPE notes'),
           maxLines: 6,
@@ -24882,7 +25792,7 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
-              textCapitalization: TextCapitalization.none,
+              textCapitalization: TextCapitalization.words,
               controller: _caliber,
               decoration: const InputDecoration(
                 labelText: 'Caliber (ex: .308) *',
@@ -24891,21 +25801,21 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
             ),
             const SizedBox(height: 12),
             TextField(
-              textCapitalization: TextCapitalization.none,
+              textCapitalization: TextCapitalization.words,
               controller: _manufacturer,
               decoration: const InputDecoration(labelText: 'Manufacturer *'),
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
             TextField(
-              textCapitalization: TextCapitalization.none,
+              textCapitalization: TextCapitalization.words,
               controller: _model,
               decoration: const InputDecoration(labelText: 'Model *'),
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
             TextField(
-              textCapitalization: TextCapitalization.none,
+              textCapitalization: TextCapitalization.words,
               controller: _name,
               decoration: const InputDecoration(labelText: 'Name (optional)'),
               textInputAction: TextInputAction.next,
@@ -24918,7 +25828,7 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
               children: [
                 const SizedBox(height: 8),
                 TextField(
-                  textCapitalization: TextCapitalization.none,
+                  textCapitalization: TextCapitalization.words,
                   controller: _serialNumber,
                   decoration: const InputDecoration(
                     labelText: 'Serial number (optional)',
@@ -24930,7 +25840,7 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
                   children: [
                     Expanded(
                       child: TextField(
-                        textCapitalization: TextCapitalization.none,
+                        textCapitalization: TextCapitalization.words,
                         controller: _barrelLength,
                         decoration: const InputDecoration(
                           labelText: 'Barrel length (optional)',
@@ -24941,7 +25851,7 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: TextField(
-                        textCapitalization: TextCapitalization.none,
+                        textCapitalization: TextCapitalization.words,
                         controller: _twistRate,
                         decoration: const InputDecoration(
                           labelText: 'Twist rate (optional)',
@@ -24979,7 +25889,7 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
                 ),
                 const SizedBox(height: 12),
                 TextField(
-                  textCapitalization: TextCapitalization.none,
+                  textCapitalization: TextCapitalization.words,
                   controller: _purchasePrice,
                   decoration: const InputDecoration(
                     labelText: 'Purchase price (optional)',
@@ -24989,7 +25899,7 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
                 ),
                 const SizedBox(height: 12),
                 TextField(
-                  textCapitalization: TextCapitalization.none,
+                  textCapitalization: TextCapitalization.words,
                   controller: _purchaseLocation,
                   decoration: const InputDecoration(
                     labelText: 'Purchase location (optional)',
@@ -24998,7 +25908,7 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
                 ),
                 const SizedBox(height: 12),
                 TextField(
-                  textCapitalization: TextCapitalization.none,
+                  textCapitalization: TextCapitalization.words,
                   controller: _notes,
                   decoration: const InputDecoration(
                     labelText: 'Notes (optional)',
@@ -25037,7 +25947,7 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
                 ),
                 const SizedBox(height: 12),
                 TextField(
-                  textCapitalization: TextCapitalization.none,
+                  textCapitalization: TextCapitalization.words,
                   controller: _scopeMake,
                   decoration: const InputDecoration(
                     labelText: 'Scope make (optional)',
@@ -25046,7 +25956,7 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
                 ),
                 const SizedBox(height: 12),
                 TextField(
-                  textCapitalization: TextCapitalization.none,
+                  textCapitalization: TextCapitalization.words,
                   controller: _scopeModel,
                   decoration: const InputDecoration(
                     labelText: 'Scope model (optional)',
@@ -25055,7 +25965,7 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
                 ),
                 const SizedBox(height: 12),
                 TextField(
-                  textCapitalization: TextCapitalization.none,
+                  textCapitalization: TextCapitalization.words,
                   controller: _scopeSerial,
                   decoration: const InputDecoration(
                     labelText: 'Scope serial (optional)',
@@ -25064,7 +25974,7 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
                 ),
                 const SizedBox(height: 12),
                 TextField(
-                  textCapitalization: TextCapitalization.none,
+                  textCapitalization: TextCapitalization.words,
                   controller: _scopeMount,
                   decoration: const InputDecoration(
                     labelText: 'Mount/rings (optional)',
@@ -25073,7 +25983,7 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
                 ),
                 const SizedBox(height: 12),
                 TextField(
-                  textCapitalization: TextCapitalization.none,
+                  textCapitalization: TextCapitalization.words,
                   controller: _scopeNotes,
                   decoration: const InputDecoration(
                     labelText: 'Scope notes (optional)',
@@ -25239,7 +26149,7 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
-              textCapitalization: TextCapitalization.none,
+              textCapitalization: TextCapitalization.words,
               controller: _caliber,
               decoration: const InputDecoration(
                 labelText: 'Caliber (ex: .308) *',
@@ -25248,7 +26158,7 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
             ),
             const SizedBox(height: 12),
             TextField(
-              textCapitalization: TextCapitalization.none,
+              textCapitalization: TextCapitalization.words,
               controller: _bullet,
               decoration: const InputDecoration(
                 labelText: 'Bullet (ex: SMK) *',
@@ -25257,7 +26167,7 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
             ),
             const SizedBox(height: 12),
             TextField(
-              textCapitalization: TextCapitalization.none,
+              textCapitalization: TextCapitalization.words,
               controller: _grain,
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
@@ -25267,7 +26177,7 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
             ),
             const SizedBox(height: 12),
             TextField(
-              textCapitalization: TextCapitalization.none,
+              textCapitalization: TextCapitalization.words,
               controller: _bc,
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
@@ -25279,14 +26189,14 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
             ),
             const SizedBox(height: 12),
             TextField(
-              textCapitalization: TextCapitalization.none,
+              textCapitalization: TextCapitalization.words,
               controller: _manufacturer,
               decoration: const InputDecoration(labelText: 'Manufacturer *'),
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
             TextField(
-              textCapitalization: TextCapitalization.none,
+              textCapitalization: TextCapitalization.words,
               controller: _lot,
               decoration: const InputDecoration(
                 labelText: 'Lot number (optional)',
@@ -25295,7 +26205,7 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
             ),
             const SizedBox(height: 12),
             TextField(
-              textCapitalization: TextCapitalization.none,
+              textCapitalization: TextCapitalization.words,
               controller: _name,
               decoration: const InputDecoration(labelText: 'Name (optional)'),
               textInputAction: TextInputAction.next,
@@ -25335,7 +26245,7 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
             ),
             const SizedBox(height: 12),
             TextField(
-              textCapitalization: TextCapitalization.none,
+              textCapitalization: TextCapitalization.words,
               controller: _purchasePrice,
               decoration: const InputDecoration(
                 labelText: 'Purchase price (optional)',
@@ -25345,7 +26255,7 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
             ),
             const SizedBox(height: 12),
             TextField(
-              textCapitalization: TextCapitalization.none,
+              textCapitalization: TextCapitalization.words,
               controller: _notes,
               decoration: const InputDecoration(labelText: 'Notes (optional)'),
               minLines: 2,
@@ -25612,19 +26522,19 @@ class _RifleDopeEntryDialogState extends State<_RifleDopeEntryDialog> {
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
-              textCapitalization: TextCapitalization.none,
+              textCapitalization: TextCapitalization.words,
               controller: _distance,
               decoration: const InputDecoration(labelText: 'Distance (yd/m)'),
             ),
             const SizedBox(height: 10),
             TextField(
-              textCapitalization: TextCapitalization.none,
+              textCapitalization: TextCapitalization.words,
               controller: _elev,
               decoration: const InputDecoration(labelText: 'Elevation (dial)'),
             ),
             const SizedBox(height: 10),
             TextField(
-              textCapitalization: TextCapitalization.none,
+              textCapitalization: TextCapitalization.words,
               controller: _wind,
               decoration: const InputDecoration(
                 labelText: 'Windage (e.g., R0.2 / L0.1 / 0)',
@@ -25632,7 +26542,7 @@ class _RifleDopeEntryDialogState extends State<_RifleDopeEntryDialog> {
             ),
             const SizedBox(height: 10),
             TextField(
-              textCapitalization: TextCapitalization.none,
+              textCapitalization: TextCapitalization.words,
               controller: _notes,
               maxLines: 3,
               decoration: const InputDecoration(labelText: 'Notes (optional)'),
@@ -26516,14 +27426,14 @@ class _AddRifleServiceDialogState extends State<_AddRifleServiceDialog> {
             ),
             const SizedBox(height: 8),
             TextField(
-              textCapitalization: TextCapitalization.none,
+              textCapitalization: TextCapitalization.words,
               controller: _serviceCtrl,
               decoration: const InputDecoration(labelText: 'Service'),
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 8),
             TextField(
-              textCapitalization: TextCapitalization.none,
+              textCapitalization: TextCapitalization.words,
               controller: _notesCtrl,
               decoration: const InputDecoration(labelText: 'Notes (optional)'),
               textInputAction: TextInputAction.next,
@@ -26556,7 +27466,7 @@ class _AddRifleServiceDialogState extends State<_AddRifleServiceDialog> {
             ),
             if (!_useCurrentRounds)
               TextField(
-                textCapitalization: TextCapitalization.none,
+                textCapitalization: TextCapitalization.words,
                 controller: _roundsCtrl,
                 decoration: const InputDecoration(
                   labelText: 'Rounds at service',
@@ -26746,7 +27656,7 @@ class _RifleMaintenanceRulesScreenState
                                   Expanded(
                                     child: TextField(
                                       textCapitalization:
-                                          TextCapitalization.none,
+                                          TextCapitalization.words,
                                       controller: _roundCtrls[type],
                                       decoration: const InputDecoration(
                                         labelText: 'Rounds interval',
@@ -26764,7 +27674,7 @@ class _RifleMaintenanceRulesScreenState
                                   Expanded(
                                     child: TextField(
                                       textCapitalization:
-                                          TextCapitalization.none,
+                                          TextCapitalization.words,
                                       controller: _dayCtrls[type],
                                       decoration: const InputDecoration(
                                         labelText: 'Days interval',
@@ -26779,7 +27689,7 @@ class _RifleMaintenanceRulesScreenState
                             ),
                           const SizedBox(height: 8),
                           TextField(
-                            textCapitalization: TextCapitalization.none,
+                            textCapitalization: TextCapitalization.words,
                             controller: _notesCtrls[type],
                             maxLines: 2,
                             decoration: const InputDecoration(
@@ -26863,7 +27773,7 @@ class _ResetBarrelDialogState extends State<_ResetBarrelDialog> {
             ),
             const SizedBox(height: 8),
             TextField(
-              textCapitalization: TextCapitalization.none,
+              textCapitalization: TextCapitalization.words,
               controller: _notesCtrl,
               maxLines: 3,
               decoration: const InputDecoration(
@@ -27185,7 +28095,7 @@ class _ImportBackupDialogState extends State<_ImportBackupDialog> {
             ),
             const SizedBox(height: 8),
             TextField(
-              textCapitalization: TextCapitalization.none,
+              textCapitalization: TextCapitalization.words,
               controller: _ctrl,
               decoration: const InputDecoration(
                 labelText: 'Paste backup JSON',
