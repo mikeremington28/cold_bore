@@ -1388,9 +1388,34 @@ class BallisticCalculationService {
 
   // Current assumptions/limitations:
   // 1) Uses a simplified time-of-flight model and coarse drag scaling.
-  // 2) Wind is treated as full-value with no spin drift/coriolis/aero jump.
+  // 2) Wind is estimated from the selected crosswind factor. Compass-only
+  //    weather wind is reduced unless it is clearly full value because the app
+  //    does not know the target azimuth.
   // This class is intentionally isolated so it can be replaced with a
   // full-featured external solver without changing UI/state code.
+  double _windCrosswindFactor(String raw) {
+    final value = raw.trim().toLowerCase();
+    if (value.contains('no wind')) return 0.0;
+    if (value.contains('quarter')) return 0.25;
+    if (value.contains('half')) return 0.5;
+    if (value.contains('full')) return 1.0;
+    if (value.contains('ne') ||
+        value.contains('nw') ||
+        value.contains('se') ||
+        value.contains('sw')) {
+      return 0.7;
+    }
+    if (value.contains(' e') || value.endsWith('e') ||
+        value.contains(' w') || value.endsWith('w')) {
+      return 1.0;
+    }
+    if (value.contains(' n') || value.endsWith('n') ||
+        value.contains(' s') || value.endsWith('s')) {
+      return 0.0;
+    }
+    return 1.0;
+  }
+
   BallisticSolution calculate(BallisticSolverInput input) {
     final distanceYards = input.distanceUnit == DistanceUnit.yards
         ? input.distance
@@ -1412,25 +1437,46 @@ class BallisticCalculationService {
         math.max(600.0, input.muzzleVelocityFps) *
         (1.0 + (0.14 * bcFactor * densityScale));
 
-    // Drop and wind estimates in inches.
+    // Drop estimate in inches.
     final dropInches = 0.5 * 386.09 * tofSeconds * tofSeconds;
-    final driftInches = input.windSpeedMph * 17.6 * tofSeconds;
 
     final distanceInches = math.max(1.0, distanceYards * 36.0);
     final moaPerInch = 1.0 / (distanceInches / 3437.75);
-    final milPerInch = 1.0 / (distanceInches / 3600.0);
 
     final holdMoa = dropInches * moaPerInch;
-    final windMoa = driftInches * moaPerInch;
-    final holdMil = dropInches * milPerInch;
-    final windMil = driftInches * milPerInch;
+
+    // Wind estimate. The previous formula used raw wind speed multiplied by
+    // time of flight, which drastically overstated drift at short distances.
+    // This remains a field-estimate model, but scales wind in angular minutes
+    // by distance, BC, velocity, density, and selected crosswind factor.
+    final windFactor = _windCrosswindFactor(input.windDirectionValue);
+    final crosswindMph = input.windSpeedMph * windFactor;
+    final velocityScale = 2800.0 / math.max(1200.0, input.muzzleVelocityFps);
+    final bcScale = (0.5 / math.max(0.1, input.ballisticCoefficient)).clamp(
+      0.65,
+      1.65,
+    );
+    final densityWindScale = math.sqrt(densityScale).clamp(0.75, 1.35);
+    // Tuned against a known .308 / 168 gr / BC .48 / 2650 fps check case:
+    // 5 mph full-value wind at 500 yd should land near 2.1-2.2 MOA before
+    // optional spin drift / Coriolis style bias corrections.
+    final windMoa =
+        crosswindMph *
+        (distanceYards / 100.0) *
+        0.079 *
+        velocityScale *
+        bcScale *
+        densityWindScale;
+
+    final holdMil = holdMoa / 3.43775;
+    final windMil = windMoa / 3.43775;
 
     if (input.scopeUnit == ScopeUnit.moa) {
       return BallisticSolution(
         elevation: holdMoa,
         windHold: windMoa,
         unit: ElevationUnit.moa,
-        solverVersion: 'basic_estimate_v1',
+        solverVersion: 'basic_estimate_v3',
       );
     }
 
@@ -1438,7 +1484,7 @@ class BallisticCalculationService {
       elevation: holdMil,
       windHold: windMil,
       unit: ElevationUnit.mil,
-      solverVersion: 'basic_estimate_v1',
+      solverVersion: 'basic_estimate_v3',
     );
   }
 }
@@ -11210,7 +11256,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                                     decimal: true,
                                   ),
                               decoration: const InputDecoration(
-                                labelText: 'Single distance',
+                                labelText: 'Target distance',
                               ),
                             ),
                           ),
