@@ -3549,6 +3549,8 @@ class AppState extends ChangeNotifier {
     DateTime? purchaseDate,
     String? purchasePrice,
     String? purchaseLocation,
+    double? ballisticZeroDistance,
+    double? ballisticSightHeightInches,
   }) {
     _rifles.add(
       Rifle(
@@ -3595,6 +3597,8 @@ class AppState extends ChangeNotifier {
         purchaseLocation: purchaseLocation?.trim().isEmpty == true
             ? null
             : purchaseLocation?.trim(),
+        ballisticZeroDistance: ballisticZeroDistance,
+        ballisticSightHeightInches: ballisticSightHeightInches,
       ),
     );
     notifyListeners();
@@ -3626,6 +3630,8 @@ class AppState extends ChangeNotifier {
     DateTime? purchaseDate,
     String? purchasePrice,
     String? purchaseLocation,
+    double? ballisticZeroDistance,
+    double? ballisticSightHeightInches,
   }) {
     final idx = _rifles.indexWhere((r) => r.id == rifleId);
     if (idx < 0) return;
@@ -3659,6 +3665,9 @@ class AppState extends ChangeNotifier {
       purchaseLocation: purchaseLocation?.trim().isEmpty == true
           ? null
           : purchaseLocation?.trim(),
+      ballisticZeroDistance: ballisticZeroDistance ?? r.ballisticZeroDistance,
+      ballisticSightHeightInches:
+          ballisticSightHeightInches ?? r.ballisticSightHeightInches,
       scopeUnit: scopeUnit ?? r.scopeUnit,
       scopeMake: scopeMake?.trim().isEmpty == true ? null : scopeMake?.trim(),
       scopeModel: scopeModel?.trim().isEmpty == true
@@ -3743,6 +3752,7 @@ class AppState extends ChangeNotifier {
     DateTime? purchaseDate,
     String? purchasePrice,
     double? ballisticCoefficient,
+    double? muzzleVelocityFps,
   }) {
     _ammoLots.add(
       AmmoLot(
@@ -3762,6 +3772,7 @@ class AppState extends ChangeNotifier {
             ? null
             : purchasePrice?.trim(),
         ballisticCoefficient: ballisticCoefficient,
+        muzzleVelocityFps: muzzleVelocityFps,
       ),
     );
     notifyListeners();
@@ -3779,6 +3790,7 @@ class AppState extends ChangeNotifier {
     DateTime? purchaseDate,
     String? purchasePrice,
     double? ballisticCoefficient,
+    double? muzzleVelocityFps,
   }) {
     final idx = _ammoLots.indexWhere((a) => a.id == ammoLotId);
     if (idx < 0) return;
@@ -3799,6 +3811,7 @@ class AppState extends ChangeNotifier {
           ? null
           : purchasePrice?.trim(),
       ballisticCoefficient: ballisticCoefficient,
+      muzzleVelocityFps: muzzleVelocityFps,
     );
     notifyListeners();
   }
@@ -5848,6 +5861,9 @@ class AppState extends ChangeNotifier {
                 : null,
             purchasePrice: (m['purchasePrice'] as String?)?.toString(),
             purchaseLocation: (m['purchaseLocation'] as String?)?.toString(),
+            ballisticZeroDistance: _toNullableDouble(m['ballisticZeroDistance']),
+            ballisticSightHeightInches:
+                _toNullableDouble(m['ballisticSightHeightInches']),
             notes: (m['notes'] as String?)?.toString() ?? '',
             dope: (m['dope'] as String?)?.toString() ?? '',
             scopeMake: (m['scopeMake'] as String?)?.toString(),
@@ -5893,6 +5909,7 @@ class AppState extends ChangeNotifier {
             bullet: (m['bullet'] as String?) ?? '',
             ballisticCoefficient: (m['ballisticCoefficient'] as num?)
                 ?.toDouble(),
+            muzzleVelocityFps: _toNullableDouble(m['muzzleVelocityFps']),
             manufacturer: (m['manufacturer'] as String?)?.toString(),
             lotNumber: (m['lotNumber'] as String?)?.toString(),
             purchaseDate: (m['purchaseDate'] as String?) != null
@@ -6016,6 +6033,10 @@ class AppState extends ChangeNotifier {
           existing.purchaseLocation,
           incoming.purchaseLocation,
         ),
+        ballisticZeroDistance:
+            existing.ballisticZeroDistance ?? incoming.ballisticZeroDistance,
+        ballisticSightHeightInches: existing.ballisticSightHeightInches ??
+            incoming.ballisticSightHeightInches,
         notes: preferExistingRequired(existing.notes, incoming.notes),
         dope: preferExistingRequired(existing.dope, incoming.dope),
         // Never overwrite history fields here (manualRoundCount, dopeEntries).
@@ -6049,6 +6070,10 @@ class AppState extends ChangeNotifier {
         ballisticCoefficient: preferExistingDouble(
           existing.ballisticCoefficient,
           incoming.ballisticCoefficient,
+        ),
+        muzzleVelocityFps: preferExistingDouble(
+          existing.muzzleVelocityFps,
+          incoming.muzzleVelocityFps,
         ),
         manufacturer: preferExistingNullable(
           existing.manufacturer,
@@ -6137,6 +6162,8 @@ Map<String, dynamic> _rifleToMap(Rifle rifle) => <String, dynamic>{
   'purchaseDate': rifle.purchaseDate?.toIso8601String(),
   'purchasePrice': rifle.purchasePrice,
   'purchaseLocation': rifle.purchaseLocation,
+  'ballisticZeroDistance': rifle.ballisticZeroDistance,
+  'ballisticSightHeightInches': rifle.ballisticSightHeightInches,
 };
 
 Rifle _rifleFromMap(Map<String, dynamic> map) => Rifle(
@@ -6191,6 +6218,9 @@ Rifle _rifleFromMap(Map<String, dynamic> map) => Rifle(
       : _parseDateTime(map['purchaseDate']),
   purchasePrice: map['purchasePrice']?.toString(),
   purchaseLocation: map['purchaseLocation']?.toString(),
+  ballisticZeroDistance: _toNullableDouble(map['ballisticZeroDistance']),
+  ballisticSightHeightInches:
+      _toNullableDouble(map['ballisticSightHeightInches']),
 );
 
 Map<String, dynamic> _ammoLotToMap(AmmoLot ammo) => <String, dynamic>{
@@ -6206,6 +6236,7 @@ Map<String, dynamic> _ammoLotToMap(AmmoLot ammo) => <String, dynamic>{
   'purchaseDate': ammo.purchaseDate?.toIso8601String(),
   'purchasePrice': ammo.purchasePrice,
   'ballisticCoefficient': ammo.ballisticCoefficient,
+  'muzzleVelocityFps': ammo.muzzleVelocityFps,
 };
 
 AmmoLot _ammoLotFromMap(Map<String, dynamic> map) => AmmoLot(
@@ -6223,6 +6254,7 @@ AmmoLot _ammoLotFromMap(Map<String, dynamic> map) => AmmoLot(
       : _parseDateTime(map['purchaseDate']),
   purchasePrice: map['purchasePrice']?.toString(),
   ballisticCoefficient: _toNullableDouble(map['ballisticCoefficient']),
+  muzzleVelocityFps: _toNullableDouble(map['muzzleVelocityFps']),
 );
 
 Map<String, dynamic> _sessionStringMetaToMap(SessionStringMeta meta) =>
@@ -6914,6 +6946,9 @@ class Rifle {
   final String? purchasePrice;
   final String? purchaseLocation;
 
+  final double? ballisticZeroDistance;
+  final double? ballisticSightHeightInches;
+
   Rifle({
     required this.id,
     this.ownerUserId,
@@ -6943,6 +6978,8 @@ class Rifle {
     this.purchaseDate,
     this.purchasePrice,
     this.purchaseLocation,
+    this.ballisticZeroDistance,
+    this.ballisticSightHeightInches,
   });
 
   Rifle copyWith({
@@ -6974,6 +7011,8 @@ class Rifle {
     DateTime? purchaseDate,
     String? purchasePrice,
     String? purchaseLocation,
+    double? ballisticZeroDistance,
+    double? ballisticSightHeightInches,
   }) {
     return Rifle(
       id: id ?? this.id,
@@ -7004,6 +7043,9 @@ class Rifle {
       purchaseDate: purchaseDate ?? this.purchaseDate,
       purchasePrice: purchasePrice ?? this.purchasePrice,
       purchaseLocation: purchaseLocation ?? this.purchaseLocation,
+      ballisticZeroDistance: ballisticZeroDistance ?? this.ballisticZeroDistance,
+      ballisticSightHeightInches:
+          ballisticSightHeightInches ?? this.ballisticSightHeightInches,
     );
   }
 }
@@ -7085,6 +7127,7 @@ class AmmoLot {
 
   // Optional ballistics
   final double? ballisticCoefficient;
+  final double? muzzleVelocityFps;
 
   AmmoLot({
     required this.id,
@@ -7099,6 +7142,7 @@ class AmmoLot {
     this.purchaseDate,
     this.purchasePrice,
     this.ballisticCoefficient,
+    this.muzzleVelocityFps,
   });
 }
 
@@ -8716,7 +8760,7 @@ class _HomeShellState extends State<HomeShell> {
                   ),
                 ],
               ),
-              body: pages[_tab],
+              body: IndexedStack(index: _tab, children: pages),
               bottomNavigationBar: ColdBoreBottomNav(
                 selectedIndex: _tab,
                 onDestinationSelected: (i) => setState(() => _tab = i),
@@ -10218,6 +10262,28 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
     super.dispose();
   }
 
+  void _applyBallisticDefaultsFromSelection() {
+    final rifle = widget.state.rifleById(_selectedRifleId);
+    final ammo = widget.state.ammoById(_selectedAmmoId);
+
+    if (rifle?.ballisticZeroDistance != null &&
+        rifle!.ballisticZeroDistance! > 0) {
+      _zeroDistanceCtrl.text = rifle.ballisticZeroDistance!.toStringAsFixed(0);
+      _zeroDistanceUnit = DistanceUnit.yards;
+    }
+    if (rifle?.ballisticSightHeightInches != null &&
+        rifle!.ballisticSightHeightInches! > 0) {
+      _sightHeightCtrl.text =
+          rifle.ballisticSightHeightInches!.toStringAsFixed(2);
+    }
+    if (ammo?.ballisticCoefficient != null && ammo!.ballisticCoefficient! > 0) {
+      _bcCtrl.text = ammo.ballisticCoefficient!.toStringAsFixed(3);
+    }
+    if (ammo?.muzzleVelocityFps != null && ammo!.muzzleVelocityFps! > 0) {
+      _muzzleVelocityCtrl.text = ammo.muzzleVelocityFps!.toStringAsFixed(0);
+    }
+  }
+
   void _syncAmmoSelectionForRifle() {
     final rifle = widget.state.rifleById(_selectedRifleId);
     if (rifle == null) {
@@ -10229,16 +10295,14 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
         .toList();
     if (ammo.isEmpty) {
       _selectedAmmoId = null;
+      _applyBallisticDefaultsFromSelection();
       return;
     }
     final hasSelected = ammo.any((a) => a.id == _selectedAmmoId);
     if (!hasSelected) {
       _selectedAmmoId = ammo.first.id;
-      final bc = ammo.first.ballisticCoefficient;
-      if (bc != null && bc > 0) {
-        _bcCtrl.text = bc.toStringAsFixed(3);
-      }
     }
+    _applyBallisticDefaultsFromSelection();
   }
 
   Future<void> _pickVerificationDate() async {
@@ -10390,14 +10454,8 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
     required double distance,
     required DistanceUnit distanceUnit,
   }) {
-    final rifleId = _selectedRifleId;
-    final ammoId = _selectedAmmoId;
-    if (rifleId == null || ammoId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Select rifle and ammo first.')),
-      );
-      return null;
-    }
+    final rifleId = _selectedRifleId ?? 'manual_firearm';
+    final ammoId = _selectedAmmoId ?? 'manual_ammunition';
 
     final windSpeed = double.tryParse(_windSpeedCtrl.text.trim());
     final temp = double.tryParse(_temperatureCtrl.text.trim());
@@ -10421,7 +10479,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
       return null;
     }
 
-    final rifle = widget.state.rifleById(rifleId);
+    final rifle = widget.state.rifleById(_selectedRifleId);
     final scopeUnit = rifle?.scopeUnit == ScopeUnit.moa
         ? ScopeUnit.moa
         : ScopeUnit.mil;
@@ -10558,6 +10616,15 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
       _chartCommitSelectionMode = false;
       _selectedChartRowIndexes.clear();
     });
+    if ((_selectedRifleId == null || _selectedAmmoId == null) && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Manual chart generated. Select a saved firearm/ammo before committing to Working DOPE.',
+          ),
+        ),
+      );
+    }
   }
 
   Future<_GeneratedDopeRow?> _ensureChartRowSavedToHistory(int index) async {
@@ -10755,6 +10822,16 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
     if (selectedIndexes.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Select one or more chart rows first.')),
+      );
+      return;
+    }
+    if (_selectedRifleId == null || _selectedAmmoId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Select a saved firearm and ammo before committing to Working DOPE.',
+          ),
+        ),
       );
       return;
     }
@@ -11282,18 +11359,62 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Build calculated estimates, validate with live fire, and promote trusted values into Working DOPE.',
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(14),
+                              color: cbBlue.withValues(alpha: 0.18),
+                              border: Border.all(
+                                color: cbBlue.withValues(alpha: 0.45),
+                              ),
+                            ),
+                            child: const Text(
+                              'BA',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -1.2,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Ballistic Assistant',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleLarge
+                                      ?.copyWith(fontWeight: FontWeight.w800),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Select a saved loadout to auto-fill known values, or enter a one-off setup manually.',
+                                  style: Theme.of(context).textTheme.bodyMedium,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 12),
-                      _sectionTitle('Rifle / Ammo'),
+                      _sectionTitle('Loadout source'),
                       DropdownButtonFormField<String?>(
                         initialValue: _selectedRifleId,
-                        decoration: const InputDecoration(labelText: 'Rifle'),
+                        decoration: const InputDecoration(
+                          labelText: 'Saved firearm',
+                          helperText: 'Optional. Leave blank for manual entry.',
+                        ),
                         items: [
                           const DropdownMenuItem<String?>(
                             value: null,
-                            child: Text('Select rifle'),
+                            child: Text('Manual / no saved firearm'),
                           ),
                           ...rifles.map(
                             (r) => DropdownMenuItem<String?>(
@@ -11312,11 +11433,14 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                       const SizedBox(height: 8),
                       DropdownButtonFormField<String?>(
                         initialValue: _selectedAmmoId,
-                        decoration: const InputDecoration(labelText: 'Ammo'),
+                        decoration: const InputDecoration(
+                          labelText: 'Saved ammunition',
+                          helperText: 'Optional. Values below remain editable.',
+                        ),
                         items: [
                           const DropdownMenuItem<String?>(
                             value: null,
-                            child: Text('Select ammo'),
+                            child: Text('Manual / no saved ammo'),
                           ),
                           ...ammoOptions.map(
                             (a) => DropdownMenuItem<String?>(
@@ -11325,7 +11449,10 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                             ),
                           ),
                         ],
-                        onChanged: (v) => setState(() => _selectedAmmoId = v),
+                        onChanged: (v) => setState(() {
+                          _selectedAmmoId = v;
+                          _applyBallisticDefaultsFromSelection();
+                        }),
                       ),
                       const SizedBox(height: 12),
                       _sectionTitle('Distance / Zero'),
@@ -21177,6 +21304,8 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
       scopeMount: res.scopeMount,
       scopeNotes: res.scopeNotes,
       purchaseLocation: res.purchaseLocation,
+      ballisticZeroDistance: res.ballisticZeroDistance,
+      ballisticSightHeightInches: res.ballisticSightHeightInches,
     );
   }
 
@@ -21198,6 +21327,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
       purchaseDate: res.purchaseDate,
       purchasePrice: res.purchasePrice,
       ballisticCoefficient: res.ballisticCoefficient,
+      muzzleVelocityFps: res.muzzleVelocityFps,
     );
   }
 
@@ -21232,6 +21362,8 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
       scopeSerial: res.scopeSerial,
       scopeMount: res.scopeMount,
       scopeNotes: res.scopeNotes,
+      ballisticZeroDistance: res.ballisticZeroDistance,
+      ballisticSightHeightInches: res.ballisticSightHeightInches,
     );
   }
 
@@ -21254,6 +21386,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
       purchaseDate: res.purchaseDate,
       purchasePrice: res.purchasePrice,
       ballisticCoefficient: res.ballisticCoefficient,
+      muzzleVelocityFps: res.muzzleVelocityFps,
     );
   }
 
@@ -25788,6 +25921,8 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
   final _twistRate = TextEditingController();
   final _purchasePrice = TextEditingController();
   final _purchaseLocation = TextEditingController();
+  final _ballisticZeroDistance = TextEditingController();
+  final _ballisticSightHeight = TextEditingController();
   final _notes = TextEditingController();
   final _dope = TextEditingController();
   DateTime? _purchaseDate;
@@ -25814,6 +25949,8 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
       _purchaseDate = r.purchaseDate;
       _purchasePrice.text = r.purchasePrice ?? '';
       _purchaseLocation.text = r.purchaseLocation ?? '';
+      _ballisticZeroDistance.text = r.ballisticZeroDistance?.toString() ?? '';
+      _ballisticSightHeight.text = r.ballisticSightHeightInches?.toString() ?? '';
       _notes.text = r.notes;
       _dope.text = r.dope;
       _scopeUnit = r.scopeUnit;
@@ -25831,6 +25968,8 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
     _twistRate.dispose();
     _purchasePrice.dispose();
     _purchaseLocation.dispose();
+    _ballisticZeroDistance.dispose();
+    _ballisticSightHeight.dispose();
     _notes.dispose();
     _dope.dispose();
     _scopeMake.dispose();
@@ -25909,6 +26048,10 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
         purchaseLocation: _purchaseLocation.text.trim().isEmpty
             ? null
             : _purchaseLocation.text.trim(),
+        ballisticZeroDistance:
+            double.tryParse(_ballisticZeroDistance.text.trim()),
+        ballisticSightHeightInches:
+            double.tryParse(_ballisticSightHeight.text.trim()),
       ),
     );
   }
@@ -25926,6 +26069,18 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
               controller: _caliber,
               decoration: const InputDecoration(
                 labelText: 'Caliber (ex: .308) *',
+              ),
+              textInputAction: TextInputAction.next,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _muzzleVelocity,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const InputDecoration(
+                labelText: 'Muzzle velocity FPS (optional)',
+                helperText: 'Auto-fills BA when this ammo is selected.',
               ),
               textInputAction: TextInputAction.next,
             ),
@@ -26053,6 +26208,49 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
 
             ExpansionTile(
               tilePadding: EdgeInsets.zero,
+              title: const Text('Ballistic setup'),
+              subtitle: const Text('Optional defaults for Ballistic Assistant.'),
+              children: [
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _ballisticZeroDistance,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: const InputDecoration(
+                          labelText: 'Zero distance (yd, optional)',
+                          helperText: 'Auto-fills BA when this firearm is selected.',
+                        ),
+                        textInputAction: TextInputAction.next,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextField(
+                        controller: _ballisticSightHeight,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: const InputDecoration(
+                          labelText: 'Sight height (in, optional)',
+                          helperText: 'Center of bore to center of optic.',
+                        ),
+                        textInputAction: TextInputAction.next,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+
+            const SizedBox(height: 12),
+
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
               title: const Text('Scope'),
               subtitle: Text(
                 'Adjustment unit: ${_scopeUnit.name.toUpperCase()}',
@@ -26164,6 +26362,8 @@ class _NewRifleResult {
   final DateTime? purchaseDate;
   final String? purchasePrice;
   final String? purchaseLocation;
+  final double? ballisticZeroDistance;
+  final double? ballisticSightHeightInches;
 
   _NewRifleResult({
     this.scopeUnit = ScopeUnit.mil,
@@ -26189,6 +26389,8 @@ class _NewRifleResult {
     this.purchaseDate,
     this.purchasePrice,
     this.purchaseLocation,
+    this.ballisticZeroDistance,
+    this.ballisticSightHeightInches,
   });
 }
 
@@ -26199,6 +26401,7 @@ class _NewAmmoResult {
     required this.grain,
     required this.bullet,
     this.ballisticCoefficient,
+    this.muzzleVelocityFps,
     this.manufacturer,
     this.lotNumber,
     this.purchaseDate,
@@ -26211,6 +26414,7 @@ class _NewAmmoResult {
   final int grain;
   final String bullet;
   final double? ballisticCoefficient;
+  final double? muzzleVelocityFps;
   final String? manufacturer;
   final String? lotNumber;
   final DateTime? purchaseDate;
@@ -26233,6 +26437,7 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
   final _bullet = TextEditingController();
   final _grain = TextEditingController();
   final _bc = TextEditingController();
+  final _muzzleVelocity = TextEditingController();
   final _lot = TextEditingController();
   final _notes = TextEditingController();
   DateTime? _purchaseDate;
@@ -26249,6 +26454,7 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
       _bullet.text = a.bullet;
       _grain.text = a.grain.toString();
       _bc.text = (a.ballisticCoefficient?.toString() ?? '');
+      _muzzleVelocity.text = (a.muzzleVelocityFps?.toString() ?? '');
       _lot.text = a.lotNumber ?? '';
       _purchaseDate = a.purchaseDate;
       _purchasePrice.text = a.purchasePrice ?? '';
@@ -26264,6 +26470,7 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
     _bullet.dispose();
     _grain.dispose();
     _bc.dispose();
+    _muzzleVelocity.dispose();
     _lot.dispose();
     _notes.dispose();
     _purchasePrice.dispose();
@@ -26424,6 +26631,9 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
             final bcRaw = _bc.text.trim();
             final bc = bcRaw.isEmpty ? null : double.tryParse(bcRaw);
 
+            final mvRaw = _muzzleVelocity.text.trim();
+            final mv = mvRaw.isEmpty ? null : double.tryParse(mvRaw);
+
             final priceRaw = _purchasePrice.text.trim();
             final price = priceRaw.isEmpty ? null : priceRaw;
 
@@ -26437,6 +26647,7 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
                 grain: grain,
                 bullet: bullet,
                 ballisticCoefficient: bc,
+                muzzleVelocityFps: mv,
                 manufacturer: manufacturer,
                 lotNumber: lot,
                 purchaseDate: _purchaseDate,
