@@ -1388,32 +1388,57 @@ class BallisticCalculationService {
 
   // Current assumptions/limitations:
   // 1) Uses a simplified time-of-flight model and coarse drag scaling.
-  // 2) Wind is estimated from the selected crosswind factor. Compass-only
-  //    weather wind is reduced unless it is clearly full value because the app
-  //    does not know the target azimuth.
+  // 2) Wind is estimated from the selected relative wind value. Weather
+  //    compass direction is not used because the app does not know target azimuth.
   // This class is intentionally isolated so it can be replaced with a
   // full-featured external solver without changing UI/state code.
   double _windCrosswindFactor(String raw) {
     final value = raw.trim().toLowerCase();
     if (value.contains('no wind')) return 0.0;
-    if (value.contains('quarter')) return 0.25;
-    if (value.contains('half')) return 0.5;
-    if (value.contains('full')) return 1.0;
+
+    final direction = value.contains('left') ? -1.0 : 1.0;
+    if (value.contains('quarter')) return 0.25 * direction;
+    if (value.contains('half')) return 0.5 * direction;
+    if (value.contains('full')) return 1.0 * direction;
+
+    // Legacy compass labels are treated conservatively for old saved records.
     if (value.contains('ne') ||
         value.contains('nw') ||
         value.contains('se') ||
         value.contains('sw')) {
-      return 0.7;
+      return 0.7 * direction;
     }
     if (value.contains(' e') || value.endsWith('e') ||
         value.contains(' w') || value.endsWith('w')) {
-      return 1.0;
+      return 1.0 * direction;
     }
     if (value.contains(' n') || value.endsWith('n') ||
         value.contains(' s') || value.endsWith('s')) {
       return 0.0;
     }
-    return 1.0;
+    return 1.0 * direction;
+  }
+
+  double _elevationTruingScale(double distanceYards) {
+    // Empirical field-estimate correction anchored from comparison against a
+    // trusted solver for a .308 / 168 gr / MV 2650 / BC .48 profile.
+    // The intent is to keep near/mid range stable while adding the drag curve
+    // the old simplified model missed at longer range.
+    if (distanceYards <= 100.0) return 1.0;
+    if (distanceYards <= 200.0) {
+      final t = (distanceYards - 100.0) / 100.0;
+      return 1.0 + (0.068 * t);
+    }
+    if (distanceYards <= 300.0) {
+      final t = (distanceYards - 200.0) / 100.0;
+      return 1.068 + ((1.006 - 1.068) * t);
+    }
+    if (distanceYards <= 700.0) {
+      final t = (distanceYards - 300.0) / 400.0;
+      return 1.006 + ((1.166 - 1.006) * t);
+    }
+    final extended = 1.166 + ((distanceYards - 700.0) / 300.0 * 0.08);
+    return extended.clamp(1.166, 1.32).toDouble();
   }
 
   BallisticSolution calculate(BallisticSolverInput input) {
@@ -1443,7 +1468,8 @@ class BallisticCalculationService {
     final distanceInches = math.max(1.0, distanceYards * 36.0);
     final moaPerInch = 1.0 / (distanceInches / 3437.75);
 
-    final holdMoa = dropInches * moaPerInch;
+    final baseHoldMoa = dropInches * moaPerInch;
+    final holdMoa = baseHoldMoa * _elevationTruingScale(distanceYards);
 
     // Wind estimate. The previous formula used raw wind speed multiplied by
     // time of flight, which drastically overstated drift at short distances.
@@ -1476,7 +1502,7 @@ class BallisticCalculationService {
         elevation: holdMoa,
         windHold: windMoa,
         unit: ElevationUnit.moa,
-        solverVersion: 'basic_estimate_v3',
+        solverVersion: 'basic_estimate_v4_trued',
       );
     }
 
@@ -1484,7 +1510,7 @@ class BallisticCalculationService {
       elevation: holdMil,
       windHold: windMil,
       unit: ElevationUnit.mil,
-      solverVersion: 'basic_estimate_v3',
+      solverVersion: 'basic_estimate_v4_trued',
     );
   }
 }
@@ -7821,6 +7847,101 @@ class _GuidedTourStep {
   });
 }
 
+
+class _BaNavIcon extends StatelessWidget {
+  const _BaNavIcon();
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedColor = Theme.of(context).colorScheme.primary;
+    return Container(
+      width: 26,
+      height: 22,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(color: selectedColor.withValues(alpha: 0.8)),
+      ),
+      child: Text(
+        'BA',
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w900,
+          letterSpacing: -0.8,
+          color: selectedColor,
+        ),
+      ),
+    );
+  }
+}
+
+class ToolsHubScreen extends StatelessWidget {
+  final AppState state;
+
+  const ToolsHubScreen({super.key, required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        const ColdBoreSectionHeader(
+          title: 'Tools',
+          subtitle: 'Timer, audio counter, and loadout management.',
+        ),
+        const SizedBox(height: 12),
+        ColdBoreCard(
+          child: ListTile(
+            leading: const Icon(Icons.timer_outlined),
+            title: const Text('Shot Timer'),
+            subtitle: const Text('Run delayed-start drills and save timer runs.'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => ShotTimerToolScreen(state: state),
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 12),
+        ColdBoreCard(
+          child: ListTile(
+            leading: const Icon(Icons.mic_outlined),
+            title: const Text('Audio Counter'),
+            subtitle: const Text('Count shot impulses and adjust final shot count.'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => AudioCounterScreen(state: state),
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 12),
+        ColdBoreCard(
+          child: ListTile(
+            leading: const Icon(Icons.inventory_2_outlined),
+            title: const Text('Loadout'),
+            subtitle: const Text('Manage firearms, ammo, scope data, and maintenance.'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => EquipmentScreen(state: state),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class HomeShell extends StatefulWidget {
   final AppState state;
   final CloudSyncService cloud;
@@ -7879,65 +8000,43 @@ class _HomeShellState extends State<HomeShell> {
       tabIndex: 0,
       icon: Icons.home_outlined,
       title: 'Main',
-      description:
-          'View weather, current rifle, and quick actions from the landing page.',
+      description: 'View weather, selected firearm stats, and quick actions from the landing page.',
     ),
     _GuidedTourStep(
       tabIndex: 1,
       icon: Icons.event_note_outlined,
       title: 'Sessions',
-      description:
-          'Create, organize, and review sessions. You can now edit session start/end date and time from the session screen if you forgot to close one.',
+      description: 'Create, organize, and review training sessions.',
     ),
     _GuidedTourStep(
       tabIndex: 2,
       icon: Icons.ac_unit_outlined,
       title: 'Cold Bore',
-      description:
-          'Track first-shot performance, baseline cold-bore shots, and attached photos to monitor zero confidence over time.',
+      description: 'Track first-shot performance and baseline cold-bore shots.',
     ),
     _GuidedTourStep(
       tabIndex: 3,
-      icon: Icons.timer_outlined,
-      title: 'Shot Timer',
-      description:
-          'Run drills with delayed start and timing controls for pacing and consistency.',
+      icon: Icons.calculate_outlined,
+      title: 'Ballistic Assistant',
+      description: 'Build trued estimates, validate with live fire, and save chart data.',
     ),
     _GuidedTourStep(
       tabIndex: 4,
-      icon: Icons.mic_outlined,
-      title: 'Audio Counter',
-      description:
-          'Detect shots by sound and apply counted rounds to your selected rifle automatically or on demand.',
+      icon: Icons.list_alt_outlined,
+      title: 'Data',
+      description: 'Review Working DOPE, saved charts, ballistic history, and maintenance references.',
     ),
     _GuidedTourStep(
       tabIndex: 5,
-      icon: Icons.build_outlined,
-      title: 'Gear',
-      description:
-          'Manage rifles, ammo lots, and maintenance reminders so analytics stay accurate.',
-    ),
-    _GuidedTourStep(
-      tabIndex: 6,
-      icon: Icons.list_alt_outlined,
-      title: 'Data',
-      description:
-          'Review quick-reference DOPE (rifle-only + rifle+ammo), working DOPE, and maintenance status in one place.',
-    ),
-    _GuidedTourStep(
-      tabIndex: 6,
-      icon: Icons.calculate_outlined,
-      title: 'Ballistic Assistant',
-      description:
-          'From Data, open Ballistic Assistant to build estimates, validate with live fire, and promote trusted values into Working DOPE.',
-      opensInTourRoute: true,
+      icon: Icons.handyman_outlined,
+      title: 'Tools',
+      description: 'Open the timer, audio counter, and loadout management tools.',
     ),
     _GuidedTourStep(
       tabIndex: 0,
       icon: Icons.settings_outlined,
       title: 'Settings',
-      description:
-          'Use Settings for Cloud Backup & Restore, manual JSON backup files, appearance mode, purchases/restores, trial and subscription status, and user management.',
+      description: 'Use Settings for cloud backup, appearance, purchases, restores, and user management.',
     ),
   ];
 
@@ -8544,8 +8643,6 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
-    final showBallisticAssistantTourStep =
-        _tourActive && _tourSteps[_tourStepIndex].opensInTourRoute;
     final pages = <Widget>[
       SessionsScreen(
         state: widget.state,
@@ -8558,13 +8655,20 @@ class _HomeShellState extends State<HomeShell> {
         showSessionList: true,
       ),
       ColdBoreScreen(state: widget.state),
-      ShotTimerToolScreen(state: widget.state),
-      AudioCounterScreen(state: widget.state),
-      EquipmentScreen(state: widget.state),
-      showBallisticAssistantTourStep
-          ? BallisticAssistantScreen(state: widget.state)
-          : DataScreen(state: widget.state),
+      BallisticAssistantScreen(state: widget.state, showAppBar: false),
+      DataScreen(state: widget.state),
+      ToolsHubScreen(state: widget.state),
     ];
+
+    final appTitle = switch (_tab) {
+      0 => 'Cold Bore',
+      1 => 'Sessions',
+      2 => 'Cold Bore',
+      3 => 'Ballistic Assistant',
+      4 => 'Data',
+      5 => 'Tools',
+      _ => 'Cold Bore',
+    };
 
     return AnimatedBuilder(
       animation: Listenable.merge([widget.state, widget.cloud]),
@@ -8576,7 +8680,7 @@ class _HomeShellState extends State<HomeShell> {
           children: [
             ColdBoreScaffold(
               appBar: AppBar(
-                title: const Text('Cold Bore'),
+                title: Text(appTitle),
                 actions: [
                   Padding(
                     padding: const EdgeInsets.only(right: 4),
@@ -8630,20 +8734,16 @@ class _HomeShellState extends State<HomeShell> {
                     label: 'Cold\nBore',
                   ),
                   NavigationDestination(
-                    icon: Icon(Icons.timer_outlined),
-                    label: 'Timer',
-                  ),
-                  NavigationDestination(
-                    icon: Icon(Icons.mic_outlined),
-                    label: 'Audio',
-                  ),
-                  NavigationDestination(
-                    icon: Icon(Icons.build_outlined),
-                    label: 'Gear',
+                    icon: _BaNavIcon(),
+                    label: 'Ballistics',
                   ),
                   NavigationDestination(
                     icon: Icon(Icons.list_alt_outlined),
                     label: 'Data',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.handyman_outlined),
+                    label: 'Tools',
                   ),
                 ],
               ),
@@ -9948,25 +10048,7 @@ class _DataScreenState extends State<DataScreen> {
               savedChartsSection(),
               const SizedBox(height: 12),
               ballisticHistorySection(),
-              const SizedBox(height: 12),
-              ColdBoreCard(
-                child: ListTile(
-                  leading: const Icon(Icons.calculate_outlined),
-                  title: const Text('Ballistic Assistant'),
-                  subtitle: const Text(
-                    'Calculate estimated DOPE, validate with live fire, and optionally write verified results to Working DOPE.',
-                  ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            BallisticAssistantScreen(state: widget.state),
-                      ),
-                    );
-                  },
-                ),
-              ),
+
               const SizedBox(height: 12),
               Builder(
                 builder: (context) {
@@ -10017,8 +10099,13 @@ class _DataScreenState extends State<DataScreen> {
 
 class BallisticAssistantScreen extends StatefulWidget {
   final AppState state;
+  final bool showAppBar;
 
-  const BallisticAssistantScreen({super.key, required this.state});
+  const BallisticAssistantScreen({
+    super.key,
+    required this.state,
+    this.showAppBar = true,
+  });
 
   @override
   State<BallisticAssistantScreen> createState() =>
@@ -10029,18 +10116,13 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
   final BallisticCalculationService _solver =
       const BallisticCalculationService();
   static const List<String> _windDirectionOptions = <String>[
-    'Full crosswind',
-    'Half crosswind',
-    'Quarter crosswind',
+    'Full value - right',
+    'Full value - left',
+    'Half value - right',
+    'Half value - left',
+    'Quarter value - right',
+    'Quarter value - left',
     'No wind',
-    'From N',
-    'From NE',
-    'From E',
-    'From SE',
-    'From S',
-    'From SW',
-    'From W',
-    'From NW',
   ];
 
   String? _selectedRifleId;
@@ -10060,7 +10142,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
   bool _chartCommitSelectionMode = false;
   final Set<int> _selectedChartRowIndexes = <int>{};
   bool _showAllBallisticHistory = false;
-  String _windDirectionValue = 'Full crosswind';
+  String _windDirectionValue = 'Full value - right';
 
   final TextEditingController _distanceCtrl = TextEditingController(
     text: '100',
@@ -10272,9 +10354,9 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
         if (wind != null) _windSpeedCtrl.text = wind.toStringAsFixed(1);
         if (pressure != null) _pressureCtrl.text = pressure.toStringAsFixed(2);
         if (humidity != null) _humidityCtrl.text = humidity.toStringAsFixed(0);
-        if (windDir != null) {
-          _windDirectionValue = 'From ${_compass8(windDir)}';
-        }
+        // Weather can supply wind speed and atmosphere, but the solver needs
+        // relative wind to the target line. Keep the user's selected relative
+        // wind value instead of guessing from compass direction alone.
       });
 
       widget.state.setEnvironment(
@@ -11165,7 +11247,9 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
             : const Color(0xFFDDF5E6);
 
         return ColdBoreScaffold(
-          appBar: AppBar(title: const Text('Ballistic Assistant')),
+          appBar: widget.showAppBar
+              ? AppBar(title: const Text('Ballistic Assistant'))
+              : null,
           body: ListView(
             padding: const EdgeInsets.all(12),
             children: [
@@ -11356,7 +11440,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                             child: DropdownButtonFormField<String>(
                               initialValue: _windDirectionValue,
                               decoration: const InputDecoration(
-                                labelText: 'Wind direction/factor',
+                                labelText: 'Relative wind',
                               ),
                               items: _windDirectionOptions
                                   .map(
