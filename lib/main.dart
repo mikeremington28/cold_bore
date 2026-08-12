@@ -26457,7 +26457,16 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
           surfaceTintColor: Colors.transparent,
           leading: TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              minimumSize: const Size(0, 36),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: const Text(
+              'Cancel',
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+            ),
           ),
           title: Text(title),
           centerTitle: true,
@@ -26493,7 +26502,7 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
               ),
               const SizedBox(height: 12),
               _EditorSectionCard(
-                title: 'Identity',
+                title: 'Firearm',
                 icon: Icons.person_outline,
                 child: Column(
                   children: [
@@ -26577,6 +26586,13 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
                 helperText: 'Used to auto-fill Ballistic Assistant.',
                 child: Column(
                   children: [
+                    TextField(
+                      controller: _muzzleVelocityCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(labelText: 'Muzzle velocity FPS'),
+                      textInputAction: TextInputAction.next,
+                    ),
+                    const SizedBox(height: 12),
                     Row(
                       children: [
                         Expanded(
@@ -26895,7 +26911,16 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
           surfaceTintColor: Colors.transparent,
           leading: TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              minimumSize: const Size(0, 36),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: const Text(
+              'Cancel',
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+            ),
           ),
           title: Text(title),
           centerTitle: true,
@@ -26983,7 +27008,7 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
               ),
               const SizedBox(height: 12),
               _EditorSectionCard(
-                title: 'Identity',
+                title: 'Ammo',
                 icon: Icons.scatter_plot_outlined,
                 child: Column(
                   children: [
@@ -27031,13 +27056,6 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
                 helperText: 'Used to auto-fill Ballistic Assistant.',
                 child: Column(
                   children: [
-                    TextField(
-                      controller: _muzzleVelocityCtrl,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: const InputDecoration(labelText: 'Muzzle velocity FPS'),
-                      textInputAction: TextInputAction.next,
-                    ),
-                    const SizedBox(height: 12),
                     TextField(
                       controller: _bc,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
