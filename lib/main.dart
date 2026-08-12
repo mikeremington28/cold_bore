@@ -8053,14 +8053,14 @@ class _BaNavIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final selectedColor = Theme.of(context).colorScheme.primary;
+    final color = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.8);
     return Container(
       width: 26,
       height: 22,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(7),
-        border: Border.all(color: selectedColor.withValues(alpha: 0.8)),
+        border: Border.all(color: color.withValues(alpha: 0.7)),
       ),
       child: Text(
         'BA',
@@ -8068,7 +8068,7 @@ class _BaNavIcon extends StatelessWidget {
           fontSize: 11,
           fontWeight: FontWeight.w900,
           letterSpacing: -0.8,
-          color: selectedColor,
+          color: color,
         ),
       ),
     );
@@ -26067,6 +26067,210 @@ class _NearbySessionShareDialog extends StatelessWidget {
   }
 }
 
+class _EditorSummaryCard extends StatelessWidget {
+  final String label;
+  final String? secondary;
+  final String? tertiary;
+  final String? subtitle;
+
+  const _EditorSummaryCard({
+    required this.label,
+    this.secondary,
+    this.tertiary,
+    this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    return ColdBoreCard(
+      padding: const EdgeInsets.all(16),
+      color: cbCardAlt,
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: cbGreen.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: cbGreen.withValues(alpha: 0.28)),
+            ),
+            child: const Icon(Icons.gps_fixed_outlined, color: cbGreen, size: 20),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.4,
+                    color: onSurface,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                if (secondary != null && secondary!.trim().isNotEmpty)
+                  Text(
+                    secondary!,
+                    style: TextStyle(
+                      color: onSurface.withValues(alpha: 0.72),
+                      fontSize: 15,
+                    ),
+                  ),
+                if (tertiary != null && tertiary!.trim().isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    tertiary!,
+                    style: TextStyle(
+                      color: onSurface.withValues(alpha: 0.62),
+                      fontSize: 12.5,
+                    ),
+                  ),
+                ],
+                if (subtitle != null && subtitle!.trim().isNotEmpty) ...[
+                  const SizedBox(height: 5),
+                  Text(
+                    subtitle!,
+                    style: TextStyle(
+                      color: cbGreen,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.12,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EditorSectionCard extends StatelessWidget {
+  final String title;
+  final String? helperText;
+  final IconData icon;
+  final Widget child;
+
+  const _EditorSectionCard({
+    required this.title,
+    required this.icon,
+    required this.child,
+    this.helperText,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    return ColdBoreCard(
+      padding: const EdgeInsets.all(16),
+      color: cbCardAlt,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 26,
+                height: 26,
+                decoration: BoxDecoration(
+                  color: cbGreen.withValues(alpha: 0.13),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: cbGreen.withValues(alpha: 0.25)),
+                ),
+                child: Icon(icon, size: 14, color: cbGreen),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  title.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    letterSpacing: 0.95,
+                    fontWeight: FontWeight.w700,
+                    color: onSurface.withValues(alpha: 0.78),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (helperText != null && helperText!.trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              helperText!,
+              style: TextStyle(
+                fontSize: 12,
+                color: onSurface.withValues(alpha: 0.72),
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _SegmentedChoice<T> extends StatelessWidget {
+  final T value;
+  final List<T> options;
+  final ValueChanged<T> onChanged;
+  final Map<T, String> labels;
+
+  const _SegmentedChoice({
+    required this.value,
+    required this.options,
+    required this.onChanged,
+    required this.labels,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: cbCard,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: cbBorder),
+      ),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: options.map((option) {
+          final selected = option == value;
+          final label = labels[option] ?? option.toString();
+          return ChoiceChip(
+            label: Text(label),
+            selected: selected,
+            showCheckmark: false,
+            onSelected: (_) => onChanged(option),
+            backgroundColor: Colors.transparent,
+            selectedColor: cbGreen.withValues(alpha: 0.2),
+            side: BorderSide(
+              color: selected ? cbGreen : Colors.transparent,
+              width: 1,
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            labelStyle: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: selected ? Colors.white : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.82),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+}
+
 class _NewRifleDialog extends StatefulWidget {
   const _NewRifleDialog({this.existing});
 
@@ -26238,315 +26442,274 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(widget.existing == null ? 'Add rifle' : 'Edit rifle'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              textCapitalization: TextCapitalization.words,
-              controller: _caliber,
-              decoration: const InputDecoration(
-                labelText: 'Caliber (ex: .308) *',
+    final title = widget.existing == null ? 'Add Rifle' : 'Edit Rifle';
+    final summaryLabel = [
+      (_name.text.trim().isNotEmpty ? _name.text.trim() : null),
+      (_manufacturer.text.trim().isNotEmpty ? _manufacturer.text.trim() : null),
+      (_model.text.trim().isNotEmpty ? _model.text.trim() : null),
+    ].whereType<String>().where((v) => v.isNotEmpty).join(' ');
+
+    return Dialog.fullscreen(
+      child: Scaffold(
+        backgroundColor: cbBg,
+        appBar: AppBar(
+          backgroundColor: cbBg,
+          surfaceTintColor: Colors.transparent,
+          leading: TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          title: Text(title),
+          centerTitle: true,
+          actions: [
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: cbGreen,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                ),
+                onPressed: _save,
+                child: const Text('Save'),
               ),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _muzzleVelocityCtrl,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              decoration: const InputDecoration(
-                labelText: 'Muzzle velocity FPS (optional)',
-                helperText: 'Auto-fills BA when this ammo is selected.',
-              ),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              textCapitalization: TextCapitalization.words,
-              controller: _manufacturer,
-              decoration: const InputDecoration(labelText: 'Manufacturer *'),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              textCapitalization: TextCapitalization.words,
-              controller: _model,
-              decoration: const InputDecoration(labelText: 'Model *'),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              textCapitalization: TextCapitalization.words,
-              controller: _name,
-              decoration: const InputDecoration(labelText: 'Name (optional)'),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-
-            ExpansionTile(
-              tilePadding: EdgeInsets.zero,
-              title: const Text('Other details'),
-              children: [
-                const SizedBox(height: 8),
-                TextField(
-                  textCapitalization: TextCapitalization.words,
-                  controller: _serialNumber,
-                  decoration: const InputDecoration(
-                    labelText: 'Serial number (optional)',
-                  ),
-                  textInputAction: TextInputAction.next,
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        textCapitalization: TextCapitalization.words,
-                        controller: _barrelLength,
-                        decoration: const InputDecoration(
-                          labelText: 'Barrel length (optional)',
-                        ),
-                        textInputAction: TextInputAction.next,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: TextField(
-                        textCapitalization: TextCapitalization.words,
-                        controller: _twistRate,
-                        decoration: const InputDecoration(
-                          labelText: 'Twist rate (optional)',
-                        ),
-                        textInputAction: TextInputAction.next,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        _purchaseDate == null
-                            ? 'Purchase date (optional)'
-                            : 'Purchase date: ${_purchaseDate!.month}/${_purchaseDate!.day}/${_purchaseDate!.year}',
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: () async {
-                        final picked = await showDatePicker(
-                          context: context,
-                          initialDate: DateTime.now(),
-                          firstDate: DateTime(1970),
-                          lastDate: DateTime.now(),
-                        );
-                        if (picked != null) {
-                          setState(() => _purchaseDate = picked);
-                        }
-                      },
-                      child: const Text('Pick'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  textCapitalization: TextCapitalization.words,
-                  controller: _purchasePrice,
-                  decoration: const InputDecoration(
-                    labelText: 'Purchase price (optional)',
-                  ),
-                  keyboardType: TextInputType.numberWithOptions(decimal: true),
-                  textInputAction: TextInputAction.next,
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  textCapitalization: TextCapitalization.words,
-                  controller: _purchaseLocation,
-                  decoration: const InputDecoration(
-                    labelText: 'Purchase location (optional)',
-                  ),
-                  textInputAction: TextInputAction.next,
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  textCapitalization: TextCapitalization.words,
-                  controller: _notes,
-                  decoration: const InputDecoration(
-                    labelText: 'Notes (optional)',
-                  ),
-                  maxLines: 2,
-                ),
-                const SizedBox(height: 8),
-              ],
-            ),
-
-            const SizedBox(height: 12),
-
-            ExpansionTile(
-              tilePadding: EdgeInsets.zero,
-              title: const Text('Advanced Ballistic Data'),
-              subtitle: const Text('Optional defaults for Ballistic Assistant.'),
-              children: [
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _zeroDistanceCtrl,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        decoration: const InputDecoration(
-                          labelText: 'Zero distance',
-                          helperText: 'Distance from zero to target.',
-                        ),
-                        textInputAction: TextInputAction.next,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: DropdownButtonFormField<DistanceUnit>(
-                        value: _zeroDistanceUnit,
-                        decoration: const InputDecoration(labelText: 'Zero distance unit'),
-                        items: DistanceUnit.values
-                            .map(
-                              (u) => DropdownMenuItem(
-                                value: u,
-                                child: Text(u.name.toUpperCase()),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (v) => setState(() => _zeroDistanceUnit = v ?? DistanceUnit.yards),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _sightHeightCtrl,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        decoration: const InputDecoration(
-                          labelText: 'Sight height',
-                          helperText: 'Center of bore to center of optic.',
-                        ),
-                        textInputAction: TextInputAction.next,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: DropdownButtonFormField<TwistDirection>(
-                        value: _twistDirection,
-                        decoration: const InputDecoration(labelText: 'Twist direction'),
-                        items: TwistDirection.values
-                            .map(
-                              (u) => DropdownMenuItem(
-                                value: u,
-                                child: Text(u == TwistDirection.rightHand ? 'Right hand' : 'Left hand'),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (v) => setState(() => _twistDirection = v ?? TwistDirection.rightHand),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-              ],
-            ),
-
-            const SizedBox(height: 12),
-
-            ExpansionTile(
-              tilePadding: EdgeInsets.zero,
-              title: const Text('Scope'),
-              subtitle: Text(
-                'Adjustment unit: ${_scopeUnit.name.toUpperCase()}',
-              ),
-              children: [
-                const SizedBox(height: 8),
-                DropdownButtonFormField<ScopeUnit>(
-                  initialValue: _scopeUnit,
-                  decoration: const InputDecoration(
-                    labelText: 'Adjustment unit',
-                  ),
-                  items: ScopeUnit.values
-                      .map(
-                        (u) => DropdownMenuItem(
-                          value: u,
-                          child: Text(u.name.toUpperCase()),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (v) =>
-                      setState(() => _scopeUnit = v ?? ScopeUnit.mil),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  textCapitalization: TextCapitalization.words,
-                  controller: _scopeMake,
-                  decoration: const InputDecoration(
-                    labelText: 'Scope make (optional)',
-                  ),
-                  textInputAction: TextInputAction.next,
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  textCapitalization: TextCapitalization.words,
-                  controller: _scopeModel,
-                  decoration: const InputDecoration(
-                    labelText: 'Scope model (optional)',
-                  ),
-                  textInputAction: TextInputAction.next,
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  textCapitalization: TextCapitalization.words,
-                  controller: _scopeSerial,
-                  decoration: const InputDecoration(
-                    labelText: 'Scope serial (optional)',
-                  ),
-                  textInputAction: TextInputAction.next,
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  textCapitalization: TextCapitalization.words,
-                  controller: _scopeMount,
-                  decoration: const InputDecoration(
-                    labelText: 'Mount/rings (optional)',
-                  ),
-                  textInputAction: TextInputAction.next,
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  textCapitalization: TextCapitalization.words,
-                  controller: _scopeNotes,
-                  decoration: const InputDecoration(
-                    labelText: 'Scope notes (optional)',
-                  ),
-                  maxLines: 2,
-                ),
-                const SizedBox(height: 8),
-              ],
             ),
           ],
         ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+        body: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+            children: [
+              _EditorSummaryCard(
+                label: summaryLabel.isNotEmpty ? summaryLabel : (_caliber.text.trim().isNotEmpty ? _caliber.text.trim() : 'Rifle'),
+                secondary: _caliber.text.trim().isNotEmpty ? _caliber.text.trim() : null,
+                tertiary: [
+                  _manufacturer.text.trim().isNotEmpty ? _manufacturer.text.trim() : null,
+                  _model.text.trim().isNotEmpty ? _model.text.trim() : null,
+                ].whereType<String>().where((v) => v.isNotEmpty).join(' / '),
+              ),
+              const SizedBox(height: 12),
+              _EditorSectionCard(
+                title: 'Identity',
+                icon: Icons.person_outline,
+                child: Column(
+                  children: [
+                    TextField(
+                      textCapitalization: TextCapitalization.words,
+                      controller: _caliber,
+                      decoration: const InputDecoration(labelText: 'Caliber *'),
+                      textInputAction: TextInputAction.next,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      textCapitalization: TextCapitalization.words,
+                      controller: _manufacturer,
+                      decoration: const InputDecoration(labelText: 'Manufacturer *'),
+                      textInputAction: TextInputAction.next,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      textCapitalization: TextCapitalization.words,
+                      controller: _model,
+                      decoration: const InputDecoration(labelText: 'Model'),
+                      textInputAction: TextInputAction.next,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      textCapitalization: TextCapitalization.words,
+                      controller: _name,
+                      decoration: const InputDecoration(labelText: 'Nickname / Name'),
+                      textInputAction: TextInputAction.next,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              _EditorSectionCard(
+                title: 'Barrel',
+                icon: Icons.straighten,
+                child: Column(
+                  children: [
+                    TextField(
+                      controller: _barrelLength,
+                      textCapitalization: TextCapitalization.none,
+                      decoration: const InputDecoration(labelText: 'Barrel length'),
+                      textInputAction: TextInputAction.next,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _twistRate,
+                      textCapitalization: TextCapitalization.none,
+                      decoration: const InputDecoration(labelText: 'Twist rate'),
+                      textInputAction: TextInputAction.next,
+                    ),
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Twist direction',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.72),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _SegmentedChoice<TwistDirection>(
+                      value: _twistDirection,
+                      options: TwistDirection.values,
+                      labels: {
+                        TwistDirection.rightHand: 'Right hand',
+                        TwistDirection.leftHand: 'Left hand',
+                      },
+                      onChanged: (value) => setState(() => _twistDirection = value),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              _EditorSectionCard(
+                title: 'Ballistic Defaults',
+                icon: Icons.bolt_outlined,
+                helperText: 'Used to auto-fill Ballistic Assistant.',
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _zeroDistanceCtrl,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            decoration: const InputDecoration(labelText: 'Zero distance'),
+                            textInputAction: TextInputAction.next,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Zero distance unit',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.72),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _SegmentedChoice<DistanceUnit>(
+                      value: _zeroDistanceUnit,
+                      options: DistanceUnit.values,
+                      labels: {
+                        DistanceUnit.yards: 'Yards',
+                        DistanceUnit.meters: 'Meters',
+                      },
+                      onChanged: (value) => setState(() => _zeroDistanceUnit = value),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _sightHeightCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(labelText: 'Sight height'),
+                      textInputAction: TextInputAction.next,
+                    ),
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Adjustment unit',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.72),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _SegmentedChoice<ScopeUnit>(
+                      value: _scopeUnit,
+                      options: ScopeUnit.values,
+                      labels: {
+                        ScopeUnit.mil: 'MIL',
+                        ScopeUnit.moa: 'MOA',
+                        ScopeUnit.inches: 'INCHES',
+                      },
+                      onChanged: (value) => setState(() => _scopeUnit = value),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              _EditorSectionCard(
+                title: 'Ownership & Notes',
+                icon: Icons.inventory_2_outlined,
+                child: Column(
+                  children: [
+                    TextField(
+                      textCapitalization: TextCapitalization.words,
+                      controller: _serialNumber,
+                      decoration: const InputDecoration(labelText: 'Serial number'),
+                      textInputAction: TextInputAction.next,
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            _purchaseDate == null
+                                ? 'Purchase date'
+                                : 'Purchase date: ${_purchaseDate!.month}/${_purchaseDate!.day}/${_purchaseDate!.year}',
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.82),
+                            ),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: _purchaseDate ?? DateTime.now(),
+                              firstDate: DateTime(1970),
+                              lastDate: DateTime.now(),
+                            );
+                            if (picked != null) setState(() => _purchaseDate = picked);
+                          },
+                          child: const Text('Pick date'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _purchasePrice,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(labelText: 'Purchase price'),
+                      textInputAction: TextInputAction.next,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      textCapitalization: TextCapitalization.words,
+                      controller: _purchaseLocation,
+                      decoration: const InputDecoration(labelText: 'Purchase location'),
+                      textInputAction: TextInputAction.next,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      textCapitalization: TextCapitalization.words,
+                      controller: _notes,
+                      decoration: const InputDecoration(labelText: 'Notes'),
+                      minLines: 2,
+                      maxLines: 4,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
-        ElevatedButton(onPressed: _save, child: const Text('Save')),
-      ],
+      ),
     );
   }
 }
@@ -26717,257 +26880,263 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(widget.existing == null ? 'Add ammo' : 'Edit ammo'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              textCapitalization: TextCapitalization.words,
-              controller: _caliber,
-              decoration: const InputDecoration(
-                labelText: 'Caliber (ex: .308) *',
-              ),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              textCapitalization: TextCapitalization.words,
-              controller: _bullet,
-              decoration: const InputDecoration(
-                labelText: 'Bullet (ex: SMK) *',
-              ),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              textCapitalization: TextCapitalization.words,
-              controller: _grain,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Bullet grain (ex: 175) *',
-              ),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              textCapitalization: TextCapitalization.words,
-              controller: _bc,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              decoration: const InputDecoration(
-                labelText: 'Ballistic coefficient (optional)',
-              ),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            ExpansionTile(
-              tilePadding: EdgeInsets.zero,
-              title: const Text('Advanced Ballistic Data'),
-              children: [
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        textCapitalization: TextCapitalization.words,
-                        controller: _muzzleVelocityCtrl,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        decoration: const InputDecoration(
-                          labelText: 'Muzzle velocity FPS',
-                        ),
-                        textInputAction: TextInputAction.next,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: DropdownButtonFormField<DragModel>(
-                        value: _dragModel,
-                        decoration: const InputDecoration(labelText: 'Drag model'),
-                        items: DragModel.values
-                            .map(
-                              (u) => DropdownMenuItem(
-                                value: u,
-                                child: Text(u.name.toUpperCase()),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (v) => setState(() => _dragModel = v ?? DragModel.g7),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _bulletLengthCtrl,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        decoration: const InputDecoration(
-                          labelText: 'Bullet length inches',
-                        ),
-                        textInputAction: TextInputAction.next,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: TextField(
-                        controller: _velocityTempSensitivityCtrl,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        decoration: const InputDecoration(
-                          labelText: 'Velocity temp sensitivity FPS/°F',
-                        ),
-                        textInputAction: TextInputAction.next,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-              ],
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              textCapitalization: TextCapitalization.words,
-              controller: _manufacturer,
-              decoration: const InputDecoration(labelText: 'Manufacturer *'),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              textCapitalization: TextCapitalization.words,
-              controller: _lot,
-              decoration: const InputDecoration(
-                labelText: 'Lot number (optional)',
-              ),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              textCapitalization: TextCapitalization.words,
-              controller: _name,
-              decoration: const InputDecoration(labelText: 'Name (optional)'),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    _purchaseDate == null
-                        ? 'Purchase date (optional)'
-                        : 'Purchase date: ${_fmtDate(_purchaseDate!)}',
+    final title = widget.existing == null ? 'Add Ammo' : 'Edit Ammo';
+    final summaryLabel = [
+      (_name.text.trim().isNotEmpty ? _name.text.trim() : null),
+      (_manufacturer.text.trim().isNotEmpty ? _manufacturer.text.trim() : null),
+      (_bullet.text.trim().isNotEmpty ? _bullet.text.trim() : null),
+    ].whereType<String>().where((v) => v.isNotEmpty).join(' ');
+
+    return Dialog.fullscreen(
+      child: Scaffold(
+        backgroundColor: cbBg,
+        appBar: AppBar(
+          backgroundColor: cbBg,
+          surfaceTintColor: Colors.transparent,
+          leading: TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          title: Text(title),
+          centerTitle: true,
+          actions: [
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: cbGreen,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
                   ),
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
                 ),
-                TextButton(
-                  onPressed: () async {
-                    final now = DateTime.now();
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate:
-                          _purchaseDate ??
-                          DateTime(now.year, now.month, now.day),
-                      firstDate: DateTime(1990),
-                      lastDate: DateTime(now.year + 2),
-                    );
-                    if (picked != null) setState(() => _purchaseDate = picked);
-                  },
-                  child: const Text('Pick'),
-                ),
-                if (_purchaseDate != null)
-                  IconButton(
-                    tooltip: 'Clear',
-                    onPressed: () => setState(() => _purchaseDate = null),
-                    icon: const Icon(Icons.clear),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              textCapitalization: TextCapitalization.words,
-              controller: _purchasePrice,
-              decoration: const InputDecoration(
-                labelText: 'Purchase price (optional)',
+                onPressed: () {
+                  final caliber = _caliber.text.trim();
+                  final bullet = _bullet.text.trim();
+                  final grainStr = _grain.text.trim();
+
+                  if (caliber.isEmpty || bullet.isEmpty || grainStr.isEmpty) return;
+
+                  final grain = int.tryParse(grainStr);
+                  if (grain == null) return;
+
+                  final nameRaw = _name.text.trim();
+                  final name = nameRaw.isEmpty ? null : nameRaw;
+
+                  final manufacturerRaw = _manufacturer.text.trim();
+                  final manufacturer = manufacturerRaw.isEmpty ? null : manufacturerRaw;
+
+                  final lotRaw = _lot.text.trim();
+                  final lot = lotRaw.isEmpty ? null : lotRaw;
+
+                  final bcRaw = _bc.text.trim();
+                  final bc = bcRaw.isEmpty ? null : double.tryParse(bcRaw);
+
+                  final mvRaw = _muzzleVelocityCtrl.text.trim();
+                  final mv = mvRaw.isEmpty ? null : double.tryParse(mvRaw);
+                  final bulletLength = _bulletLengthCtrl.text.trim();
+                  final velocityTempSensitivity = _velocityTempSensitivityCtrl.text.trim();
+
+                  final priceRaw = _purchasePrice.text.trim();
+                  final price = priceRaw.isEmpty ? null : priceRaw;
+
+                  final notesRaw = _notes.text.trim();
+                  final notes = notesRaw.isEmpty ? null : notesRaw;
+
+                  Navigator.of(context).pop(
+                    _NewAmmoResult(
+                      name: name,
+                      caliber: caliber,
+                      grain: grain,
+                      bullet: bullet,
+                      ballisticCoefficient: bc,
+                      muzzleVelocityFps: mv,
+                      dragModel: _dragModel,
+                      bulletLengthInches: bulletLength.isEmpty ? null : double.tryParse(bulletLength),
+                      velocityTempSensitivityFpsPerDegree: velocityTempSensitivity.isEmpty ? null : double.tryParse(velocityTempSensitivity),
+                      manufacturer: manufacturer,
+                      lotNumber: lot,
+                      purchaseDate: _purchaseDate,
+                      purchasePrice: price,
+                      notes: notes,
+                    ),
+                  );
+                },
+                child: const Text('Save'),
               ),
-              keyboardType: TextInputType.number,
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              textCapitalization: TextCapitalization.words,
-              controller: _notes,
-              decoration: const InputDecoration(labelText: 'Notes (optional)'),
-              minLines: 2,
-              maxLines: 5,
             ),
           ],
         ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () {
-            final caliber = _caliber.text.trim();
-            final bullet = _bullet.text.trim();
-            final grainStr = _grain.text.trim();
-
-            if (caliber.isEmpty || bullet.isEmpty || grainStr.isEmpty) return;
-
-            final grain = int.tryParse(grainStr);
-            if (grain == null) return;
-
-            final nameRaw = _name.text.trim();
-            final name = nameRaw.isEmpty ? null : nameRaw;
-
-            final manufacturerRaw = _manufacturer.text.trim();
-            final manufacturer = manufacturerRaw.isEmpty
-                ? null
-                : manufacturerRaw;
-
-            final lotRaw = _lot.text.trim();
-            final lot = lotRaw.isEmpty ? null : lotRaw;
-
-            final bcRaw = _bc.text.trim();
-            final bc = bcRaw.isEmpty ? null : double.tryParse(bcRaw);
-
-            final mvRaw = _muzzleVelocityCtrl.text.trim();
-            final mv = mvRaw.isEmpty ? null : double.tryParse(mvRaw);
-            final bulletLength = _bulletLengthCtrl.text.trim();
-            final velocityTempSensitivity = _velocityTempSensitivityCtrl.text.trim();
-
-            final priceRaw = _purchasePrice.text.trim();
-            final price = priceRaw.isEmpty ? null : priceRaw;
-
-            final notesRaw = _notes.text.trim();
-            final notes = notesRaw.isEmpty ? null : notesRaw;
-
-            Navigator.of(context).pop(
-              _NewAmmoResult(
-                name: name,
-                caliber: caliber,
-                grain: grain,
-                bullet: bullet,
-                ballisticCoefficient: bc,
-                muzzleVelocityFps: mv,
-                dragModel: _dragModel,
-                bulletLengthInches: bulletLength.isEmpty ? null : double.tryParse(bulletLength),
-                velocityTempSensitivityFpsPerDegree: velocityTempSensitivity.isEmpty ? null : double.tryParse(velocityTempSensitivity),
-                manufacturer: manufacturer,
-                lotNumber: lot,
-                purchaseDate: _purchaseDate,
-                purchasePrice: price,
-                notes: notes,
+        body: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+            children: [
+              _EditorSummaryCard(
+                label: summaryLabel.isNotEmpty ? summaryLabel : (_caliber.text.trim().isNotEmpty ? _caliber.text.trim() : 'Ammo'),
+                secondary: _caliber.text.trim().isNotEmpty ? _caliber.text.trim() : null,
+                tertiary: [
+                  _grain.text.trim().isNotEmpty ? '${_grain.text.trim()} gr' : null,
+                  _bullet.text.trim().isNotEmpty ? _bullet.text.trim() : null,
+                ].whereType<String>().where((v) => v.isNotEmpty).join(' / '),
+                subtitle: _manufacturer.text.trim().isNotEmpty ? _manufacturer.text.trim() : null,
               ),
-            );
-          },
-          child: const Text('Save'),
+              const SizedBox(height: 12),
+              _EditorSectionCard(
+                title: 'Identity',
+                icon: Icons.scatter_plot_outlined,
+                child: Column(
+                  children: [
+                    TextField(
+                      textCapitalization: TextCapitalization.words,
+                      controller: _caliber,
+                      decoration: const InputDecoration(labelText: 'Caliber *'),
+                      textInputAction: TextInputAction.next,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      textCapitalization: TextCapitalization.words,
+                      controller: _manufacturer,
+                      decoration: const InputDecoration(labelText: 'Manufacturer *'),
+                      textInputAction: TextInputAction.next,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      textCapitalization: TextCapitalization.words,
+                      controller: _bullet,
+                      decoration: const InputDecoration(labelText: 'Bullet *'),
+                      textInputAction: TextInputAction.next,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _grain,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: 'Bullet grain *'),
+                      textInputAction: TextInputAction.next,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      textCapitalization: TextCapitalization.words,
+                      controller: _lot,
+                      decoration: const InputDecoration(labelText: 'Name / Lot number'),
+                      textInputAction: TextInputAction.next,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              _EditorSectionCard(
+                title: 'Ballistic Defaults',
+                icon: Icons.speed_outlined,
+                helperText: 'Used to auto-fill Ballistic Assistant.',
+                child: Column(
+                  children: [
+                    TextField(
+                      controller: _muzzleVelocityCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(labelText: 'Muzzle velocity FPS'),
+                      textInputAction: TextInputAction.next,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _bc,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(labelText: 'Ballistic coefficient'),
+                      textInputAction: TextInputAction.next,
+                    ),
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Drag model',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.72),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _SegmentedChoice<DragModel>(
+                      value: _dragModel,
+                      options: DragModel.values,
+                      labels: {
+                        DragModel.g1: 'G1',
+                        DragModel.g7: 'G7',
+                      },
+                      onChanged: (value) => setState(() => _dragModel = value),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _bulletLengthCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(labelText: 'Bullet length inches'),
+                      textInputAction: TextInputAction.next,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _velocityTempSensitivityCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(labelText: 'Velocity temp sensitivity FPS/°F'),
+                      textInputAction: TextInputAction.next,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              _EditorSectionCard(
+                title: 'Purchase & Notes',
+                icon: Icons.receipt_long_outlined,
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            _purchaseDate == null
+                                ? 'Purchase date'
+                                : 'Purchase date: ${_fmtDate(_purchaseDate!)}',
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.82),
+                            ),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () async {
+                            final now = DateTime.now();
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: _purchaseDate ?? DateTime(now.year, now.month, now.day),
+                              firstDate: DateTime(1990),
+                              lastDate: DateTime(now.year + 2),
+                            );
+                            if (picked != null) setState(() => _purchaseDate = picked);
+                          },
+                          child: const Text('Pick date'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _purchasePrice,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(labelText: 'Purchase price'),
+                      textInputAction: TextInputAction.next,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      textCapitalization: TextCapitalization.words,
+                      controller: _notes,
+                      decoration: const InputDecoration(labelText: 'Notes'),
+                      minLines: 2,
+                      maxLines: 5,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
-      ],
+      ),
     );
   }
 }
