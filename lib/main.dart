@@ -1288,6 +1288,8 @@ enum WindType { fullValue, clock }
 
 enum DragModel { g1, g7 }
 
+enum TwistDirection { rightHand, leftHand }
+
 enum BallisticValidationOutcome { confirmedAccurate, adjustmentRequired }
 
 class DistanceKey {
@@ -3551,6 +3553,10 @@ class AppState extends ChangeNotifier {
     DateTime? purchaseDate,
     String? purchasePrice,
     String? purchaseLocation,
+    double? sightHeightInches,
+    double? zeroDistance,
+    DistanceUnit zeroDistanceUnit = DistanceUnit.yards,
+    TwistDirection twistDirection = TwistDirection.rightHand,
     double? ballisticZeroDistance,
     double? ballisticSightHeightInches,
   }) {
@@ -3599,8 +3605,13 @@ class AppState extends ChangeNotifier {
         purchaseLocation: purchaseLocation?.trim().isEmpty == true
             ? null
             : purchaseLocation?.trim(),
-        ballisticZeroDistance: ballisticZeroDistance,
-        ballisticSightHeightInches: ballisticSightHeightInches,
+        sightHeightInches: sightHeightInches ?? ballisticSightHeightInches,
+        zeroDistance: zeroDistance ?? ballisticZeroDistance,
+        zeroDistanceUnit: zeroDistanceUnit,
+        twistDirection: twistDirection,
+        ballisticZeroDistance: ballisticZeroDistance ?? zeroDistance,
+        ballisticSightHeightInches:
+            ballisticSightHeightInches ?? sightHeightInches,
       ),
     );
     notifyListeners();
@@ -3632,6 +3643,10 @@ class AppState extends ChangeNotifier {
     DateTime? purchaseDate,
     String? purchasePrice,
     String? purchaseLocation,
+    double? sightHeightInches,
+    double? zeroDistance,
+    DistanceUnit? zeroDistanceUnit,
+    TwistDirection? twistDirection,
     double? ballisticZeroDistance,
     double? ballisticSightHeightInches,
   }) {
@@ -3667,9 +3682,13 @@ class AppState extends ChangeNotifier {
       purchaseLocation: purchaseLocation?.trim().isEmpty == true
           ? null
           : purchaseLocation?.trim(),
-      ballisticZeroDistance: ballisticZeroDistance ?? r.ballisticZeroDistance,
+      sightHeightInches: sightHeightInches ?? r.sightHeightInches ?? r.ballisticSightHeightInches,
+      zeroDistance: zeroDistance ?? r.zeroDistance ?? r.ballisticZeroDistance,
+      zeroDistanceUnit: zeroDistanceUnit ?? r.zeroDistanceUnit,
+      twistDirection: twistDirection ?? r.twistDirection,
+      ballisticZeroDistance: ballisticZeroDistance ?? r.ballisticZeroDistance ?? r.zeroDistance,
       ballisticSightHeightInches:
-          ballisticSightHeightInches ?? r.ballisticSightHeightInches,
+          ballisticSightHeightInches ?? r.ballisticSightHeightInches ?? r.sightHeightInches,
       scopeUnit: scopeUnit ?? r.scopeUnit,
       scopeMake: scopeMake?.trim().isEmpty == true ? null : scopeMake?.trim(),
       scopeModel: scopeModel?.trim().isEmpty == true
@@ -3755,6 +3774,9 @@ class AppState extends ChangeNotifier {
     String? purchasePrice,
     double? ballisticCoefficient,
     double? muzzleVelocityFps,
+    DragModel dragModel = DragModel.g7,
+    double? bulletLengthInches,
+    double? velocityTempSensitivityFpsPerDegree,
   }) {
     _ammoLots.add(
       AmmoLot(
@@ -3775,6 +3797,10 @@ class AppState extends ChangeNotifier {
             : purchasePrice?.trim(),
         ballisticCoefficient: ballisticCoefficient,
         muzzleVelocityFps: muzzleVelocityFps,
+        dragModel: dragModel,
+        bulletLengthInches: bulletLengthInches,
+        velocityTempSensitivityFpsPerDegree:
+            velocityTempSensitivityFpsPerDegree,
       ),
     );
     notifyListeners();
@@ -3793,6 +3819,9 @@ class AppState extends ChangeNotifier {
     String? purchasePrice,
     double? ballisticCoefficient,
     double? muzzleVelocityFps,
+    DragModel? dragModel,
+    double? bulletLengthInches,
+    double? velocityTempSensitivityFpsPerDegree,
   }) {
     final idx = _ammoLots.indexWhere((a) => a.id == ammoLotId);
     if (idx < 0) return;
@@ -3814,6 +3843,11 @@ class AppState extends ChangeNotifier {
           : purchasePrice?.trim(),
       ballisticCoefficient: ballisticCoefficient,
       muzzleVelocityFps: muzzleVelocityFps,
+      dragModel: dragModel ?? _ammoLots[idx].dragModel,
+      bulletLengthInches: bulletLengthInches ?? _ammoLots[idx].bulletLengthInches,
+      velocityTempSensitivityFpsPerDegree:
+          velocityTempSensitivityFpsPerDegree ??
+          _ammoLots[idx].velocityTempSensitivityFpsPerDegree,
     );
     notifyListeners();
   }
@@ -5863,9 +5897,30 @@ class AppState extends ChangeNotifier {
                 : null,
             purchasePrice: (m['purchasePrice'] as String?)?.toString(),
             purchaseLocation: (m['purchaseLocation'] as String?)?.toString(),
-            ballisticZeroDistance: _toNullableDouble(m['ballisticZeroDistance']),
-            ballisticSightHeightInches:
+            sightHeightInches: _toNullableDouble(m['sightHeightInches']) ??
                 _toNullableDouble(m['ballisticSightHeightInches']),
+            zeroDistance: _toNullableDouble(m['zeroDistance']) ??
+                _toNullableDouble(m['ballisticZeroDistance']),
+            zeroDistanceUnit: DistanceUnit.values.firstWhere(
+              (u) =>
+                  u.name ==
+                  (m['zeroDistanceUnit'] ??
+                          DistanceUnit.yards.name)
+                      .toString(),
+              orElse: () => DistanceUnit.yards,
+            ),
+            twistDirection: TwistDirection.values.firstWhere(
+              (u) =>
+                  u.name ==
+                  (m['twistDirection'] ?? TwistDirection.rightHand.name)
+                      .toString(),
+              orElse: () => TwistDirection.rightHand,
+            ),
+            ballisticZeroDistance: _toNullableDouble(m['ballisticZeroDistance']) ??
+                _toNullableDouble(m['zeroDistance']),
+            ballisticSightHeightInches:
+                _toNullableDouble(m['ballisticSightHeightInches']) ??
+                _toNullableDouble(m['sightHeightInches']),
             notes: (m['notes'] as String?)?.toString() ?? '',
             dope: (m['dope'] as String?)?.toString() ?? '',
             scopeMake: (m['scopeMake'] as String?)?.toString(),
@@ -5912,6 +5967,13 @@ class AppState extends ChangeNotifier {
             ballisticCoefficient: (m['ballisticCoefficient'] as num?)
                 ?.toDouble(),
             muzzleVelocityFps: _toNullableDouble(m['muzzleVelocityFps']),
+            dragModel: DragModel.values.firstWhere(
+              (u) => u.name == (m['dragModel'] ?? DragModel.g7.name).toString(),
+              orElse: () => DragModel.g7,
+            ),
+            bulletLengthInches: _toNullableDouble(m['bulletLengthInches']),
+            velocityTempSensitivityFpsPerDegree:
+                _toNullableDouble(m['velocityTempSensitivityFpsPerDegree']),
             manufacturer: (m['manufacturer'] as String?)?.toString(),
             lotNumber: (m['lotNumber'] as String?)?.toString(),
             purchaseDate: (m['purchaseDate'] as String?) != null
@@ -6035,10 +6097,24 @@ class AppState extends ChangeNotifier {
           existing.purchaseLocation,
           incoming.purchaseLocation,
         ),
-        ballisticZeroDistance:
-            existing.ballisticZeroDistance ?? incoming.ballisticZeroDistance,
-        ballisticSightHeightInches: existing.ballisticSightHeightInches ??
+        sightHeightInches: existing.sightHeightInches ??
+            incoming.sightHeightInches ??
+            existing.ballisticSightHeightInches ??
             incoming.ballisticSightHeightInches,
+        zeroDistance: existing.zeroDistance ??
+            incoming.zeroDistance ??
+            existing.ballisticZeroDistance ??
+            incoming.ballisticZeroDistance,
+        zeroDistanceUnit: overwriteScope ? incoming.zeroDistanceUnit : existing.zeroDistanceUnit,
+        twistDirection: overwriteScope ? incoming.twistDirection : existing.twistDirection,
+        ballisticZeroDistance: existing.ballisticZeroDistance ??
+            incoming.ballisticZeroDistance ??
+            existing.zeroDistance ??
+            incoming.zeroDistance,
+        ballisticSightHeightInches: existing.ballisticSightHeightInches ??
+            incoming.ballisticSightHeightInches ??
+            existing.sightHeightInches ??
+            incoming.sightHeightInches,
         notes: preferExistingRequired(existing.notes, incoming.notes),
         dope: preferExistingRequired(existing.dope, incoming.dope),
         // Never overwrite history fields here (manualRoundCount, dopeEntries).
@@ -6077,6 +6153,10 @@ class AppState extends ChangeNotifier {
           existing.muzzleVelocityFps,
           incoming.muzzleVelocityFps,
         ),
+        dragModel: overwriteScope ? incoming.dragModel : existing.dragModel,
+        bulletLengthInches: existing.bulletLengthInches ?? incoming.bulletLengthInches,
+        velocityTempSensitivityFpsPerDegree: existing.velocityTempSensitivityFpsPerDegree ??
+            incoming.velocityTempSensitivityFpsPerDegree,
         manufacturer: preferExistingNullable(
           existing.manufacturer,
           incoming.manufacturer,
@@ -6239,6 +6319,9 @@ Map<String, dynamic> _ammoLotToMap(AmmoLot ammo) => <String, dynamic>{
   'purchasePrice': ammo.purchasePrice,
   'ballisticCoefficient': ammo.ballisticCoefficient,
   'muzzleVelocityFps': ammo.muzzleVelocityFps,
+  'dragModel': ammo.dragModel.name,
+  'bulletLengthInches': ammo.bulletLengthInches,
+  'velocityTempSensitivityFpsPerDegree': ammo.velocityTempSensitivityFpsPerDegree,
 };
 
 AmmoLot _ammoLotFromMap(Map<String, dynamic> map) => AmmoLot(
@@ -6257,6 +6340,13 @@ AmmoLot _ammoLotFromMap(Map<String, dynamic> map) => AmmoLot(
   purchasePrice: map['purchasePrice']?.toString(),
   ballisticCoefficient: _toNullableDouble(map['ballisticCoefficient']),
   muzzleVelocityFps: _toNullableDouble(map['muzzleVelocityFps']),
+  dragModel: DragModel.values.firstWhere(
+    (u) => u.name == (map['dragModel'] ?? DragModel.g7.name).toString(),
+    orElse: () => DragModel.g7,
+  ),
+  bulletLengthInches: _toNullableDouble(map['bulletLengthInches']),
+  velocityTempSensitivityFpsPerDegree:
+      _toNullableDouble(map['velocityTempSensitivityFpsPerDegree']),
 );
 
 Map<String, dynamic> _sessionStringMetaToMap(SessionStringMeta meta) =>
@@ -6948,6 +7038,11 @@ class Rifle {
   final String? purchasePrice;
   final String? purchaseLocation;
 
+  final double? sightHeightInches;
+  final double? zeroDistance;
+  final DistanceUnit zeroDistanceUnit;
+  final TwistDirection twistDirection;
+
   final double? ballisticZeroDistance;
   final double? ballisticSightHeightInches;
 
@@ -6980,6 +7075,10 @@ class Rifle {
     this.purchaseDate,
     this.purchasePrice,
     this.purchaseLocation,
+    this.sightHeightInches,
+    this.zeroDistance,
+    this.zeroDistanceUnit = DistanceUnit.yards,
+    this.twistDirection = TwistDirection.rightHand,
     this.ballisticZeroDistance,
     this.ballisticSightHeightInches,
   });
@@ -7013,6 +7112,10 @@ class Rifle {
     DateTime? purchaseDate,
     String? purchasePrice,
     String? purchaseLocation,
+    double? sightHeightInches,
+    double? zeroDistance,
+    DistanceUnit? zeroDistanceUnit,
+    TwistDirection? twistDirection,
     double? ballisticZeroDistance,
     double? ballisticSightHeightInches,
   }) {
@@ -7045,9 +7148,14 @@ class Rifle {
       purchaseDate: purchaseDate ?? this.purchaseDate,
       purchasePrice: purchasePrice ?? this.purchasePrice,
       purchaseLocation: purchaseLocation ?? this.purchaseLocation,
-      ballisticZeroDistance: ballisticZeroDistance ?? this.ballisticZeroDistance,
+      sightHeightInches: sightHeightInches ?? this.sightHeightInches ?? this.ballisticSightHeightInches,
+      zeroDistance: zeroDistance ?? this.zeroDistance ?? this.ballisticZeroDistance,
+      zeroDistanceUnit: zeroDistanceUnit ?? this.zeroDistanceUnit,
+      twistDirection: twistDirection ?? this.twistDirection,
+      ballisticZeroDistance:
+          ballisticZeroDistance ?? this.ballisticZeroDistance ?? this.zeroDistance,
       ballisticSightHeightInches:
-          ballisticSightHeightInches ?? this.ballisticSightHeightInches,
+          ballisticSightHeightInches ?? this.ballisticSightHeightInches ?? this.sightHeightInches,
     );
   }
 }
@@ -7130,6 +7238,9 @@ class AmmoLot {
   // Optional ballistics
   final double? ballisticCoefficient;
   final double? muzzleVelocityFps;
+  final DragModel dragModel;
+  final double? bulletLengthInches;
+  final double? velocityTempSensitivityFpsPerDegree;
 
   AmmoLot({
     required this.id,
@@ -7145,7 +7256,50 @@ class AmmoLot {
     this.purchasePrice,
     this.ballisticCoefficient,
     this.muzzleVelocityFps,
+    this.dragModel = DragModel.g7,
+    this.bulletLengthInches,
+    this.velocityTempSensitivityFpsPerDegree,
   });
+
+  AmmoLot copyWith({
+    String? id,
+    String? ownerUserId,
+    String? name,
+    String? caliber,
+    int? grain,
+    String? bullet,
+    String? notes,
+    String? manufacturer,
+    String? lotNumber,
+    DateTime? purchaseDate,
+    String? purchasePrice,
+    double? ballisticCoefficient,
+    double? muzzleVelocityFps,
+    DragModel? dragModel,
+    double? bulletLengthInches,
+    double? velocityTempSensitivityFpsPerDegree,
+  }) {
+    return AmmoLot(
+      id: id ?? this.id,
+      ownerUserId: ownerUserId ?? this.ownerUserId,
+      name: name ?? this.name,
+      caliber: caliber ?? this.caliber,
+      grain: grain ?? this.grain,
+      bullet: bullet ?? this.bullet,
+      notes: notes ?? this.notes,
+      manufacturer: manufacturer ?? this.manufacturer,
+      lotNumber: lotNumber ?? this.lotNumber,
+      purchaseDate: purchaseDate ?? this.purchaseDate,
+      purchasePrice: purchasePrice ?? this.purchasePrice,
+      ballisticCoefficient: ballisticCoefficient ?? this.ballisticCoefficient,
+      muzzleVelocityFps: muzzleVelocityFps ?? this.muzzleVelocityFps,
+      dragModel: dragModel ?? this.dragModel,
+      bulletLengthInches: bulletLengthInches ?? this.bulletLengthInches,
+      velocityTempSensitivityFpsPerDegree:
+          velocityTempSensitivityFpsPerDegree ??
+          this.velocityTempSensitivityFpsPerDegree,
+    );
+  }
 }
 
 class SessionStringMeta {
@@ -21306,6 +21460,10 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
       scopeMount: res.scopeMount,
       scopeNotes: res.scopeNotes,
       purchaseLocation: res.purchaseLocation,
+      sightHeightInches: res.sightHeightInches,
+      zeroDistance: res.zeroDistance,
+      zeroDistanceUnit: res.zeroDistanceUnit,
+      twistDirection: res.twistDirection,
       ballisticZeroDistance: res.ballisticZeroDistance,
       ballisticSightHeightInches: res.ballisticSightHeightInches,
     );
@@ -21330,6 +21488,9 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
       purchasePrice: res.purchasePrice,
       ballisticCoefficient: res.ballisticCoefficient,
       muzzleVelocityFps: res.muzzleVelocityFps,
+      dragModel: res.dragModel,
+      bulletLengthInches: res.bulletLengthInches,
+      velocityTempSensitivityFpsPerDegree: res.velocityTempSensitivityFpsPerDegree,
     );
   }
 
@@ -21364,6 +21525,10 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
       scopeSerial: res.scopeSerial,
       scopeMount: res.scopeMount,
       scopeNotes: res.scopeNotes,
+      sightHeightInches: res.sightHeightInches,
+      zeroDistance: res.zeroDistance,
+      zeroDistanceUnit: res.zeroDistanceUnit,
+      twistDirection: res.twistDirection,
       ballisticZeroDistance: res.ballisticZeroDistance,
       ballisticSightHeightInches: res.ballisticSightHeightInches,
     );
@@ -21389,6 +21554,9 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
       purchasePrice: res.purchasePrice,
       ballisticCoefficient: res.ballisticCoefficient,
       muzzleVelocityFps: res.muzzleVelocityFps,
+      dragModel: res.dragModel,
+      bulletLengthInches: res.bulletLengthInches,
+      velocityTempSensitivityFpsPerDegree: res.velocityTempSensitivityFpsPerDegree,
     );
   }
 
@@ -25913,7 +26081,6 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
   final _caliber = TextEditingController();
   final _manufacturer = TextEditingController();
   final _model = TextEditingController();
-  final _muzzleVelocityCtrl = TextEditingController();
   final _scopeMake = TextEditingController();
   final _scopeModel = TextEditingController();
   final _scopeSerial = TextEditingController();
@@ -25922,14 +26089,17 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
   final _serialNumber = TextEditingController();
   final _barrelLength = TextEditingController();
   final _twistRate = TextEditingController();
+  final _muzzleVelocityCtrl = TextEditingController();
   final _purchasePrice = TextEditingController();
   final _purchaseLocation = TextEditingController();
-  final _ballisticZeroDistance = TextEditingController();
-  final _ballisticSightHeight = TextEditingController();
+  final _zeroDistanceCtrl = TextEditingController();
+  final _sightHeightCtrl = TextEditingController();
   final _notes = TextEditingController();
   final _dope = TextEditingController();
   DateTime? _purchaseDate;
   ScopeUnit _scopeUnit = ScopeUnit.mil;
+  DistanceUnit _zeroDistanceUnit = DistanceUnit.yards;
+  TwistDirection _twistDirection = TwistDirection.rightHand;
 
   @override
   void initState() {
@@ -25952,8 +26122,10 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
       _purchaseDate = r.purchaseDate;
       _purchasePrice.text = r.purchasePrice ?? '';
       _purchaseLocation.text = r.purchaseLocation ?? '';
-      _ballisticZeroDistance.text = r.ballisticZeroDistance?.toString() ?? '';
-      _ballisticSightHeight.text = r.ballisticSightHeightInches?.toString() ?? '';
+      _zeroDistanceCtrl.text = (r.zeroDistance ?? r.ballisticZeroDistance)?.toString() ?? '';
+      _sightHeightCtrl.text = (r.sightHeightInches ?? r.ballisticSightHeightInches)?.toString() ?? '';
+      _zeroDistanceUnit = r.zeroDistanceUnit;
+      _twistDirection = r.twistDirection;
       _notes.text = r.notes;
       _dope.text = r.dope;
       _scopeUnit = r.scopeUnit;
@@ -25969,10 +26141,11 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
     _serialNumber.dispose();
     _barrelLength.dispose();
     _twistRate.dispose();
+    _muzzleVelocityCtrl.dispose();
     _purchasePrice.dispose();
     _purchaseLocation.dispose();
-    _ballisticZeroDistance.dispose();
-    _ballisticSightHeight.dispose();
+    _zeroDistanceCtrl.dispose();
+    _sightHeightCtrl.dispose();
     _notes.dispose();
     _dope.dispose();
     _scopeMake.dispose();
@@ -26051,10 +26224,14 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
         purchaseLocation: _purchaseLocation.text.trim().isEmpty
             ? null
             : _purchaseLocation.text.trim(),
+        zeroDistance: double.tryParse(_zeroDistanceCtrl.text.trim()),
+        sightHeightInches: double.tryParse(_sightHeightCtrl.text.trim()),
+        zeroDistanceUnit: _zeroDistanceUnit,
+        twistDirection: _twistDirection,
         ballisticZeroDistance:
-            double.tryParse(_ballisticZeroDistance.text.trim()),
+            double.tryParse(_zeroDistanceCtrl.text.trim()),
         ballisticSightHeightInches:
-            double.tryParse(_ballisticSightHeight.text.trim()),
+            double.tryParse(_sightHeightCtrl.text.trim()),
       ),
     );
   }
@@ -26211,7 +26388,7 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
 
             ExpansionTile(
               tilePadding: EdgeInsets.zero,
-              title: const Text('Ballistic setup'),
+              title: const Text('Advanced Ballistic Data'),
               subtitle: const Text('Optional defaults for Ballistic Assistant.'),
               children: [
                 const SizedBox(height: 8),
@@ -26219,29 +26396,65 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
                   children: [
                     Expanded(
                       child: TextField(
-                        controller: _ballisticZeroDistance,
+                        controller: _zeroDistanceCtrl,
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
                         decoration: const InputDecoration(
-                          labelText: 'Zero distance (yd, optional)',
-                          helperText: 'Auto-fills BA when this firearm is selected.',
+                          labelText: 'Zero distance',
+                          helperText: 'Distance from zero to target.',
                         ),
                         textInputAction: TextInputAction.next,
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
+                      child: DropdownButtonFormField<DistanceUnit>(
+                        value: _zeroDistanceUnit,
+                        decoration: const InputDecoration(labelText: 'Zero distance unit'),
+                        items: DistanceUnit.values
+                            .map(
+                              (u) => DropdownMenuItem(
+                                value: u,
+                                child: Text(u.name.toUpperCase()),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (v) => setState(() => _zeroDistanceUnit = v ?? DistanceUnit.yards),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
                       child: TextField(
-                        controller: _ballisticSightHeight,
+                        controller: _sightHeightCtrl,
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
                         decoration: const InputDecoration(
-                          labelText: 'Sight height (in, optional)',
+                          labelText: 'Sight height',
                           helperText: 'Center of bore to center of optic.',
                         ),
                         textInputAction: TextInputAction.next,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: DropdownButtonFormField<TwistDirection>(
+                        value: _twistDirection,
+                        decoration: const InputDecoration(labelText: 'Twist direction'),
+                        items: TwistDirection.values
+                            .map(
+                              (u) => DropdownMenuItem(
+                                value: u,
+                                child: Text(u == TwistDirection.rightHand ? 'Right hand' : 'Left hand'),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (v) => setState(() => _twistDirection = v ?? TwistDirection.rightHand),
                       ),
                     ),
                   ],
@@ -26365,6 +26578,10 @@ class _NewRifleResult {
   final DateTime? purchaseDate;
   final String? purchasePrice;
   final String? purchaseLocation;
+  final double? sightHeightInches;
+  final double? zeroDistance;
+  final DistanceUnit zeroDistanceUnit;
+  final TwistDirection twistDirection;
   final double? ballisticZeroDistance;
   final double? ballisticSightHeightInches;
 
@@ -26392,6 +26609,10 @@ class _NewRifleResult {
     this.purchaseDate,
     this.purchasePrice,
     this.purchaseLocation,
+    this.sightHeightInches,
+    this.zeroDistance,
+    this.zeroDistanceUnit = DistanceUnit.yards,
+    this.twistDirection = TwistDirection.rightHand,
     this.ballisticZeroDistance,
     this.ballisticSightHeightInches,
   });
@@ -26405,6 +26626,9 @@ class _NewAmmoResult {
     required this.bullet,
     this.ballisticCoefficient,
     this.muzzleVelocityFps,
+    this.dragModel = DragModel.g7,
+    this.bulletLengthInches,
+    this.velocityTempSensitivityFpsPerDegree,
     this.manufacturer,
     this.lotNumber,
     this.purchaseDate,
@@ -26418,6 +26642,9 @@ class _NewAmmoResult {
   final String bullet;
   final double? ballisticCoefficient;
   final double? muzzleVelocityFps;
+  final DragModel dragModel;
+  final double? bulletLengthInches;
+  final double? velocityTempSensitivityFpsPerDegree;
   final String? manufacturer;
   final String? lotNumber;
   final DateTime? purchaseDate;
@@ -26441,10 +26668,13 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
   final _grain = TextEditingController();
   final _bc = TextEditingController();
   final _muzzleVelocityCtrl = TextEditingController();
+  final _bulletLengthCtrl = TextEditingController();
+  final _velocityTempSensitivityCtrl = TextEditingController();
   final _lot = TextEditingController();
   final _notes = TextEditingController();
   DateTime? _purchaseDate;
   final _purchasePrice = TextEditingController();
+  DragModel _dragModel = DragModel.g7;
 
   @override
   void initState() {
@@ -26458,6 +26688,9 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
       _grain.text = a.grain.toString();
       _bc.text = (a.ballisticCoefficient?.toString() ?? '');
       _muzzleVelocityCtrl.text = (a.muzzleVelocityFps?.toString() ?? '');
+      _dragModel = a.dragModel;
+      _bulletLengthCtrl.text = a.bulletLengthInches?.toString() ?? '';
+      _velocityTempSensitivityCtrl.text = a.velocityTempSensitivityFpsPerDegree?.toString() ?? '';
       _lot.text = a.lotNumber ?? '';
       _purchaseDate = a.purchaseDate;
       _purchasePrice.text = a.purchasePrice ?? '';
@@ -26474,6 +26707,8 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
     _grain.dispose();
     _bc.dispose();
     _muzzleVelocityCtrl.dispose();
+    _bulletLengthCtrl.dispose();
+    _velocityTempSensitivityCtrl.dispose();
     _lot.dispose();
     _notes.dispose();
     _purchasePrice.dispose();
@@ -26526,6 +26761,72 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
                 labelText: 'Ballistic coefficient (optional)',
               ),
               textInputAction: TextInputAction.next,
+            ),
+            const SizedBox(height: 12),
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              title: const Text('Advanced Ballistic Data'),
+              children: [
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        textCapitalization: TextCapitalization.words,
+                        controller: _muzzleVelocityCtrl,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: const InputDecoration(
+                          labelText: 'Muzzle velocity FPS',
+                        ),
+                        textInputAction: TextInputAction.next,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: DropdownButtonFormField<DragModel>(
+                        value: _dragModel,
+                        decoration: const InputDecoration(labelText: 'Drag model'),
+                        items: DragModel.values
+                            .map(
+                              (u) => DropdownMenuItem(
+                                value: u,
+                                child: Text(u.name.toUpperCase()),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (v) => setState(() => _dragModel = v ?? DragModel.g7),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _bulletLengthCtrl,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: const InputDecoration(
+                          labelText: 'Bullet length inches',
+                        ),
+                        textInputAction: TextInputAction.next,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextField(
+                        controller: _velocityTempSensitivityCtrl,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: const InputDecoration(
+                          labelText: 'Velocity temp sensitivity FPS/°F',
+                        ),
+                        textInputAction: TextInputAction.next,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+              ],
             ),
             const SizedBox(height: 12),
             TextField(
@@ -26636,6 +26937,8 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
 
             final mvRaw = _muzzleVelocityCtrl.text.trim();
             final mv = mvRaw.isEmpty ? null : double.tryParse(mvRaw);
+            final bulletLength = _bulletLengthCtrl.text.trim();
+            final velocityTempSensitivity = _velocityTempSensitivityCtrl.text.trim();
 
             final priceRaw = _purchasePrice.text.trim();
             final price = priceRaw.isEmpty ? null : priceRaw;
@@ -26651,6 +26954,9 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
                 bullet: bullet,
                 ballisticCoefficient: bc,
                 muzzleVelocityFps: mv,
+                dragModel: _dragModel,
+                bulletLengthInches: bulletLength.isEmpty ? null : double.tryParse(bulletLength),
+                velocityTempSensitivityFpsPerDegree: velocityTempSensitivity.isEmpty ? null : double.tryParse(velocityTempSensitivity),
                 manufacturer: manufacturer,
                 lotNumber: lot,
                 purchaseDate: _purchaseDate,
