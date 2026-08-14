@@ -22110,6 +22110,7 @@ class _PdfExportOptions {
   final bool includeMaintenance;
   final bool includeEverything;
   final bool includeSessionDetails;
+  final bool includeEvidenceBundle;
   final _PdfSessionFilterMode sessionFilterMode;
   final List<String> selectedSessionIds;
   final DateTime? startDate;
@@ -22127,6 +22128,7 @@ class _PdfExportOptions {
     required this.includeMaintenance,
     required this.includeEverything,
     required this.includeSessionDetails,
+    this.includeEvidenceBundle = false,
     required this.sessionFilterMode,
     this.selectedSessionIds = const [],
     this.startDate,
@@ -22145,6 +22147,7 @@ class _PdfExportOptions {
     'includeMaintenance': includeMaintenance,
     'includeEverything': includeEverything,
     'includeSessionDetails': includeSessionDetails,
+    'includeEvidenceBundle': includeEvidenceBundle,
     'sessionFilterMode': sessionFilterMode.name,
     'selectedSessionIds': selectedSessionIds,
     'startDate': startDate?.toIso8601String(),
@@ -22156,14 +22159,15 @@ class _PdfExportOptions {
 
   factory _PdfExportOptions.fromMap(Map<String, dynamic> map) {
     return _PdfExportOptions(
-      includeSummary: map['includeSummary'] != false,
-      includeCharts: map['includeCharts'] != false,
-      includeRecentSessions: map['includeRecentSessions'] != false,
-      includeUsedRifles: map['includeUsedRifles'] != false,
-      includeUsedAmmo: map['includeUsedAmmo'] != false,
-      includeMaintenance: map['includeMaintenance'] != false,
+      includeSummary: map['includeSummary'] == true,
+      includeCharts: map['includeCharts'] == true,
+      includeRecentSessions: map['includeRecentSessions'] == true,
+      includeUsedRifles: map['includeUsedRifles'] == true,
+      includeUsedAmmo: map['includeUsedAmmo'] == true,
+      includeMaintenance: map['includeMaintenance'] == true,
       includeEverything: map['includeEverything'] == true,
-      includeSessionDetails: map['includeSessionDetails'] != false,
+      includeSessionDetails: map['includeSessionDetails'] == true,
+      includeEvidenceBundle: map['includeEvidenceBundle'] == true,
       sessionFilterMode: _PdfSessionFilterMode.values.firstWhere(
         (mode) => mode.name == (map['sessionFilterMode'] ?? 'all').toString(),
         orElse: () => _PdfSessionFilterMode.all,
@@ -22391,14 +22395,15 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
   }
 
   Future<_PdfExportOptions?> _pickPdfOptions(BuildContext context) async {
-    var includeSummary = true;
-    var includeCharts = true;
-    var includeRecentSessions = true;
-    var includeUsedRifles = true;
-    var includeUsedAmmo = true;
-    var includeMaintenance = true;
+    var includeSummary = false;
+    var includeCharts = false;
+    var includeRecentSessions = false;
+    var includeUsedRifles = false;
+    var includeUsedAmmo = false;
+    var includeMaintenance = false;
     var includeEverything = false;
-    var includeSessionDetails = true;
+    var includeSessionDetails = false;
+    var includeEvidenceBundle = false;
     var sessionFilterMode = _PdfSessionFilterMode.all;
     final selectedSessionIds = <String>{};
     DateTime? startDate;
@@ -22463,6 +22468,7 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
         includeMaintenance = options.includeMaintenance;
         includeEverything = options.includeEverything;
         includeSessionDetails = options.includeSessionDetails;
+        includeEvidenceBundle = options.includeEvidenceBundle;
         sessionFilterMode = options.sessionFilterMode;
         selectedSessionIds
           ..clear()
@@ -22479,416 +22485,478 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
       context: context,
       isScrollControlled: true,
       builder: (_) => StatefulBuilder(
-        builder: (context, setLocalState) => SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 22),
-            child: Column(
-               mainAxisSize: MainAxisSize.max,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'PDF Export Options',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-                ),
-                const SizedBox(height: 10),
-                 Expanded(
-                   child: SingleChildScrollView(
-                     child: Column(
-                       crossAxisAlignment: CrossAxisAlignment.start,
-                       children: [
-                         if (_builtinPdfPresets.isNotEmpty ||
-                             _savedPdfPresets.isNotEmpty) ...[
+        builder: (context, setLocalState) {
+          void setAllSectionSelections(bool value) {
+            setLocalState(() {
+              includeSummary = value;
+              includeCharts = value;
+              includeRecentSessions = value;
+              includeUsedRifles = value;
+              includeUsedAmmo = value;
+              includeMaintenance = value;
+              includeEverything = value;
+              includeSessionDetails = value;
+              includeEvidenceBundle = value;
+            });
+          }
+
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 22),
+              child: Column(
+                mainAxisSize: MainAxisSize.max,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   const Text(
-                    'Presets',
-                    style: TextStyle(fontWeight: FontWeight.w700),
+                    'PDF Export Options',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
+                  const SizedBox(height: 10),
+                  Row(
                     children: [
-                      for (final preset in _builtinPdfPresets)
-                        ActionChip(
-                          label: Text(preset.name),
-                          onPressed: () =>
-                              applyPreset(preset.options, setLocalState),
-                        ),
-                      for (final preset in _savedPdfPresets)
-                        ActionChip(
-                          avatar: const Icon(Icons.bookmark_outline, size: 18),
-                          label: Text(preset.name),
-                          onPressed: () =>
-                              applyPreset(preset.options, setLocalState),
-                        ),
+                      TextButton(
+                        onPressed: () => setAllSectionSelections(true),
+                        child: const Text('Select all'),
+                      ),
+                      TextButton(
+                        onPressed: () => setAllSectionSelections(false),
+                        child: const Text('Unselect all'),
+                      ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                ],
-                CheckboxListTile(
-                  value: includeSummary,
-                  onChanged: (v) =>
-                      setLocalState(() => includeSummary = v ?? false),
-                  title: const Text('Summary cards (sessions, shots, average)'),
-                  controlAffinity: ListTileControlAffinity.leading,
-                  contentPadding: EdgeInsets.zero,
-                ),
-                CheckboxListTile(
-                  value: includeCharts,
-                  onChanged: (v) =>
-                      setLocalState(() => includeCharts = v ?? false),
-                  title: const Text('Charts (top rifles and monthly shots)'),
-                  controlAffinity: ListTileControlAffinity.leading,
-                  contentPadding: EdgeInsets.zero,
-                ),
-                CheckboxListTile(
-                  value: includeRecentSessions,
-                  onChanged: (v) =>
-                      setLocalState(() => includeRecentSessions = v ?? false),
-                  title: const Text('Recent sessions table (with location)'),
-                  controlAffinity: ListTileControlAffinity.leading,
-                  contentPadding: EdgeInsets.zero,
-                ),
-                CheckboxListTile(
-                  value: includeUsedRifles,
-                  onChanged: (v) =>
-                      setLocalState(() => includeUsedRifles = v ?? false),
-                  title: const Text('Rifles used in sessions'),
-                  controlAffinity: ListTileControlAffinity.leading,
-                  contentPadding: EdgeInsets.zero,
-                ),
-                CheckboxListTile(
-                  value: includeUsedAmmo,
-                  onChanged: (v) =>
-                      setLocalState(() => includeUsedAmmo = v ?? false),
-                  title: const Text('Ammo lots used in sessions'),
-                  controlAffinity: ListTileControlAffinity.leading,
-                  contentPadding: EdgeInsets.zero,
-                ),
-                CheckboxListTile(
-                  value: includeMaintenance,
-                  onChanged: (v) =>
-                      setLocalState(() => includeMaintenance = v ?? false),
-                  title: const Text('Maintenance / service history'),
-                  controlAffinity: ListTileControlAffinity.leading,
-                  contentPadding: EdgeInsets.zero,
-                ),
-                CheckboxListTile(
-                  value: includeEverything,
-                  onChanged: (v) =>
-                      setLocalState(() => includeEverything = v ?? false),
-                  title: const Text(
-                    'Complete app-data appendix (all sessions, strings, DOPE, rifles, ammo)',
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (_builtinPdfPresets.isNotEmpty ||
+                              _savedPdfPresets.isNotEmpty) ...[
+                            const Text(
+                              'Presets',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                for (final preset in _builtinPdfPresets)
+                                  ActionChip(
+                                    label: Text(preset.name),
+                                    onPressed: () =>
+                                        applyPreset(preset.options, setLocalState),
+                                  ),
+                                for (final preset in _savedPdfPresets)
+                                  ActionChip(
+                                    avatar: const Icon(
+                                      Icons.bookmark_outline,
+                                      size: 18,
+                                    ),
+                                    label: Text(preset.name),
+                                    onPressed: () =>
+                                        applyPreset(preset.options, setLocalState),
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+                          CheckboxListTile(
+                            value: includeSummary,
+                            onChanged: (v) =>
+                                setLocalState(() => includeSummary = v ?? false),
+                            title: const Text(
+                              'Summary cards (sessions, shots, average)',
+                            ),
+                            controlAffinity: ListTileControlAffinity.leading,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                          CheckboxListTile(
+                            value: includeCharts,
+                            onChanged: (v) =>
+                                setLocalState(() => includeCharts = v ?? false),
+                            title: const Text('Charts (top rifles and monthly shots)'),
+                            controlAffinity: ListTileControlAffinity.leading,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                          CheckboxListTile(
+                            value: includeRecentSessions,
+                            onChanged: (v) =>
+                                setLocalState(
+                                  () => includeRecentSessions = v ?? false,
+                                ),
+                            title: const Text('Recent sessions table (with location)'),
+                            controlAffinity: ListTileControlAffinity.leading,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                          CheckboxListTile(
+                            value: includeUsedRifles,
+                            onChanged: (v) =>
+                                setLocalState(() => includeUsedRifles = v ?? false),
+                            title: const Text('Rifles used in sessions'),
+                            controlAffinity: ListTileControlAffinity.leading,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                          CheckboxListTile(
+                            value: includeUsedAmmo,
+                            onChanged: (v) =>
+                                setLocalState(() => includeUsedAmmo = v ?? false),
+                            title: const Text('Ammo lots used in sessions'),
+                            controlAffinity: ListTileControlAffinity.leading,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                          CheckboxListTile(
+                            value: includeMaintenance,
+                            onChanged: (v) =>
+                                setLocalState(() => includeMaintenance = v ?? false),
+                            title: const Text('Maintenance / service history'),
+                            controlAffinity: ListTileControlAffinity.leading,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                          CheckboxListTile(
+                            value: includeEverything,
+                            onChanged: (v) =>
+                                setLocalState(() => includeEverything = v ?? false),
+                            title: const Text(
+                              'Complete app-data appendix (all sessions, strings, DOPE, rifles, ammo)',
+                            ),
+                            controlAffinity: ListTileControlAffinity.leading,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                          CheckboxListTile(
+                            value: includeSessionDetails,
+                            onChanged: (v) =>
+                                setLocalState(
+                                  () => includeSessionDetails = v ?? false,
+                                ),
+                            title: const Text(
+                              'Session detail pages (notes, photos, cold-bore targets)',
+                            ),
+                            controlAffinity: ListTileControlAffinity.leading,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                          CheckboxListTile(
+                            value: includeEvidenceBundle,
+                            onChanged: (v) =>
+                                setLocalState(
+                                  () => includeEvidenceBundle = v ?? false,
+                                ),
+                            title: const Text('Evidence bundle metadata'),
+                            subtitle: const Text(
+                              'Adds export provenance, session fingerprinting, and integrity notes.',
+                            ),
+                            controlAffinity: ListTileControlAffinity.leading,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                          const SizedBox(height: 12),
+                          const Text(
+                            'Session Filter',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              ChoiceChip(
+                                label: const Text('All sessions'),
+                                selected:
+                                    sessionFilterMode == _PdfSessionFilterMode.all,
+                                onSelected: (_) => setLocalState(
+                                  () => sessionFilterMode =
+                                      _PdfSessionFilterMode.all,
+                                ),
+                              ),
+                              ChoiceChip(
+                                label: const Text('Selected sessions'),
+                                selected: sessionFilterMode ==
+                                    _PdfSessionFilterMode.selected,
+                                onSelected: (_) => setLocalState(
+                                  () => sessionFilterMode =
+                                      _PdfSessionFilterMode.selected,
+                                ),
+                              ),
+                              ChoiceChip(
+                                label: const Text('Date range'),
+                                selected: sessionFilterMode ==
+                                    _PdfSessionFilterMode.dateRange,
+                                onSelected: (_) => setLocalState(
+                                  () => sessionFilterMode =
+                                      _PdfSessionFilterMode.dateRange,
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (sessionFilterMode ==
+                              _PdfSessionFilterMode.selected) ...[
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                TextButton(
+                                  onPressed: () => setLocalState(() {
+                                    selectedSessionIds
+                                      ..clear()
+                                      ..addAll(
+                                        availableSessions.map((s) => s.id),
+                                      );
+                                  }),
+                                  child: const Text('Select all'),
+                                ),
+                                TextButton(
+                                  onPressed: () =>
+                                      setLocalState(selectedSessionIds.clear),
+                                  child: const Text('Clear'),
+                                ),
+                              ],
+                            ),
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxHeight: 240),
+                              child: ListView(
+                                shrinkWrap: true,
+                                children: availableSessions.map((s) {
+                                  final checked = selectedSessionIds.contains(s.id);
+                                  return CheckboxListTile(
+                                    dense: true,
+                                    contentPadding: EdgeInsets.zero,
+                                    value: checked,
+                                    title: Text(
+                                      _pdfSessionLabel(s),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    onChanged: (value) => setLocalState(() {
+                                      if (value == true) {
+                                        selectedSessionIds.add(s.id);
+                                      } else {
+                                        selectedSessionIds.remove(s.id);
+                                      }
+                                    }),
+                                  );
+                                }).toList(),
+                              ),
+                            ),
+                          ],
+                          if (sessionFilterMode == _PdfSessionFilterMode.dateRange) ...[
+                            const SizedBox(height: 8),
+                            ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title: const Text('Start date'),
+                              subtitle: Text(
+                                startDate == null ? 'Not set' : _pdfDate(startDate!),
+                              ),
+                              trailing: const Icon(Icons.calendar_today_outlined),
+                              onTap: () async {
+                                final picked = await _pickPdfFilterDate(
+                                  context,
+                                  initialDate:
+                                      startDate ??
+                                      (availableSessions.isNotEmpty
+                                          ? availableSessions.last.dateTime
+                                          : DateTime.now()),
+                                );
+                                if (picked != null) {
+                                  setLocalState(() => startDate = picked);
+                                }
+                              },
+                            ),
+                            ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title: const Text('End date'),
+                              subtitle: Text(
+                                endDate == null ? 'Not set' : _pdfDate(endDate!),
+                              ),
+                              trailing: const Icon(Icons.calendar_today_outlined),
+                              onTap: () async {
+                                final picked = await _pickPdfFilterDate(
+                                  context,
+                                  initialDate:
+                                      endDate ??
+                                      (availableSessions.isNotEmpty
+                                          ? availableSessions.first.dateTime
+                                          : DateTime.now()),
+                                );
+                                if (picked != null) {
+                                  setLocalState(() => endDate = picked);
+                                }
+                              },
+                            ),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: TextButton(
+                                onPressed: () => setLocalState(() {
+                                  startDate = null;
+                                  endDate = null;
+                                }),
+                                child: const Text('Clear date range'),
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 8),
+                          const Text(
+                            'Additional Session Filters',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 8),
+                          DropdownButtonFormField<String?>(
+                            initialValue: folderFilter,
+                            decoration: const InputDecoration(labelText: 'Folder'),
+                            items: [
+                              const DropdownMenuItem<String?>(
+                                value: null,
+                                child: Text('All folders'),
+                              ),
+                              const DropdownMenuItem<String?>(
+                                value: '__unfiled__',
+                                child: Text('Unfiled only'),
+                              ),
+                              ...availableFolders.map(
+                                (folder) => DropdownMenuItem<String?>(
+                                  value: folder,
+                                  child: Text(folder),
+                                ),
+                              ),
+                            ],
+                            onChanged: (value) =>
+                                setLocalState(() => folderFilter = value),
+                          ),
+                          const SizedBox(height: 8),
+                          DropdownButtonFormField<int?>(
+                            initialValue: yearFilter,
+                            decoration: const InputDecoration(labelText: 'Year'),
+                            items: [
+                              const DropdownMenuItem<int?>(
+                                value: null,
+                                child: Text('All years'),
+                              ),
+                              ...availableYears.map(
+                                (year) => DropdownMenuItem<int?>(
+                                  value: year,
+                                  child: Text('$year'),
+                                ),
+                              ),
+                            ],
+                            onChanged: (value) =>
+                                setLocalState(() => yearFilter = value),
+                          ),
+                          const SizedBox(height: 8),
+                          DropdownButtonFormField<String?>(
+                            initialValue: monthFilter,
+                            decoration: const InputDecoration(labelText: 'Month'),
+                            items: [
+                              const DropdownMenuItem<String?>(
+                                value: null,
+                                child: Text('All months'),
+                              ),
+                              ...availableMonths.map(
+                                (monthKey) => DropdownMenuItem<String?>(
+                                  value: monthKey,
+                                  child: Text(monthLabel(monthKey)),
+                                ),
+                              ),
+                            ],
+                            onChanged: (value) =>
+                                setLocalState(() => monthFilter = value),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
+                      ),
+                    ),
                   ),
-                  controlAffinity: ListTileControlAffinity.leading,
-                  contentPadding: EdgeInsets.zero,
-                ),
-                CheckboxListTile(
-                  value: includeSessionDetails,
-                  onChanged: (v) =>
-                      setLocalState(() => includeSessionDetails = v ?? false),
-                  title: const Text(
-                    'Session detail pages (notes, photos, cold-bore targets)',
-                  ),
-                  controlAffinity: ListTileControlAffinity.leading,
-                  contentPadding: EdgeInsets.zero,
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Session Filter',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    ChoiceChip(
-                      label: const Text('All sessions'),
-                      selected: sessionFilterMode == _PdfSessionFilterMode.all,
-                      onSelected: (_) => setLocalState(
-                        () => sessionFilterMode = _PdfSessionFilterMode.all,
-                      ),
-                    ),
-                    ChoiceChip(
-                      label: const Text('Selected sessions'),
-                      selected:
-                          sessionFilterMode == _PdfSessionFilterMode.selected,
-                      onSelected: (_) => setLocalState(
-                        () =>
-                            sessionFilterMode = _PdfSessionFilterMode.selected,
-                      ),
-                    ),
-                    ChoiceChip(
-                      label: const Text('Date range'),
-                      selected:
-                          sessionFilterMode == _PdfSessionFilterMode.dateRange,
-                      onSelected: (_) => setLocalState(
-                        () =>
-                            sessionFilterMode = _PdfSessionFilterMode.dateRange,
-                      ),
-                    ),
-                  ],
-                ),
-                if (sessionFilterMode == _PdfSessionFilterMode.selected) ...[
                   const SizedBox(height: 8),
                   Row(
                     children: [
                       TextButton(
-                        onPressed: () => setLocalState(() {
-                          selectedSessionIds
-                            ..clear()
-                            ..addAll(availableSessions.map((s) => s.id));
-                        }),
-                        child: const Text('Select all'),
+                        onPressed: () async {
+                          await _saveCurrentOptionsAsPreset(
+                            context,
+                            _PdfExportOptions(
+                              includeSummary: includeSummary,
+                              includeCharts: includeCharts,
+                              includeRecentSessions: includeRecentSessions,
+                              includeUsedRifles: includeUsedRifles,
+                              includeUsedAmmo: includeUsedAmmo,
+                              includeMaintenance: includeMaintenance,
+                              includeEverything: includeEverything,
+                              includeSessionDetails: includeSessionDetails,
+                              includeEvidenceBundle: includeEvidenceBundle,
+                              sessionFilterMode: sessionFilterMode,
+                              selectedSessionIds:
+                                  sessionFilterMode ==
+                                      _PdfSessionFilterMode.selected
+                                      ? selectedSessionIds.toList()
+                                      : const [],
+                              startDate:
+                                  sessionFilterMode ==
+                                      _PdfSessionFilterMode.dateRange
+                                      ? startDate
+                                      : null,
+                              endDate:
+                                  sessionFilterMode ==
+                                      _PdfSessionFilterMode.dateRange
+                                      ? endDate
+                                      : null,
+                              folderFilter: folderFilter,
+                              yearFilter: yearFilter,
+                              monthFilter: monthFilter,
+                            ),
+                          );
+                          if (!context.mounted) return;
+                        },
+                        child: const Text('Save as preset'),
                       ),
+                      const SizedBox(width: 8),
                       TextButton(
-                        onPressed: () =>
-                            setLocalState(selectedSessionIds.clear),
-                        child: const Text('Clear'),
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('Cancel'),
+                      ),
+                      const Spacer(),
+                      FilledButton(
+                        onPressed: () {
+                          Navigator.of(context).pop(
+                            _PdfExportOptions(
+                              includeSummary: includeSummary,
+                              includeCharts: includeCharts,
+                              includeRecentSessions: includeRecentSessions,
+                              includeUsedRifles: includeUsedRifles,
+                              includeUsedAmmo: includeUsedAmmo,
+                              includeMaintenance: includeMaintenance,
+                              includeEverything: includeEverything,
+                              includeSessionDetails: includeSessionDetails,
+                              includeEvidenceBundle: includeEvidenceBundle,
+                              sessionFilterMode: sessionFilterMode,
+                              selectedSessionIds:
+                                  sessionFilterMode ==
+                                      _PdfSessionFilterMode.selected
+                                      ? selectedSessionIds.toList()
+                                      : const [],
+                              startDate:
+                                  sessionFilterMode ==
+                                      _PdfSessionFilterMode.dateRange
+                                      ? startDate
+                                      : null,
+                              endDate:
+                                  sessionFilterMode ==
+                                      _PdfSessionFilterMode.dateRange
+                                      ? endDate
+                                      : null,
+                              folderFilter: folderFilter,
+                              yearFilter: yearFilter,
+                              monthFilter: monthFilter,
+                            ),
+                          );
+                        },
+                        child: const Text('Generate PDF'),
                       ),
                     ],
                   ),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxHeight: 240),
-                    child: ListView(
-                      shrinkWrap: true,
-                      children: availableSessions.map((s) {
-                        final checked = selectedSessionIds.contains(s.id);
-                        return CheckboxListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          value: checked,
-                          title: Text(
-                            _pdfSessionLabel(s),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          onChanged: (value) => setLocalState(() {
-                            if (value == true) {
-                              selectedSessionIds.add(s.id);
-                            } else {
-                              selectedSessionIds.remove(s.id);
-                            }
-                          }),
-                        );
-                      }).toList(),
-                    ),
-                  ),
                 ],
-                if (sessionFilterMode == _PdfSessionFilterMode.dateRange) ...[
-                  const SizedBox(height: 8),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Start date'),
-                    subtitle: Text(
-                      startDate == null ? 'Not set' : _pdfDate(startDate!),
-                    ),
-                    trailing: const Icon(Icons.calendar_today_outlined),
-                    onTap: () async {
-                      final picked = await _pickPdfFilterDate(
-                        context,
-                        initialDate:
-                            startDate ??
-                            (availableSessions.isNotEmpty
-                                ? availableSessions.last.dateTime
-                                : DateTime.now()),
-                      );
-                      if (picked != null) {
-                        setLocalState(() => startDate = picked);
-                      }
-                    },
-                  ),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('End date'),
-                    subtitle: Text(
-                      endDate == null ? 'Not set' : _pdfDate(endDate!),
-                    ),
-                    trailing: const Icon(Icons.calendar_today_outlined),
-                    onTap: () async {
-                      final picked = await _pickPdfFilterDate(
-                        context,
-                        initialDate:
-                            endDate ??
-                            (availableSessions.isNotEmpty
-                                ? availableSessions.first.dateTime
-                                : DateTime.now()),
-                      );
-                      if (picked != null) {
-                        setLocalState(() => endDate = picked);
-                      }
-                    },
-                  ),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: TextButton(
-                      onPressed: () => setLocalState(() {
-                        startDate = null;
-                        endDate = null;
-                      }),
-                      child: const Text('Clear date range'),
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 8),
-                const Text(
-                  'Additional Session Filters',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<String?>(
-                  initialValue: folderFilter,
-                  decoration: const InputDecoration(labelText: 'Folder'),
-                  items: [
-                    const DropdownMenuItem<String?>(
-                      value: null,
-                      child: Text('All folders'),
-                    ),
-                    const DropdownMenuItem<String?>(
-                      value: '__unfiled__',
-                      child: Text('Unfiled only'),
-                    ),
-                    ...availableFolders.map(
-                      (folder) => DropdownMenuItem<String?>(
-                        value: folder,
-                        child: Text(folder),
-                      ),
-                    ),
-                  ],
-                  onChanged: (value) =>
-                      setLocalState(() => folderFilter = value),
-                ),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<int?>(
-                  initialValue: yearFilter,
-                  decoration: const InputDecoration(labelText: 'Year'),
-                  items: [
-                    const DropdownMenuItem<int?>(
-                      value: null,
-                      child: Text('All years'),
-                    ),
-                    ...availableYears.map(
-                      (year) => DropdownMenuItem<int?>(
-                        value: year,
-                        child: Text('$year'),
-                      ),
-                    ),
-                  ],
-                  onChanged: (value) => setLocalState(() => yearFilter = value),
-                ),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<String?>(
-                  initialValue: monthFilter,
-                  decoration: const InputDecoration(labelText: 'Month'),
-                  items: [
-                    const DropdownMenuItem<String?>(
-                      value: null,
-                      child: Text('All months'),
-                    ),
-                    ...availableMonths.map(
-                      (monthKey) => DropdownMenuItem<String?>(
-                        value: monthKey,
-                        child: Text(monthLabel(monthKey)),
-                      ),
-                    ),
-                  ],
-                  onChanged: (value) =>
-                      setLocalState(() => monthFilter = value),
-                ),
-                         const SizedBox(height: 8),
-                       ],
-                     ),
-                   ),
-                 ),
-                 const SizedBox(height: 8),
-                 Row(
-                  children: [
-                    TextButton(
-                      onPressed: () async {
-                        await _saveCurrentOptionsAsPreset(
-                          context,
-                          _PdfExportOptions(
-                            includeSummary: includeSummary,
-                            includeCharts: includeCharts,
-                            includeRecentSessions: includeRecentSessions,
-                            includeUsedRifles: includeUsedRifles,
-                            includeUsedAmmo: includeUsedAmmo,
-                            includeMaintenance: includeMaintenance,
-                            includeEverything: includeEverything,
-                            includeSessionDetails: includeSessionDetails,
-                            sessionFilterMode: sessionFilterMode,
-                            selectedSessionIds:
-                                sessionFilterMode ==
-                                    _PdfSessionFilterMode.selected
-                                ? selectedSessionIds.toList()
-                                : const [],
-                            startDate:
-                                sessionFilterMode ==
-                                    _PdfSessionFilterMode.dateRange
-                                ? startDate
-                                : null,
-                            endDate:
-                                sessionFilterMode ==
-                                    _PdfSessionFilterMode.dateRange
-                                ? endDate
-                                : null,
-                            folderFilter: folderFilter,
-                            yearFilter: yearFilter,
-                            monthFilter: monthFilter,
-                          ),
-                        );
-                        if (!context.mounted) return;
-                      },
-                      child: const Text('Save as preset'),
-                    ),
-                    const SizedBox(width: 8),
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Cancel'),
-                    ),
-                    const Spacer(),
-                    FilledButton(
-                      onPressed: () {
-                        Navigator.of(context).pop(
-                          _PdfExportOptions(
-                            includeSummary: includeSummary,
-                            includeCharts: includeCharts,
-                            includeRecentSessions: includeRecentSessions,
-                            includeUsedRifles: includeUsedRifles,
-                            includeUsedAmmo: includeUsedAmmo,
-                            includeMaintenance: includeMaintenance,
-                            includeEverything: includeEverything,
-                            includeSessionDetails: includeSessionDetails,
-                            sessionFilterMode: sessionFilterMode,
-                            selectedSessionIds:
-                                sessionFilterMode ==
-                                    _PdfSessionFilterMode.selected
-                                ? selectedSessionIds.toList()
-                                : const [],
-                            startDate:
-                                sessionFilterMode ==
-                                    _PdfSessionFilterMode.dateRange
-                                ? startDate
-                                : null,
-                            endDate:
-                                sessionFilterMode ==
-                                    _PdfSessionFilterMode.dateRange
-                                ? endDate
-                                : null,
-                            folderFilter: folderFilter,
-                            yearFilter: yearFilter,
-                            monthFilter: monthFilter,
-                          ),
-                        );
-                      },
-                      child: const Text('Generate PDF'),
-                    ),
-                  ],
-                ),
-              ],
+              ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -23403,6 +23471,7 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
         includeMaintenance: true,
         includeEverything: true,
         includeSessionDetails: true,
+        includeEvidenceBundle: true,
         sessionFilterMode: _PdfSessionFilterMode.all,
       );
       await _exportPdfReportWithOptions(context, evidenceOptions);
@@ -23826,6 +23895,7 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
       final yearFilterLabel = options.yearFilter?.toString() ?? 'All years';
       final monthFilterLabel = options.monthFilter ?? 'All months';
       final sectionsSummary = _pdfSectionsSummary(options);
+      final includeEvidence = options.includeEvidenceBundle;
 
       final byRifle = <String, int>{};
       for (final s in sessions) {
@@ -23971,35 +24041,37 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
             pw.Text('App version: $appVersion'),
             pw.Text('Platform: $exportPlatform'),
             pw.SizedBox(height: 8),
-            pw.Container(
-              width: double.infinity,
-              padding: const pw.EdgeInsets.all(10),
-              decoration: pw.BoxDecoration(
-                border: pw.Border.all(color: PdfColors.red900, width: 0.8),
-                borderRadius: pw.BorderRadius.circular(8),
-                color: PdfColors.red50,
-              ),
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  pw.Text(
-                    'Evidence Export',
-                    style: pw.TextStyle(
-                      fontSize: 11,
-                      fontWeight: pw.FontWeight.bold,
+            if (includeEvidence) ...[
+              pw.Container(
+                width: double.infinity,
+                padding: const pw.EdgeInsets.all(10),
+                decoration: pw.BoxDecoration(
+                  border: pw.Border.all(color: PdfColors.red900, width: 0.8),
+                  borderRadius: pw.BorderRadius.circular(8),
+                  color: PdfColors.red50,
+                ),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      'Evidence Export',
+                      style: pw.TextStyle(
+                        fontSize: 11,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
                     ),
-                  ),
-                  pw.SizedBox(height: 4),
-                  pw.Text(
-                    'Preserve this file exactly as exported. Do not edit after export.',
-                  ),
-                  pw.Text(
-                    'Session fingerprint: ${sessions.map((s) => _sessionEvidenceId(s)).join(', ')}',
-                  ),
-                ],
+                    pw.SizedBox(height: 4),
+                    pw.Text(
+                      'Preserve this file exactly as exported. Do not edit after export.',
+                    ),
+                    pw.Text(
+                      'Session fingerprint: ${sessions.map((s) => _sessionEvidenceId(s)).join(', ')}',
+                    ),
+                  ],
+                ),
               ),
-            ),
-            pw.SizedBox(height: 8),
+              pw.SizedBox(height: 8),
+            ],
             pw.Container(
               width: double.infinity,
               padding: const pw.EdgeInsets.all(10),
@@ -24720,18 +24792,6 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                   ),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => _exportPdfReport(context),
-                ),
-              ),
-              const SizedBox(height: 8),
-              ColdBoreCard(
-                child: ListTile(
-                  leading: const Icon(Icons.fact_check_outlined),
-                  title: const Text('Evidence Export'),
-                  subtitle: const Text(
-                    'Full record bundle with the complete session data for review or record keeping.',
-                  ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _exportEvidenceBundle(context),
                 ),
               ),
               if (_builtinPdfPresets.isNotEmpty ||
