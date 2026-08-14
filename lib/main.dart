@@ -5014,10 +5014,11 @@ class AppState extends ChangeNotifier {
   }
 
   /// Sets one cold bore entry as the baseline for the active user for the *current rifle+ammo combo*.
-  /// Other combos keep their own baseline.
+  /// Other combos keep their own baseline. Set [clear] to true to remove the current baseline for that combo.
   void setBaselineColdBore({
     required String sessionId,
     required String shotId,
+    bool clear = false,
   }) {
     final user = _activeUser;
     if (user == null) return;
@@ -5051,7 +5052,7 @@ class AppState extends ChangeNotifier {
           updatedShots.add(sh);
           continue;
         }
-        final shouldBeBaseline = (s.id == sessionId && sh.id == shotId);
+        final shouldBeBaseline = clear ? false : (s.id == sessionId && sh.id == shotId);
         updatedShots.add(sh.copyWith(isBaseline: shouldBeBaseline));
       }
 
@@ -5059,7 +5060,7 @@ class AppState extends ChangeNotifier {
         for (final entry in s.shotsByString.entries)
           entry.key: entry.value.map((sh) {
             if (!sh.isColdBore) return sh;
-            final shouldBeBaseline = (s.id == sessionId && sh.id == shotId);
+            final shouldBeBaseline = clear ? false : (s.id == sessionId && sh.id == shotId);
             return sh.copyWith(isBaseline: shouldBeBaseline);
           }).toList(),
       };
@@ -8087,7 +8088,7 @@ class ToolsHubScreen extends StatelessWidget {
       children: [
         const ColdBoreSectionHeader(
           title: 'Tools',
-          subtitle: 'Timer, audio counter, and loadout management.',
+          subtitle: 'Timer, audio counter, exports, and loadout management.',
         ),
         const SizedBox(height: 12),
         ColdBoreCard(
@@ -8116,6 +8117,22 @@ class ToolsHubScreen extends StatelessWidget {
               Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (_) => AudioCounterScreen(state: state),
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 12),
+        ColdBoreCard(
+          child: ListTile(
+            leading: const Icon(Icons.picture_as_pdf_outlined),
+            title: const Text('Export reports'),
+            subtitle: const Text('Create PDF exports and share selected data.'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => ExportPlaceholderScreen(state: state),
                 ),
               );
             },
@@ -9470,22 +9487,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           ColdBoreCard(
             child: ListTile(
-              leading: const Icon(Icons.picture_as_pdf_outlined),
-              title: const Text('Export reports'),
-              subtitle: const Text(
-                'Create PDF exports and share selected data.',
-              ),
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => ExportPlaceholderScreen(state: widget.state),
-                  ),
-                );
-              },
-            ),
-          ),
-          ColdBoreCard(
-            child: ListTile(
               leading: const Icon(Icons.lightbulb_outline),
               title: const Text('Suggest a feature'),
               subtitle: const Text('Share feedback and feature ideas.'),
@@ -10332,7 +10333,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
   DragModel _dragModel = DragModel.g7;
   BallisticValidationOutcome _validationOutcome =
       BallisticValidationOutcome.confirmedAccurate;
-  bool _writeRifleOnly = false;
+  final bool _writeRifleOnly = false;
   bool _includeWeatherSnapshot = true;
   bool _weatherLoading = false;
   DateTime _verificationDate = DateTime.now();
@@ -20911,12 +20912,25 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
     if (!await _guardWrite(context, operation: 'Set cold bore baseline')) {
       return;
     }
-    widget.state.setBaselineColdBore(
+
+    final current = widget.state.shotById(
       sessionId: widget.sessionId,
       shotId: widget.shotId,
     );
+    if (current == null) return;
+
+    final clear = current.isBaseline;
+    widget.state.setBaselineColdBore(
+      sessionId: widget.sessionId,
+      shotId: widget.shotId,
+      clear: clear,
+    );
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Marked as baseline (first shot).')),
+      SnackBar(
+        content: Text(
+          clear ? 'Baseline cleared.' : 'Marked as baseline (first shot).',
+        ),
+      ),
     );
   }
 
@@ -21219,8 +21233,8 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
                   ),
                   OutlinedButton.icon(
                     onPressed: () => _setBaseline(),
-                    icon: const Icon(Icons.star_border),
-                    label: const Text('Mark as Baseline'),
+                    icon: Icon(shot.isBaseline ? Icons.star : Icons.star_border),
+                    label: Text(shot.isBaseline ? 'Clear Baseline' : 'Mark as Baseline'),
                   ),
                 ],
               ),
@@ -22144,7 +22158,7 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
         includeUsedAmmo: true,
         includeMaintenance: true,
         includeEverything: false,
-        includeSessionDetails: false,
+        includeSessionDetails: true,
         sessionFilterMode: _PdfSessionFilterMode.all,
       ),
     ),
@@ -22158,7 +22172,7 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
         includeUsedAmmo: true,
         includeMaintenance: false,
         includeEverything: false,
-        includeSessionDetails: false,
+        includeSessionDetails: true,
         sessionFilterMode: _PdfSessionFilterMode.all,
       ),
     ),
@@ -22172,7 +22186,7 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
         includeUsedAmmo: false,
         includeMaintenance: true,
         includeEverything: false,
-        includeSessionDetails: false,
+        includeSessionDetails: true,
         sessionFilterMode: _PdfSessionFilterMode.all,
       ),
     ),
@@ -22862,6 +22876,45 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
     return '$m/$day/$y $hh:$mm';
   }
 
+  String _pdfWeatherSummary(TrainingSession session) {
+    final parts = <String>[];
+    if (session.temperatureF != null) {
+      parts.add('${session.temperatureF!.toStringAsFixed(1)}°F');
+    }
+    if (session.windSpeedMph != null) {
+      parts.add('${session.windSpeedMph!.toStringAsFixed(1)} mph');
+    }
+    if (session.windDirectionDeg != null) {
+      parts.add('@ ${session.windDirectionDeg}°');
+    }
+    return parts.isEmpty ? 'Weather: n/a' : 'Weather: ${parts.join(' | ')}';
+  }
+
+  String _pdfLocationSummary(TrainingSession session) {
+    final parts = <String>[];
+    if (session.locationName.trim().isNotEmpty) {
+      parts.add(session.locationName.trim());
+    }
+    if (session.latitude != null && session.longitude != null) {
+      parts.add(
+        'GPS: ${session.latitude!.toStringAsFixed(5)}, ${session.longitude!.toStringAsFixed(5)}',
+      );
+    }
+    return parts.isEmpty ? 'Location: n/a' : 'Location: ${parts.join(' | ')}';
+  }
+
+  String _pdfDopeEntrySummary(DopeEntry entry) {
+    final distance = entry.distance > 0
+        ? '${entry.distance.toStringAsFixed(1)} ${_distanceUnitLabel(entry.distanceUnit)}'
+        : '-';
+    final elevation = '${entry.elevation.toStringAsFixed(2)} ${_elevationUnitLabel(entry.elevationUnit)}';
+    final wind = entry.windValue.trim().isEmpty ? '-' : entry.windValue.trim();
+    final notes = entry.elevationNotes.trim().isEmpty
+        ? 'No notes'
+        : entry.elevationNotes.trim();
+    return 'Distance: $distance | Elevation: $elevation | Wind: $wind | Notes: $notes';
+  }
+
   String _pdfRifleLabel(String? rifleId) {
     if (rifleId == null) return '-';
     final rifle = widget.state.findRifleById(rifleId);
@@ -23332,6 +23385,51 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
             ),
           ),
         ];
+
+        if (session.locationName.trim().isNotEmpty ||
+            session.latitude != null ||
+            session.longitude != null) {
+          widgets.addAll([
+            pw.Text(
+              'Location & GPS',
+              style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 4),
+            pw.Text(_pdfLocationSummary(session)),
+            pw.SizedBox(height: 8),
+          ]);
+        }
+
+        if (session.temperatureF != null ||
+            session.windSpeedMph != null ||
+            session.windDirectionDeg != null) {
+          widgets.addAll([
+            pw.Text(
+              'Weather',
+              style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 4),
+            pw.Text(_pdfWeatherSummary(session)),
+            pw.SizedBox(height: 8),
+          ]);
+        }
+
+        if (session.trainingDope.isNotEmpty) {
+          widgets.addAll([
+            pw.Text(
+              'Training DOPE',
+              style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 4),
+            ...session.trainingDope.map(
+              (entry) => pw.Padding(
+                padding: const pw.EdgeInsets.only(bottom: 4),
+                child: pw.Text(_pdfDopeEntrySummary(entry)),
+              ),
+            ),
+            pw.SizedBox(height: 8),
+          ]);
+        }
 
         if (session.notes.trim().isNotEmpty) {
           widgets.addAll([
@@ -23944,6 +24042,7 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                   'Location',
                   'Rifle',
                   'Ammo',
+                  'Weather',
                   'Shots',
                   'Strings',
                   'DOPE',
@@ -23955,6 +24054,7 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                         s.locationName.isEmpty ? '-' : s.locationName,
                         _pdfRifleLabel(s.rifleId),
                         _pdfAmmoLabel(s.ammoLotId),
+                        _pdfWeatherSummary(s).replaceFirst('Weather: ', ''),
                         '${sessionShotCount(s)}',
                         '${s.strings.length}',
                         '${s.trainingDope.length}',
@@ -26455,16 +26555,17 @@ class _NewRifleDialogState extends State<_NewRifleDialog> {
         appBar: AppBar(
           backgroundColor: cbBg,
           surfaceTintColor: Colors.transparent,
+          leadingWidth: 86,
           leading: TextButton(
             onPressed: () => Navigator.of(context).pop(),
             style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              minimumSize: const Size(0, 36),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              minimumSize: const Size(70, 36),
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
             child: const Text(
               'Cancel',
-              overflow: TextOverflow.ellipsis,
+              overflow: TextOverflow.visible,
               maxLines: 1,
             ),
           ),
@@ -26909,16 +27010,17 @@ class _NewAmmoDialogState extends State<_NewAmmoDialog> {
         appBar: AppBar(
           backgroundColor: cbBg,
           surfaceTintColor: Colors.transparent,
+          leadingWidth: 86,
           leading: TextButton(
             onPressed: () => Navigator.of(context).pop(),
             style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              minimumSize: const Size(0, 36),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              minimumSize: const Size(70, 36),
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
             child: const Text(
               'Cancel',
-              overflow: TextOverflow.ellipsis,
+              overflow: TextOverflow.visible,
               maxLines: 1,
             ),
           ),
