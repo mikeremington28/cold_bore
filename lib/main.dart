@@ -1019,34 +1019,91 @@ String _buildSessionReportText(
   }
 
   final b = StringBuffer();
+  final stringOrder = [...s.strings]..sort(
+    (a, b) => a.startedAt.compareTo(b.startedAt),
+  );
+
+  String stringRifleLabel(SessionStringMeta meta) {
+    final resolved = meta.rifleId ?? s.rifleId;
+    if (resolved == null) return '-';
+    final rifleEntry = state.findRifleById(resolved);
+    if (rifleEntry != null) {
+      final parts = <String>[];
+      if ((rifleEntry.manufacturer ?? '').trim().isNotEmpty) {
+        parts.add(rifleEntry.manufacturer!.trim());
+      }
+      if ((rifleEntry.model ?? '').trim().isNotEmpty) {
+        parts.add(rifleEntry.model!.trim());
+      }
+      if (rifleEntry.caliber.trim().isNotEmpty) {
+        parts.add(rifleEntry.caliber.trim());
+      }
+      if ((rifleEntry.name ?? '').trim().isNotEmpty) {
+        parts.add('"${rifleEntry.name!.trim()}"');
+      }
+      return parts.isEmpty ? 'Deleted rifle ($resolved)' : parts.join(' - ');
+    }
+    return 'Deleted rifle ($resolved)';
+  }
+
+  String stringAmmoLabel(SessionStringMeta meta) {
+    final resolved = meta.ammoLotId ?? s.ammoLotId;
+    if (resolved == null) return '-';
+    final ammoEntry = state.findAmmoLotById(resolved);
+    if (ammoEntry != null) {
+      final parts = <String>[];
+      if ((ammoEntry.name ?? '').trim().isNotEmpty) {
+        parts.add(ammoEntry.name!.trim());
+      }
+      if ((ammoEntry.manufacturer ?? '').trim().isNotEmpty) {
+        parts.add(ammoEntry.manufacturer!.trim());
+      }
+      if (ammoEntry.bullet.trim().isNotEmpty) {
+        parts.add(ammoEntry.bullet.trim());
+      }
+      if (ammoEntry.grain > 0) parts.add('${ammoEntry.grain}gr');
+      if (ammoEntry.caliber.trim().isNotEmpty) {
+        parts.add(ammoEntry.caliber.trim());
+      }
+      return parts.isEmpty ? 'Deleted ammo ($resolved)' : parts.join(' - ');
+    }
+    return 'Deleted ammo ($resolved)';
+  }
+
+  String timerSummaryForString() {
+    if (!includeTimerData) return '';
+    if ((s.shotTimerElapsedMs ?? 0) <= 0 &&
+        (s.shotTimerFirstShotMs ?? 0) <= 0 &&
+        s.shotTimerSplitMs.isEmpty &&
+        s.timerRuns.isEmpty) {
+      return 'Timer: not recorded';
+    }
+
+    final details = <String>[];
+    if ((s.shotTimerElapsedMs ?? 0) > 0) {
+      details.add('total ${s.shotTimerElapsedMs} ms');
+    }
+    if ((s.shotTimerFirstShotMs ?? 0) > 0) {
+      details.add('first ${s.shotTimerFirstShotMs} ms');
+    }
+    if (s.shotTimerSplitMs.isNotEmpty) {
+      details.add('splits ${s.shotTimerSplitMs.join(', ')} ms');
+    }
+    if (s.timerRuns.isNotEmpty) {
+      final runSummary = s.timerRuns
+          .map(
+            (run) =>
+                '${_fmtDateTimeIso(run.time)}: total ${run.elapsedMs} ms, first ${run.firstShotMs} ms',
+          )
+          .join(' | ');
+      details.add('runs [$runSummary]');
+    }
+    return details.isEmpty ? 'Timer: not recorded' : 'Timer: ${details.join(' | ')}';
+  }
+
   b.writeln('COLD BORE - SESSION REPORT');
   b.writeln('Schema: $kExportSchemaVersion');
   b.writeln('Generated: ${_fmtDateTimeIso(DateTime.now())}');
-  if (includeTimerData && s.timerRuns.isNotEmpty) {
-    b.writeln('Saved timer runs: ${s.timerRuns.length}');
-    for (final run in s.timerRuns) {
-      final marks = <int>[
-        if (run.firstShotMs > 0) run.firstShotMs,
-        ...run.splitMs,
-      ];
-      b.writeln(
-        '  - ${_fmtDateTimeIso(run.time)} | total ${run.elapsedMs} ms | first ${run.firstShotMs} ms | '
-        'marks ${marks.isEmpty ? "-" : marks.join(", ")}'
-        '${run.startDelayMs > 0 ? ' | delay ${run.startDelayMs} ms' : ''}'
-        '${run.goalMs > 0 ? ' | goal ${run.goalMs} ms' : ''}',
-      );
-    }
-  }
-  if (includeTimerData &&
-      ((s.shotTimerElapsedMs ?? 0) > 0 ||
-          (s.shotTimerFirstShotMs ?? 0) > 0 ||
-          s.shotTimerSplitMs.isNotEmpty)) {
-    b.writeln(' -  Shot timer total (ms): ${s.shotTimerElapsedMs ?? 0}');
-    b.writeln(' -  First shot (ms): ${s.shotTimerFirstShotMs ?? 0}');
-    b.writeln(
-      ' -  Split times (ms): ${s.shotTimerSplitMs.isEmpty ? '-' : s.shotTimerSplitMs.join(', ')}',
-    );
-  }
 
   b.writeln('');
   b.writeln('SESSION');
@@ -1083,7 +1140,123 @@ String _buildSessionReportText(
     );
   }
 
+  if (includeTimerData) {
+    b.writeln(' -  Timer summary: ${timerSummaryForString()}');
+  }
+  if (includeTimerData && s.timerRuns.isNotEmpty) {
+    b.writeln(' -  Saved timer runs: ${s.timerRuns.length}');
+    for (final run in s.timerRuns) {
+      final marks = <int>[
+        if (run.firstShotMs > 0) run.firstShotMs,
+        ...run.splitMs,
+      ];
+      b.writeln(
+        '    - ${_fmtDateTimeIso(run.time)} | total ${run.elapsedMs} ms | first ${run.firstShotMs} ms | '
+        'marks ${marks.isEmpty ? "-" : marks.join(", ")}'
+        '${run.startDelayMs > 0 ? ' | delay ${run.startDelayMs} ms' : ''}'
+        '${run.goalMs > 0 ? ' | goal ${run.goalMs} ms' : ''}',
+      );
+    }
+  }
+
   b.writeln('');
+  b.writeln('STRING SUMMARY');
+  if (stringOrder.isEmpty) {
+    b.writeln('-');
+  } else {
+    for (var i = 0; i < stringOrder.length; i++) {
+      final meta = stringOrder[i];
+      final shotsForString = s.shotsByString[meta.id] ?? const <ShotEntry>[];
+      final dopeForString = s.trainingDopeByString[meta.id] ?? const <DopeEntry>[];
+      final activeTag = meta.id == s.activeStringId ? ' [ACTIVE]' : '';
+      final rangePeriod = meta.endedAt == null
+          ? ' (open)'
+          : ' to ${_fmtDateTimeIso(meta.endedAt!)}';
+      b.writeln(
+        ' -  String ${i + 1}$activeTag: ${_fmtDateTimeIso(meta.startedAt)}$rangePeriod',
+      );
+      b.writeln('    Rifle: ${stringRifleLabel(meta)}');
+      b.writeln('    Ammo: ${stringAmmoLabel(meta)}');
+      b.writeln(
+        '    Shots: ${shotsForString.length} | DOPE entries: ${dopeForString.length}',
+      );
+    }
+  }
+
+  b.writeln('');
+  b.writeln('STRING DETAILS');
+  if (stringOrder.isEmpty) {
+    b.writeln('-');
+  } else {
+    for (var i = 0; i < stringOrder.length; i++) {
+      final meta = stringOrder[i];
+      final shotsForString = s.shotsByString[meta.id] ?? const <ShotEntry>[];
+      final dopeForString = s.trainingDopeByString[meta.id] ?? const <DopeEntry>[];
+      final activeTag = meta.id == s.activeStringId ? ' (ACTIVE)' : '';
+      b.writeln('STRING ${i + 1}$activeTag');
+      b.writeln(' -  Started: ${_fmtDateTimeIso(meta.startedAt)}');
+      if (meta.endedAt != null) {
+        b.writeln(' -  Ended: ${_fmtDateTimeIso(meta.endedAt!)}');
+      }
+      b.writeln(' -  Rifle: ${stringRifleLabel(meta)}');
+      b.writeln(' -  Ammo: ${stringAmmoLabel(meta)}');
+      if (includeTimerData) {
+        b.writeln(' -  Timer: ${timerSummaryForString()}');
+      }
+
+      b.writeln(' -  Shots');
+      if (!includeShotResults) {
+        b.writeln('    [NOT SHARED]');
+      } else if (shotsForString.isEmpty) {
+        b.writeln('    -');
+      } else {
+        for (final sh in shotsForString) {
+          final shotLabel =
+              '    - ${_fmtDateTimeIso(sh.time)}${sh.isColdBore ? ' [COLD]' : ''}${sh.isBaseline ? ' [BASELINE]' : ''}';
+          b.writeln(shotLabel);
+          b.writeln('       Distance: ${sh.distance}');
+          b.writeln('       Result: ${sh.result}');
+          b.writeln(
+            '       Notes: ${sh.notes.trim().isEmpty ? '-' : sh.notes.trim()}',
+          );
+          if (sh.photos.isEmpty) {
+            b.writeln('       Photos: -');
+          } else {
+            b.writeln('       Photos (${sh.photos.length}):');
+            for (final ph in sh.photos) {
+              final crc = _crc32(ph.bytes);
+              b.writeln(
+                '         - ${_fmtDateTimeIso(ph.time)} - ${ph.caption} '
+                '(id: ${ph.id}; bytes: ${ph.bytes.length}; crc32: 0x${crc.toRadixString(16).padLeft(8, '0')})',
+              );
+              if (includePhotoBase64) {
+                final b64 = base64Encode(ph.bytes);
+                b.writeln('           base64: $b64');
+              }
+            }
+          }
+        }
+      }
+
+      b.writeln(' -  Training DOPE');
+      if (!includeTrainingDope) {
+        b.writeln('    [NOT SHARED]');
+      } else if (dopeForString.isEmpty) {
+        b.writeln('    -');
+      } else {
+        for (final d in dopeForString) {
+          b.writeln(
+            '    - ${d.distance} - Elev: ${d.elevation} ${d.elevationUnit.name} '
+            '(notes: ${d.elevationNotes.isEmpty ? '-' : d.elevationNotes}); '
+            'Wind: ${d.windType.name}: ${d.windValue} '
+            '(notes: ${d.windNotes.isEmpty ? '-' : d.windNotes})',
+          );
+        }
+      }
+      b.writeln('');
+    }
+  }
+
   b.writeln('NOTES');
   if (includeNotes) {
     b.writeln(s.notes.trim().isEmpty ? '-' : s.notes.trim());
@@ -1101,65 +1274,6 @@ String _buildSessionReportText(
   } else {
     for (final p in s.photos) {
       b.writeln(' -  ${_fmtDateTimeIso(p.time)} - ${p.caption} (id: ${p.id})');
-    }
-  }
-
-  // Dope
-  b.writeln('');
-  b.writeln('TRAINING DOPE');
-  if (!includeTrainingDope) {
-    b.writeln('[NOT SHARED]');
-  } else {
-    if (s.trainingDope.isEmpty) {
-      b.writeln('-');
-    } else {
-      for (final d in s.trainingDope) {
-        b.writeln(
-          ' -  ${d.distance} - Elev: ${d.elevation} ${d.elevationUnit.name} '
-          '(notes: ${d.elevationNotes.isEmpty ? '-' : d.elevationNotes}); '
-          'Wind: ${d.windType.name}: ${d.windValue} '
-          '(notes: ${d.windNotes.isEmpty ? '-' : d.windNotes})',
-        );
-      }
-    }
-  }
-
-  // Shots
-  b.writeln('');
-  b.writeln('SHOTS');
-  if (!includeShotResults) {
-    b.writeln('[NOT SHARED]');
-  } else if (s.shots.isEmpty) {
-    b.writeln('-');
-  } else {
-    for (final sh in s.shots) {
-      b.writeln(
-        ' -  ${_fmtDateTimeIso(sh.time)}'
-        '${sh.isColdBore ? ' [COLD]' : ''}'
-        '${sh.isBaseline ? ' [BASELINE]' : ''}',
-      );
-      b.writeln('  - Distance: ${sh.distance}');
-      b.writeln('  - Result: ${sh.result}');
-      b.writeln(
-        '  - Notes: ${sh.notes.trim().isEmpty ? '-' : sh.notes.trim()}',
-      );
-
-      if (sh.photos.isEmpty) {
-        b.writeln('  - Photos: -');
-      } else {
-        b.writeln('  - Photos (${sh.photos.length}):');
-        for (final ph in sh.photos) {
-          final crc = _crc32(ph.bytes);
-          b.writeln(
-            '     -  ${_fmtDateTimeIso(ph.time)} - ${ph.caption} '
-            '(id: ${ph.id}; bytes: ${ph.bytes.length}; crc32: 0x${crc.toRadixString(16).padLeft(8, '0')})',
-          );
-          if (includePhotoBase64) {
-            final b64 = base64Encode(ph.bytes);
-            b.writeln('      base64: $b64');
-          }
-        }
-      }
     }
   }
 
