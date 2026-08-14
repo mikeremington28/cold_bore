@@ -947,6 +947,44 @@ String _sessionEvidenceId(TrainingSession s) {
   return _crc32(bytes).toRadixString(16).padLeft(8, '0');
 }
 
+String _buildEvidenceBundleText(
+  AppState state, {
+  required TrainingSession s,
+  String appVersion = 'unknown',
+  String platform = 'unknown',
+}) {
+  final exportTime = DateTime.now();
+  final evidenceId = _sessionEvidenceId(s);
+  final baseReport = _buildSessionReportText(
+    state,
+    s: s,
+    redactLocation: false,
+    includePhotoBase64: false,
+    includeNotes: true,
+    includeTrainingDope: true,
+    includeLocation: true,
+    includePhotos: true,
+    includeShotResults: true,
+    includeTimerData: true,
+  );
+
+  final buffer = StringBuffer();
+  buffer.writeln('COLD BORE - EVIDENCE EXPORT');
+  buffer.writeln('Export type: Full evidence bundle');
+  buffer.writeln('Exported: ${_fmtDateTimeIso(exportTime)}');
+  buffer.writeln('App: Cold Bore');
+  buffer.writeln('App version: $appVersion');
+  buffer.writeln('Platform: $platform');
+  buffer.writeln('Session evidence ID (CRC32): $evidenceId');
+  buffer.writeln('Schema: $kExportSchemaVersion');
+  buffer.writeln('Location status: Included (unredacted)');
+  buffer.writeln('Record rule: Preserve this file exactly as exported. Do not edit after export.');
+  buffer.writeln('Review note: This file is intended for record review and evidence handling, not casual sharing.');
+  buffer.writeln('');
+  buffer.writeln(baseReport);
+  return _cleanText(buffer.toString());
+}
+
 String _buildSessionReportText(
   AppState state, {
   required TrainingSession s,
@@ -15070,36 +15108,34 @@ class _SessionsScreenState extends State<SessionsScreen> {
                                       Text(
                                         'Wind  ${windMph.toStringAsFixed(0)} mph',
                                       ),
-                                      if (windDeg != null) ...[
-                                        const SizedBox(width: 8),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 3,
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 3,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withValues(
+                                            alpha: 0.08,
                                           ),
-                                          decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(
+                                            999,
+                                          ),
+                                          border: Border.all(
                                             color: Colors.white.withValues(
-                                              alpha: 0.08,
-                                            ),
-                                            borderRadius: BorderRadius.circular(
-                                              999,
-                                            ),
-                                            border: Border.all(
-                                              color: Colors.white.withValues(
-                                                alpha: 0.14,
-                                              ),
-                                            ),
-                                          ),
-                                          child: Text(
-                                            '${dirFromDeg(windDeg)} • ${windDeg}°',
-                                            style: const TextStyle(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w700,
-                                              letterSpacing: 0.5,
+                                              alpha: 0.14,
                                             ),
                                           ),
                                         ),
-                                      ],
+                                        child: Text(
+                                          '${dirFromDeg(windDeg)} • $windDeg°',
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                            letterSpacing: 0.5,
+                                          ),
+                                        ),
+                                      ),
                                     ],
                                   ),
                                   Text(
@@ -15768,8 +15804,6 @@ class _WorkingDopeEditDialogState extends State<_WorkingDopeEditDialog> {
     );
   }
 }
-
-enum _WorkingDopeConflictChoice { replace, addBoth }
 
 class _DopeEntryDialog extends StatefulWidget {
   const _DopeEntryDialog({
@@ -23358,6 +23392,28 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
     }
   }
 
+  Future<void> _exportEvidenceBundle(BuildContext context) async {
+    try {
+      const evidenceOptions = _PdfExportOptions(
+        includeSummary: true,
+        includeCharts: true,
+        includeRecentSessions: true,
+        includeUsedRifles: true,
+        includeUsedAmmo: true,
+        includeMaintenance: true,
+        includeEverything: true,
+        includeSessionDetails: true,
+        sessionFilterMode: _PdfSessionFilterMode.all,
+      );
+      await _exportPdfReportWithOptions(context, evidenceOptions);
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Evidence export failed: $e')));
+    }
+  }
+
   Future<void> _exportPdfReportWithOptions(
     BuildContext context,
     _PdfExportOptions options,
@@ -23365,6 +23421,9 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
     try {
       final allSessions = [...widget.state.allSessions]
         ..sort((a, b) => b.dateTime.compareTo(a.dateTime));
+      final packageInfo = await PackageInfo.fromPlatform();
+      final appVersion = '${packageInfo.version}+${packageInfo.buildNumber}';
+      final exportPlatform = defaultTargetPlatform.name.toUpperCase();
 
       final modeFilteredSessions = switch (options.sessionFilterMode) {
         _PdfSessionFilterMode.all => allSessions,
@@ -23909,6 +23968,37 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
             ),
             pw.SizedBox(height: 4),
             pw.Text('Generated ${_pdfDateTime(DateTime.now())}'),
+            pw.Text('App version: $appVersion'),
+            pw.Text('Platform: $exportPlatform'),
+            pw.SizedBox(height: 8),
+            pw.Container(
+              width: double.infinity,
+              padding: const pw.EdgeInsets.all(10),
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(color: PdfColors.red900, width: 0.8),
+                borderRadius: pw.BorderRadius.circular(8),
+                color: PdfColors.red50,
+              ),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    'Evidence Export',
+                    style: pw.TextStyle(
+                      fontSize: 11,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                  pw.SizedBox(height: 4),
+                  pw.Text(
+                    'Preserve this file exactly as exported. Do not edit after export.',
+                  ),
+                  pw.Text(
+                    'Session fingerprint: ${sessions.map((s) => _sessionEvidenceId(s)).join(', ')}',
+                  ),
+                ],
+              ),
+            ),
             pw.SizedBox(height: 8),
             pw.Container(
               width: double.infinity,
@@ -24630,6 +24720,18 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                   ),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => _exportPdfReport(context),
+                ),
+              ),
+              const SizedBox(height: 8),
+              ColdBoreCard(
+                child: ListTile(
+                  leading: const Icon(Icons.fact_check_outlined),
+                  title: const Text('Evidence Export'),
+                  subtitle: const Text(
+                    'Full record bundle with the complete session data for review or record keeping.',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _exportEvidenceBundle(context),
                 ),
               ),
               if (_builtinPdfPresets.isNotEmpty ||
