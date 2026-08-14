@@ -15064,8 +15064,43 @@ class _SessionsScreenState extends State<SessionsScreen> {
                                 runSpacing: 6,
                                 children: [
                                   Text('Humidity  $humidity%'),
-                                  Text(
-                                    'Wind  ${windMph.toStringAsFixed(0)} mph ${dirFromDeg(windDeg)}',
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        'Wind  ${windMph.toStringAsFixed(0)} mph',
+                                      ),
+                                      if (windDeg != null) ...[
+                                        const SizedBox(width: 8),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 3,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white.withValues(
+                                              alpha: 0.08,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              999,
+                                            ),
+                                            border: Border.all(
+                                              color: Colors.white.withValues(
+                                                alpha: 0.14,
+                                              ),
+                                            ),
+                                          ),
+                                          child: Text(
+                                            '${dirFromDeg(windDeg)} • ${windDeg}°',
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700,
+                                              letterSpacing: 0.5,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
                                   ),
                                   Text(
                                     'Pressure  ${pressureInHg.toStringAsFixed(2)} inHg',
@@ -22831,6 +22866,41 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
     return '$m/$day/$y';
   }
 
+  String _pdfSessionFilterLabel(_PdfExportOptions options) {
+    switch (options.sessionFilterMode) {
+      case _PdfSessionFilterMode.all:
+        return 'All sessions';
+      case _PdfSessionFilterMode.selected:
+        return 'Selected sessions (${options.selectedSessionIds.length})';
+      case _PdfSessionFilterMode.dateRange:
+        final start = options.startDate == null
+            ? 'Any'
+            : _pdfDate(options.startDate!);
+        final end = options.endDate == null ? 'Any' : _pdfDate(options.endDate!);
+        return 'Date range ($start to $end)';
+    }
+  }
+
+  String _pdfFolderFilterLabel(String? folderFilter) {
+    if (folderFilter == null) return 'All folders';
+    if (folderFilter == '__unfiled__') return 'Unfiled only';
+    return folderFilter;
+  }
+
+  String _pdfSectionsSummary(_PdfExportOptions options) {
+    final sections = <String>[];
+    if (options.includeSummary) sections.add('Summary');
+    if (options.includeCharts) sections.add('Charts');
+    if (options.includeRecentSessions) sections.add('Recent Sessions');
+    if (options.includeUsedRifles) sections.add('Rifles Used');
+    if (options.includeUsedAmmo) sections.add('Ammo Used');
+    if (options.includeMaintenance) sections.add('Maintenance');
+    if (options.includeSessionDetails) sections.add('Session Detail Pages');
+    if (options.includeEverything) sections.add('Complete Appendix');
+    if (sections.isEmpty) return 'None';
+    return sections.join(', ');
+  }
+
   String _pdfFileDate(DateTime d) {
     final y = d.year.toString().padLeft(4, '0');
     final m = d.month.toString().padLeft(2, '0');
@@ -22903,16 +22973,31 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
     return parts.isEmpty ? 'Location: n/a' : 'Location: ${parts.join(' | ')}';
   }
 
+  String _pdfLocationCell(TrainingSession session) {
+    final name = session.locationName.trim();
+    if (name.isNotEmpty) return name;
+    if (session.latitude != null || session.longitude != null) {
+      return 'GPS logged';
+    }
+    return '-';
+  }
+
   String _pdfDopeEntrySummary(DopeEntry entry) {
     final distance = entry.distance > 0
         ? '${entry.distance.toStringAsFixed(1)} ${_distanceUnitLabel(entry.distanceUnit)}'
         : '-';
     final elevation = '${entry.elevation.toStringAsFixed(2)} ${_elevationUnitLabel(entry.elevationUnit)}';
     final wind = entry.windValue.trim().isEmpty ? '-' : entry.windValue.trim();
-    final notes = entry.elevationNotes.trim().isEmpty
-        ? 'No notes'
-        : entry.elevationNotes.trim();
-    return 'Distance: $distance | Elevation: $elevation | Wind: $wind | Notes: $notes';
+    final summary = <String>[
+      'Distance: $distance',
+      'Elevation: $elevation',
+      'Wind: $wind',
+    ];
+    final notes = entry.elevationNotes.trim();
+    if (notes.isNotEmpty) {
+      summary.add('Notes: $notes');
+    }
+    return summary.join(' | ');
   }
 
   String _pdfRifleLabel(String? rifleId) {
@@ -23364,6 +23449,8 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
         final coldBoreShots = session.shots
             .where((shot) => shot.isColdBore)
             .toList();
+        final stringsByStart = [...session.strings]
+          ..sort((a, b) => a.startedAt.compareTo(b.startedAt));
         final widgets = <pw.Widget>[
           pw.Container(
             margin: const pw.EdgeInsets.only(top: 16, bottom: 8),
@@ -23428,6 +23515,87 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
               ),
             ),
             pw.SizedBox(height: 8),
+          ]);
+        }
+
+        if (stringsByStart.isNotEmpty) {
+          final assignedShots = session.shotsByString.values.fold<int>(
+            0,
+            (sum, list) => sum + list.length,
+          );
+          final assignedDope = session.trainingDopeByString.values.fold<int>(
+            0,
+            (sum, list) => sum + list.length,
+          );
+          final unassignedShots = math.max(
+            0,
+            sessionShotCount(session) - assignedShots,
+          );
+          final unassignedDope = math.max(
+            0,
+            session.trainingDope.length - assignedDope,
+          );
+
+          widgets.addAll([
+            pw.Text(
+              'Strings',
+              style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 6),
+            for (var i = 0; i < stringsByStart.length; i++)
+              pw.Container(
+                margin: const pw.EdgeInsets.only(bottom: 8),
+                padding: const pw.EdgeInsets.all(8),
+                decoration: pw.BoxDecoration(
+                  border: pw.Border.all(color: PdfColors.grey400, width: 0.5),
+                  borderRadius: pw.BorderRadius.circular(6),
+                ),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      'String ${i + 1} | ${stringsByStart[i].endedAt == null ? 'Active' : 'Ended'}',
+                      style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                    ),
+                    pw.SizedBox(height: 2),
+                    pw.Text(
+                      'Rifle: ${_pdfRifleLabel(stringsByStart[i].rifleId ?? session.rifleId)} | Ammo: ${_pdfAmmoLabel(stringsByStart[i].ammoLotId ?? session.ammoLotId)}',
+                    ),
+                    pw.Text('Started: ${_pdfDateTime(stringsByStart[i].startedAt)}'),
+                    if (stringsByStart[i].endedAt != null)
+                      pw.Text('Ended: ${_pdfDateTime(stringsByStart[i].endedAt!)}'),
+                    pw.Text(
+                      'Shots: ${(session.shotsByString[stringsByStart[i].id] ?? const <ShotEntry>[]).length} | DOPE entries: ${(session.trainingDopeByString[stringsByStart[i].id] ?? const <DopeEntry>[]).length}',
+                    ),
+                  ],
+                ),
+              ),
+            if (unassignedShots > 0 || unassignedDope > 0)
+              pw.Container(
+                margin: const pw.EdgeInsets.only(bottom: 8),
+                padding: const pw.EdgeInsets.all(8),
+                decoration: pw.BoxDecoration(
+                  border: pw.Border.all(color: PdfColors.grey400, width: 0.5),
+                  borderRadius: pw.BorderRadius.circular(6),
+                ),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      'Unassigned',
+                      style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                    ),
+                    pw.SizedBox(height: 2),
+                    pw.Text(
+                      'Rifle: ${_pdfRifleLabel(session.rifleId)} | Ammo: ${_pdfAmmoLabel(session.ammoLotId)}',
+                    ),
+                    pw.Text(
+                      'Shots: $unassignedShots | DOPE entries: $unassignedDope',
+                    ),
+                  ],
+                ),
+              ),
+            pw.SizedBox(height: 4),
           ]);
         }
 
@@ -23529,7 +23697,7 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
                     pw.Text(
-                      '${_pdfDateTime(shot.time)} | ${shot.result.trim().isEmpty ? '-' : shot.result.trim()} | ${shot.distance.trim().isEmpty ? '-' : shot.distance.trim()}',
+                      '${_pdfDateTime(shot.time)} | ${shot.result.trim().isEmpty ? '-' : shot.result.trim()} | ${shot.distance.trim().isEmpty ? '-' : shot.distance.trim()} | ${shot.isBaseline ? 'BASELINE' : 'FOLLOW-UP'}',
                       style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
                     ),
                     if (shot.notes.trim().isNotEmpty) ...[
@@ -23594,6 +23762,11 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
         (total, s) => total + sessionShotCount(s),
       );
       final avgShots = totalSessions == 0 ? 0.0 : totalShots / totalSessions;
+      final sessionFilterLabel = _pdfSessionFilterLabel(options);
+      final folderFilterLabel = _pdfFolderFilterLabel(options.folderFilter);
+      final yearFilterLabel = options.yearFilter?.toString() ?? 'All years';
+      final monthFilterLabel = options.monthFilter ?? 'All months';
+      final sectionsSummary = _pdfSectionsSummary(options);
 
       final byRifle = <String, int>{};
       for (final s in sessions) {
@@ -23622,6 +23795,14 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
           ? monthSeries.sublist(monthSeries.length - 6)
           : monthSeries;
       final allColdBoreRows = _coldBoreRowsForSessions(sessions);
+      final coldBoreDisplayTargetCount = sessions.fold<int>(
+        0,
+        (sum, s) =>
+            sum +
+            s.shots
+                .where((x) => x.isColdBore && x.photos.isNotEmpty)
+                .length,
+      );
 
       final usedRifleIds = <String>{};
       final usedAmmoIds = <String>{};
@@ -23643,6 +23824,77 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
         ..sort((a, b) => _pdfRifleLabel(a.id).compareTo(_pdfRifleLabel(b.id)));
       final allAmmo = [...widget.state.ammoLots]
         ..sort((a, b) => _pdfAmmoLabel(a.id).compareTo(_pdfAmmoLabel(b.id)));
+      final rifleAmmoDopeRecords = <({
+        String rifle,
+        String ammo,
+        double distance,
+        List<String> row,
+      })>[];
+      for (final bucket in widget.state.workingDopeRifleAmmo.values) {
+        for (final dope in bucket.values) {
+          final rifleLabel = _pdfRifleLabel(dope.rifleId);
+          final ammoLabel = _pdfAmmoLabel(dope.ammoLotId);
+          rifleAmmoDopeRecords.add(
+            (
+              rifle: rifleLabel,
+              ammo: ammoLabel,
+              distance: dope.distance,
+              row: [
+                rifleLabel,
+                ammoLabel,
+                '${dope.distance} ${_distanceUnitLabel(dope.distanceUnit)}',
+                '${dope.elevation} ${_elevationUnitLabel(dope.elevationUnit)}',
+                '${_windTypeLabel(dope.windType)} ${dope.windValue}'.trim(),
+                dope.windageLeft.toStringAsFixed(2),
+                dope.windageRight.toStringAsFixed(2),
+              ],
+            ),
+          );
+        }
+      }
+      rifleAmmoDopeRecords.sort((a, b) {
+        final rifleCmp = a.rifle.toLowerCase().compareTo(b.rifle.toLowerCase());
+        if (rifleCmp != 0) return rifleCmp;
+        final ammoCmp = a.ammo.toLowerCase().compareTo(b.ammo.toLowerCase());
+        if (ammoCmp != 0) return ammoCmp;
+        return a.distance.compareTo(b.distance);
+      });
+      final rifleAmmoDopeRows = [for (final record in rifleAmmoDopeRecords) record.row];
+
+      final rifleOnlyDopeRecords = <({
+        String rifle,
+        double distance,
+        List<String> row,
+      })>[];
+      for (final bucket in widget.state.workingDopeRifleOnly.values) {
+        for (final dope in bucket.values) {
+          final rifleLabel = _pdfRifleLabel(dope.rifleId);
+          rifleOnlyDopeRecords.add(
+            (
+              rifle: rifleLabel,
+              distance: dope.distance,
+              row: [
+                rifleLabel,
+                '${dope.distance} ${_distanceUnitLabel(dope.distanceUnit)}',
+                '${dope.elevation} ${_elevationUnitLabel(dope.elevationUnit)}',
+                '${_windTypeLabel(dope.windType)} ${dope.windValue}'.trim(),
+                dope.windageLeft.toStringAsFixed(2),
+                dope.windageRight.toStringAsFixed(2),
+              ],
+            ),
+          );
+        }
+      }
+      rifleOnlyDopeRecords.sort((a, b) {
+        final rifleCmp = a.rifle.toLowerCase().compareTo(b.rifle.toLowerCase());
+        if (rifleCmp != 0) return rifleCmp;
+        return a.distance.compareTo(b.distance);
+      });
+      final rifleOnlyDopeRows = [for (final record in rifleOnlyDopeRecords) record.row];
+      final pdfTableHeaderStyle = pw.TextStyle(
+        fontWeight: pw.FontWeight.bold,
+        fontSize: 8.0,
+      );
 
       final doc = pw.Document();
 
@@ -23657,6 +23909,34 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
             ),
             pw.SizedBox(height: 4),
             pw.Text('Generated ${_pdfDateTime(DateTime.now())}'),
+            pw.SizedBox(height: 8),
+            pw.Container(
+              width: double.infinity,
+              padding: const pw.EdgeInsets.all(10),
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(color: PdfColors.grey400),
+                borderRadius: pw.BorderRadius.circular(8),
+              ),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    'Export Scope',
+                    style: pw.TextStyle(
+                      fontSize: 11,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                  pw.SizedBox(height: 4),
+                  pw.Text('Session filter: $sessionFilterLabel'),
+                  pw.Text('Folder: $folderFilterLabel'),
+                  pw.Text('Year: $yearFilterLabel'),
+                  pw.Text('Month: $monthFilterLabel'),
+                  pw.Text('Matched sessions: $totalSessions'),
+                  pw.Text('Included sections: $sectionsSummary'),
+                ],
+              ),
+            ),
             if (options.includeSummary) ...[
               pw.SizedBox(height: 14),
               pw.Wrap(
@@ -23773,19 +24053,16 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                   color: PdfColors.grey400,
                   width: 0.5,
                 ),
-                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                headerStyle: pdfTableHeaderStyle,
                 headerDecoration: const pw.BoxDecoration(
                   color: PdfColors.grey200,
                 ),
                 cellStyle: const pw.TextStyle(fontSize: 9),
                 headers: const ['Date', 'Location', 'Rifle', 'Ammo', 'Shots'],
                 data: sessions.take(30).map((s) {
-                  final location = s.locationName.isEmpty
-                      ? '-'
-                      : s.locationName;
                   return [
                     _pdfDate(s.dateTime),
-                    location,
+                    _pdfLocationCell(s),
                     _pdfRifleLabel(s.rifleId),
                     _pdfAmmoLabel(s.ammoLotId),
                     '${sessionShotCount(s)}',
@@ -23808,7 +24085,7 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                   color: PdfColors.grey400,
                   width: 0.5,
                 ),
-                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                headerStyle: pdfTableHeaderStyle,
                 headerDecoration: const pw.BoxDecoration(
                   color: PdfColors.grey200,
                 ),
@@ -23854,7 +24131,7 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                   color: PdfColors.grey400,
                   width: 0.5,
                 ),
-                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                headerStyle: pdfTableHeaderStyle,
                 headerDecoration: const pw.BoxDecoration(
                   color: PdfColors.grey200,
                 ),
@@ -23903,7 +24180,7 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                       color: PdfColors.grey400,
                       width: 0.5,
                     ),
-                    headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                    headerStyle: pdfTableHeaderStyle,
                     headerDecoration: const pw.BoxDecoration(
                       color: PdfColors.grey200,
                     ),
@@ -23958,7 +24235,7 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                   color: PdfColors.grey400,
                   width: 0.5,
                 ),
-                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                headerStyle: pdfTableHeaderStyle,
                 headerDecoration: const pw.BoxDecoration(
                   color: PdfColors.grey200,
                 ),
@@ -23998,7 +24275,7 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                   color: PdfColors.grey400,
                   width: 0.5,
                 ),
-                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                headerStyle: pdfTableHeaderStyle,
                 headerDecoration: const pw.BoxDecoration(
                   color: PdfColors.grey200,
                 ),
@@ -24032,11 +24309,21 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                   color: PdfColors.grey400,
                   width: 0.5,
                 ),
-                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                headerStyle: pdfTableHeaderStyle,
                 headerDecoration: const pw.BoxDecoration(
                   color: PdfColors.grey200,
                 ),
                 cellStyle: const pw.TextStyle(fontSize: 9),
+                columnWidths: const {
+                  0: pw.FlexColumnWidth(1.0),
+                  1: pw.FlexColumnWidth(1.3),
+                  2: pw.FlexColumnWidth(1.15),
+                  3: pw.FlexColumnWidth(1.5),
+                  4: pw.FlexColumnWidth(1.2),
+                  5: pw.FlexColumnWidth(0.65),
+                  6: pw.FlexColumnWidth(0.75),
+                  7: pw.FlexColumnWidth(0.65),
+                },
                 headers: const [
                   'Date',
                   'Location',
@@ -24051,7 +24338,7 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                     .map(
                       (s) => [
                         _pdfDate(s.dateTime),
-                        s.locationName.isEmpty ? '-' : s.locationName,
+                        _pdfLocationCell(s),
                         _pdfRifleLabel(s.rifleId),
                         _pdfAmmoLabel(s.ammoLotId),
                         _pdfWeatherSummary(s).replaceFirst('Weather: ', ''),
@@ -24061,60 +24348,6 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                       ],
                     )
                     .toList(),
-              ),
-              pw.SizedBox(height: 12),
-              pw.Text(
-                'All Session Strings',
-                style: pw.TextStyle(
-                  fontSize: 12,
-                  fontWeight: pw.FontWeight.bold,
-                ),
-              ),
-              pw.SizedBox(height: 6),
-              pw.Table.fromTextArray(
-                border: pw.TableBorder.all(
-                  color: PdfColors.grey400,
-                  width: 0.5,
-                ),
-                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-                headerDecoration: const pw.BoxDecoration(
-                  color: PdfColors.grey200,
-                ),
-                cellStyle: const pw.TextStyle(fontSize: 9),
-                headers: const [
-                  'Session Date',
-                  'String #',
-                  'Rifle',
-                  'Ammo',
-                  'Shots',
-                  'DOPE Entries',
-                ],
-                data: [
-                  for (final s in sessions) ...[
-                    for (var i = 0; i < s.strings.length; i++)
-                      [
-                        _pdfDate(s.dateTime),
-                        '${i + 1}',
-                        _pdfRifleLabel(s.strings[i].rifleId),
-                        _pdfAmmoLabel(s.strings[i].ammoLotId),
-                        '${(s.shotsByString[s.strings[i].id] ?? const <ShotEntry>[]).length}',
-                        '${(s.trainingDopeByString[s.strings[i].id] ?? const <DopeEntry>[]).length}',
-                      ],
-                    if (sessionShotCount(s) >
-                        s.shotsByString.values.fold<int>(
-                          0,
-                          (sum, list) => sum + list.length,
-                        ))
-                      [
-                        _pdfDate(s.dateTime),
-                        'Unassigned',
-                        _pdfRifleLabel(s.rifleId),
-                        _pdfAmmoLabel(s.ammoLotId),
-                        '${sessionShotCount(s) - s.shotsByString.values.fold<int>(0, (sum, list) => sum + list.length)}',
-                        '0',
-                      ],
-                  ],
-                ],
               ),
               pw.SizedBox(height: 12),
               pw.Text(
@@ -24130,11 +24363,21 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                   color: PdfColors.grey400,
                   width: 0.5,
                 ),
-                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                headerStyle: pdfTableHeaderStyle,
                 headerDecoration: const pw.BoxDecoration(
                   color: PdfColors.grey200,
                 ),
                 cellStyle: const pw.TextStyle(fontSize: 9),
+                columnWidths: const {
+                  0: pw.FlexColumnWidth(1.0),
+                  1: pw.FlexColumnWidth(1.0),
+                  2: pw.FlexColumnWidth(1.0),
+                  3: pw.FlexColumnWidth(1.25),
+                  4: pw.FlexColumnWidth(0.75),
+                  5: pw.FlexColumnWidth(0.65),
+                  6: pw.FlexColumnWidth(0.8),
+                  7: pw.FlexColumnWidth(0.8),
+                },
                 headers: const [
                   'Session Date',
                   'Shot Time',
@@ -24171,36 +24414,38 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                 ),
               ),
               pw.SizedBox(height: 6),
-              ...[
-                for (final s in sessions)
-                  for (final shot in s.shots.where((x) => x.isColdBore))
-                    pw.Container(
-                      margin: const pw.EdgeInsets.only(bottom: 8),
-                      padding: const pw.EdgeInsets.all(8),
-                      decoration: pw.BoxDecoration(
-                        border: pw.Border.all(
-                          color: PdfColors.grey400,
-                          width: 0.5,
-                        ),
-                        borderRadius: pw.BorderRadius.circular(6),
-                      ),
-                      child: pw.Column(
-                        crossAxisAlignment: pw.CrossAxisAlignment.start,
-                        children: [
-                          pw.Text(
-                            '${_pdfDateTime(shot.time)} | ${_pdfRifleLabel(s.rifleId)} | ${_pdfAmmoLabel(s.ammoLotId)}',
-                            style: pw.TextStyle(
-                              fontSize: 9,
-                              fontWeight: pw.FontWeight.bold,
-                            ),
+              if (coldBoreDisplayTargetCount == 0)
+                pw.Text(
+                  'No cold-bore display target images attached.',
+                  style: const pw.TextStyle(fontSize: 9),
+                )
+              else
+                ...[
+                  for (final s in sessions)
+                    for (final shot in s.shots.where(
+                      (x) => x.isColdBore && x.photos.isNotEmpty,
+                    ))
+                      pw.Container(
+                        margin: const pw.EdgeInsets.only(bottom: 8),
+                        padding: const pw.EdgeInsets.all(8),
+                        decoration: pw.BoxDecoration(
+                          border: pw.Border.all(
+                            color: PdfColors.grey400,
+                            width: 0.5,
                           ),
-                          pw.SizedBox(height: 4),
-                          if (shot.photos.isEmpty)
+                          borderRadius: pw.BorderRadius.circular(6),
+                        ),
+                        child: pw.Column(
+                          crossAxisAlignment: pw.CrossAxisAlignment.start,
+                          children: [
                             pw.Text(
-                              'No display target image attached.',
-                              style: const pw.TextStyle(fontSize: 9),
-                            )
-                          else
+                              '${_pdfDateTime(shot.time)} | ${_pdfRifleLabel(s.rifleId)} | ${_pdfAmmoLabel(s.ammoLotId)}',
+                              style: pw.TextStyle(
+                                fontSize: 9,
+                                fontWeight: pw.FontWeight.bold,
+                              ),
+                            ),
+                            pw.SizedBox(height: 4),
                             pw.Wrap(
                               spacing: 8,
                               runSpacing: 8,
@@ -24241,10 +24486,10 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                                   ),
                               ],
                             ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-              ],
+                ],
               pw.SizedBox(height: 12),
               pw.Text(
                 'Working DOPE (Rifle + Ammo)',
@@ -24259,7 +24504,7 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                   color: PdfColors.grey400,
                   width: 0.5,
                 ),
-                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                headerStyle: pdfTableHeaderStyle,
                 headerDecoration: const pw.BoxDecoration(
                   color: PdfColors.grey200,
                 ),
@@ -24273,20 +24518,7 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                   'L',
                   'R',
                 ],
-                data: [
-                  for (final bucket in widget.state.workingDopeRifleAmmo.values)
-                    for (final dope in bucket.values)
-                      [
-                        _pdfRifleLabel(dope.rifleId),
-                        _pdfAmmoLabel(dope.ammoLotId),
-                        '${dope.distance} ${_distanceUnitLabel(dope.distanceUnit)}',
-                        '${dope.elevation} ${_elevationUnitLabel(dope.elevationUnit)}',
-                        '${_windTypeLabel(dope.windType)} ${dope.windValue}'
-                            .trim(),
-                        dope.windageLeft.toStringAsFixed(2),
-                        dope.windageRight.toStringAsFixed(2),
-                      ],
-                ],
+                data: rifleAmmoDopeRows,
               ),
               pw.SizedBox(height: 12),
               pw.Text(
@@ -24297,38 +24529,32 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                 ),
               ),
               pw.SizedBox(height: 6),
-              pw.Table.fromTextArray(
-                border: pw.TableBorder.all(
-                  color: PdfColors.grey400,
-                  width: 0.5,
+              if (rifleOnlyDopeRows.isEmpty)
+                pw.Text(
+                  'No rifle-only DOPE entries yet.',
+                  style: const pw.TextStyle(fontSize: 9),
+                )
+              else
+                pw.Table.fromTextArray(
+                  border: pw.TableBorder.all(
+                    color: PdfColors.grey400,
+                    width: 0.5,
+                  ),
+                  headerStyle: pdfTableHeaderStyle,
+                  headerDecoration: const pw.BoxDecoration(
+                    color: PdfColors.grey200,
+                  ),
+                  cellStyle: const pw.TextStyle(fontSize: 9),
+                  headers: const [
+                    'Rifle',
+                    'Distance',
+                    'Elevation',
+                    'Wind',
+                    'L',
+                    'R',
+                  ],
+                  data: rifleOnlyDopeRows,
                 ),
-                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-                headerDecoration: const pw.BoxDecoration(
-                  color: PdfColors.grey200,
-                ),
-                cellStyle: const pw.TextStyle(fontSize: 9),
-                headers: const [
-                  'Rifle',
-                  'Distance',
-                  'Elevation',
-                  'Wind',
-                  'L',
-                  'R',
-                ],
-                data: [
-                  for (final bucket in widget.state.workingDopeRifleOnly.values)
-                    for (final dope in bucket.values)
-                      [
-                        _pdfRifleLabel(dope.rifleId),
-                        '${dope.distance} ${_distanceUnitLabel(dope.distanceUnit)}',
-                        '${dope.elevation} ${_elevationUnitLabel(dope.elevationUnit)}',
-                        '${_windTypeLabel(dope.windType)} ${dope.windValue}'
-                            .trim(),
-                        dope.windageLeft.toStringAsFixed(2),
-                        dope.windageRight.toStringAsFixed(2),
-                      ],
-                ],
-              ),
             ],
           ],
         ),
