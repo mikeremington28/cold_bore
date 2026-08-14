@@ -1126,8 +1126,6 @@ String _buildSessionReportText(
       b.writeln(' -  GPS: [REDACTED]');
     }
   }
-  b.writeln(' -  Rifle: ${rifleLabel()}');
-  b.writeln(' -  Ammo: ${ammoLabel()}');
 
   if (s.temperatureF != null ||
       s.windSpeedMph != null ||
@@ -1194,17 +1192,17 @@ String _buildSessionReportText(
       final dopeForString = s.trainingDopeByString[meta.id] ?? const <DopeEntry>[];
       final activeTag = meta.id == s.activeStringId ? ' (ACTIVE)' : '';
       b.writeln('STRING ${i + 1}$activeTag');
+      b.writeln(' -  Rifle: ${stringRifleLabel(meta)}');
+      b.writeln(' -  Ammo: ${stringAmmoLabel(meta)}');
       b.writeln(' -  Started: ${_fmtDateTimeIso(meta.startedAt)}');
       if (meta.endedAt != null) {
         b.writeln(' -  Ended: ${_fmtDateTimeIso(meta.endedAt!)}');
       }
-      b.writeln(' -  Rifle: ${stringRifleLabel(meta)}');
-      b.writeln(' -  Ammo: ${stringAmmoLabel(meta)}');
       if (includeTimerData) {
         b.writeln(' -  Timer: ${timerSummaryForString()}');
       }
 
-      b.writeln(' -  Shots');
+      b.writeln(' -  Shots: ${shotsForString.length}');
       if (!includeShotResults) {
         b.writeln('    [NOT SHARED]');
       } else if (shotsForString.isEmpty) {
@@ -1238,7 +1236,7 @@ String _buildSessionReportText(
         }
       }
 
-      b.writeln(' -  Training DOPE');
+      b.writeln(' -  DOPE entries: ${dopeForString.length}');
       if (!includeTrainingDope) {
         b.writeln('    [NOT SHARED]');
       } else if (dopeForString.isEmpty) {
