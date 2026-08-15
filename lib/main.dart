@@ -23923,11 +23923,58 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                     child: pw.Text('-'),
                   )
                 else
-                  for (final entry in dopeForString)
-                    pw.Padding(
-                      padding: const pw.EdgeInsets.only(left: 8, top: 2),
-                      child: pw.Text(_pdfDopeEntryDetail(entry)),
+                  pw.Table.fromTextArray(
+                    border: pw.TableBorder.all(
+                      color: PdfColors.grey400,
+                      width: 0.4,
                     ),
+                    headerStyle: pw.TextStyle(
+                      fontWeight: pw.FontWeight.bold,
+                      fontSize: 7,
+                    ),
+                    headerDecoration: const pw.BoxDecoration(
+                      color: PdfColors.grey200,
+                    ),
+                    cellStyle: const pw.TextStyle(fontSize: 7),
+                    cellPadding: const pw.EdgeInsets.all(3),
+                    headers: const [
+                      'Time',
+                      'Distance',
+                      'Elevation',
+                      'Wind',
+                      'L',
+                      'R',
+                      'Notes',
+                    ],
+                    data: dopeForString.map((entry) {
+                      final distance = entry.distance > 0
+                          ? '${entry.distance.toStringAsFixed(1)} ${_distanceUnitLabel(entry.distanceUnit)}'
+                          : '-';
+                      final elevation =
+                          '${entry.elevation.toStringAsFixed(2)} ${_elevationUnitLabel(entry.elevationUnit)}';
+                      final wind = [
+                        _windTypeLabel(entry.windType),
+                        entry.windValue.trim().isEmpty
+                            ? '-'
+                            : entry.windValue.trim(),
+                      ].join(' ');
+                      final notes = [
+                        if (entry.elevationNotes.trim().isNotEmpty)
+                          'Elev: ${entry.elevationNotes.trim()}',
+                        if (entry.windNotes.trim().isNotEmpty)
+                          'Wind: ${entry.windNotes.trim()}',
+                      ].join(' | ');
+                      return [
+                        _pdfDateTime(entry.time),
+                        distance,
+                        elevation,
+                        wind,
+                        entry.windageLeft.toStringAsFixed(2),
+                        entry.windageRight.toStringAsFixed(2),
+                        notes.isEmpty ? '-' : notes,
+                      ];
+                    }).toList(),
+                  ),
               ],
             ),
           );
