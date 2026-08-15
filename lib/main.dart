@@ -25,6 +25,7 @@ import 'package:file_picker/file_picker.dart';
 import 'meta_app_events_service.dart';
 import 'cloud_sync_service.dart';
 import 'subscription_service.dart';
+import 'export_target_logic.dart';
 
 const String kBackupSchemaVersion = '2026-02-05';
 const String kLocalStatePrefsKey = 'cold_bore.local_state.v1';
@@ -24543,8 +24544,15 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
               ...() {
                 final groups = <String, List<_ColdBoreRow>>{};
                 for (final row in allColdBoreRows) {
-                  final rifleId = row.rifle?.id ?? row.session.rifleId ?? '-';
-                  final ammoId = row.ammo?.id ?? row.session.ammoLotId ?? '-';
+                  final rifleId = row.rifle?.id ?? row.session.rifleId;
+                  final ammoId = row.ammo?.id ?? row.session.ammoLotId;
+                  if (!shouldCreateColdBoreExportTarget(
+                    rifleId: rifleId,
+                    ammoId: ammoId,
+                    hasLoggedColdBore: true,
+                  )) {
+                    continue;
+                  }
                   groups.putIfAbsent('$rifleId|$ammoId', () => []).add(row);
                 }
                 final sortedGroups = groups.entries.toList()
