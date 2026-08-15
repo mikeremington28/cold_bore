@@ -22494,6 +22494,13 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
     return '${_pdfDateTime(s.dateTime)} | $location | $rifle | $ammo';
   }
 
+  String _pdfSessionDetailLabel(TrainingSession s) {
+    final location = s.locationName.trim().isEmpty
+        ? 'No location'
+        : s.locationName.trim();
+    return '${_pdfDateTime(s.dateTime)} | $location';
+  }
+
   Future<DateTime?> _pickPdfFilterDate(
     BuildContext context, {
     required DateTime initialDate,
@@ -23214,6 +23221,34 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
     return summary.join(' | ');
   }
 
+  String _pdfDopeEntryDetail(DopeEntry entry) {
+    final distance = entry.distance > 0
+        ? '${entry.distance.toStringAsFixed(1)} ${_distanceUnitLabel(entry.distanceUnit)}'
+        : '-';
+    final elevation =
+        '${entry.elevation.toStringAsFixed(2)} ${_elevationUnitLabel(entry.elevationUnit)}';
+    final windType = _windTypeLabel(entry.windType);
+    final windValue = entry.windValue.trim().isEmpty
+        ? '-'
+        : entry.windValue.trim();
+    final parts = <String>[
+      'Time: ${_pdfDateTime(entry.time)}',
+      'Distance: $distance',
+      'Elevation: $elevation',
+      'Wind: $windType $windValue'.trim(),
+      'Windage L/R: ${entry.windageLeft.toStringAsFixed(2)} / ${entry.windageRight.toStringAsFixed(2)}',
+    ];
+    final elevationNotes = entry.elevationNotes.trim();
+    if (elevationNotes.isNotEmpty) {
+      parts.add('Elevation notes: $elevationNotes');
+    }
+    final windNotes = entry.windNotes.trim();
+    if (windNotes.isNotEmpty) {
+      parts.add('Wind notes: $windNotes');
+    }
+    return parts.join(' | ');
+  }
+
   String _pdfRifleLabel(String? rifleId) {
     if (rifleId == null) return '-';
     final rifle = widget.state.findRifleById(rifleId);
@@ -23691,6 +23726,213 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
             .toList();
         final stringsByStart = [...session.strings]
           ..sort((a, b) => a.startedAt.compareTo(b.startedAt));
+        final hasLegacyTimerData =
+            (session.shotTimerElapsedMs ?? 0) > 0 ||
+            (session.shotTimerFirstShotMs ?? 0) > 0 ||
+            session.shotTimerSplitMs.isNotEmpty;
+
+        bool timerRunBelongsToString(
+          SessionTimerRun run,
+          SessionStringMeta meta,
+        ) {
+          final startsInTime =
+              run.time.isAtSameMomentAs(meta.startedAt) ||
+              run.time.isAfter(meta.startedAt);
+          final endsInTime =
+              meta.endedAt == null ||
+              run.time.isBefore(meta.endedAt!) ||
+              run.time.isAtSameMomentAs(meta.endedAt!);
+          return startsInTime && endsInTime;
+        }
+
+        bool recordBelongsToString(DateTime time, SessionStringMeta meta) {
+          final startsInTime =
+              time.isAtSameMomentAs(meta.startedAt) ||
+              time.isAfter(meta.startedAt);
+          final endsInTime =
+              meta.endedAt == null ||
+              time.isBefore(meta.endedAt!) ||
+              time.isAtSameMomentAs(meta.endedAt!);
+          return startsInTime && endsInTime;
+        }
+
+        final explicitlyAssignedShotIds = session.shotsByString.values
+            .expand((shots) => shots)
+            .map((shot) => shot.id)
+            .toSet();
+        final explicitlyAssignedDopeIds = session.trainingDopeByString.values
+            .expand((entries) => entries)
+            .map((entry) => entry.id)
+            .toSet();
+
+        List<ShotEntry> getShotsForString(SessionStringMeta meta) {
+          final assigned = [
+            ...(session.shotsByString[meta.id] ?? const <ShotEntry>[]),
+            ...session.shots.where(
+              (shot) =>
+                  !explicitlyAssignedShotIds.contains(shot.id) &&
+                  recordBelongsToString(shot.time, meta),
+            ),
+          ];
+          return assigned;
+        }
+
+        List<DopeEntry> getDopeForString(SessionStringMeta meta) {
+          final assigned = [
+            ...(session.trainingDopeByString[meta.id] ??
+                const <DopeEntry>[]),
+            ...session.trainingDope.where(
+              (entry) =>
+                  !explicitlyAssignedDopeIds.contains(entry.id) &&
+                  recordBelongsToString(entry.time, meta),
+            ),
+          ];
+          return assigned;
+        }
+
+        String timerRunSummary(SessionTimerRun run) {
+          final parts = <String>[
+            _pdfDateTime(run.time),
+            'total ${(run.elapsedMs / 1000).toStringAsFixed(3)}s',
+          ];
+          if (run.firstShotMs > 0) {
+            parts.add('first ${(run.firstShotMs / 1000).toStringAsFixed(3)}s');
+          }
+          if (run.splitMs.isNotEmpty) {
+            parts.add(
+              'splits ${run.splitMs.map((ms) => (ms / 1000).toStringAsFixed(3)).join(', ')}s',
+            );
+          }
+          if (run.startDelayMs > 0) {
+            parts.add('delay ${(run.startDelayMs / 1000).toStringAsFixed(3)}s');
+          }
+          if (run.goalMs > 0) {
+            parts.add('goal ${(run.goalMs / 1000).toStringAsFixed(3)}s');
+          }
+          return parts.join(' | ');
+        }
+
+        List<String> timerSummariesForString(SessionStringMeta meta) {
+          final summaries = session.timerRuns
+              .where((run) => timerRunBelongsToString(run, meta))
+              .map(timerRunSummary)
+              .toList();
+          if (summaries.isNotEmpty) return summaries;
+          if (stringsByStart.length == 1 && hasLegacyTimerData) {
+            final parts = <String>[];
+            if ((session.shotTimerElapsedMs ?? 0) > 0) {
+              parts.add(
+                'total ${(session.shotTimerElapsedMs! / 1000).toStringAsFixed(3)}s',
+              );
+            }
+            if ((session.shotTimerFirstShotMs ?? 0) > 0) {
+              parts.add(
+                'first ${(session.shotTimerFirstShotMs! / 1000).toStringAsFixed(3)}s',
+              );
+            }
+            if (session.shotTimerSplitMs.isNotEmpty) {
+              parts.add(
+                'splits ${session.shotTimerSplitMs.map((ms) => (ms / 1000).toStringAsFixed(3)).join(', ')}s',
+              );
+            }
+            if (parts.isNotEmpty) return [parts.join(' | ')];
+          }
+          return const <String>[];
+        }
+
+        pw.Widget stringDetailCard(int index, SessionStringMeta meta) {
+          final shotsForString = getShotsForString(meta);
+          final dopeForString = getDopeForString(meta);
+          final timerSummaries = timerSummariesForString(meta);
+          final isActive = meta.id == session.activeStringId;
+
+          return pw.Container(
+            margin: const pw.EdgeInsets.only(bottom: 8),
+            padding: const pw.EdgeInsets.all(8),
+            decoration: pw.BoxDecoration(
+              border: pw.Border.all(color: PdfColors.grey400, width: 0.5),
+              borderRadius: pw.BorderRadius.circular(6),
+            ),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(
+                  'String ${index + 1}${isActive ? ' (Active)' : ''}',
+                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                ),
+                pw.SizedBox(height: 3),
+                pw.Text(
+                  'Rifle: ${_pdfRifleLabel(meta.rifleId ?? session.rifleId)}',
+                ),
+                pw.Text(
+                  'Ammo: ${_pdfAmmoLabel(meta.ammoLotId ?? session.ammoLotId)}',
+                ),
+                pw.Text('Started: ${_pdfDateTime(meta.startedAt)}'),
+                pw.Text(
+                  'Ended: ${meta.endedAt == null ? 'Open' : _pdfDateTime(meta.endedAt!)}',
+                ),
+                if (timerSummaries.isNotEmpty) ...[
+                  pw.SizedBox(height: 4),
+                  pw.Text('Timer:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                  for (final timer in timerSummaries)
+                    pw.Padding(
+                      padding: const pw.EdgeInsets.only(left: 8, top: 2),
+                      child: pw.Text(timer),
+                    ),
+                ],
+                pw.SizedBox(height: 4),
+                pw.Text(
+                  'Shots: ${shotsForString.length}',
+                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                ),
+                if (shotsForString.isEmpty)
+                  pw.Padding(
+                    padding: const pw.EdgeInsets.only(left: 8, top: 2),
+                    child: pw.Text('-'),
+                  )
+                else
+                  for (final shot in shotsForString)
+                    pw.Padding(
+                      padding: const pw.EdgeInsets.only(left: 8, top: 2),
+                      child: pw.Text(
+                        [
+                          _pdfDateTime(shot.time),
+                          shot.distance.trim().isEmpty
+                              ? 'Distance: -'
+                              : 'Distance: ${shot.distance.trim()}',
+                          shot.result.trim().isEmpty
+                              ? 'Result: -'
+                              : 'Result: ${shot.result.trim()}',
+                          if (shot.isColdBore) 'Cold bore',
+                          if (shot.isBaseline) 'Baseline',
+                          if (shot.notes.trim().isNotEmpty)
+                            'Notes: ${shot.notes.trim()}',
+                          if (shot.photos.isNotEmpty)
+                            'Photos: ${shot.photos.length}',
+                        ].join(' | '),
+                      ),
+                    ),
+                pw.SizedBox(height: 4),
+                pw.Text(
+                  'DOPE entries: ${dopeForString.length}',
+                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                ),
+                if (dopeForString.isEmpty)
+                  pw.Padding(
+                    padding: const pw.EdgeInsets.only(left: 8, top: 2),
+                    child: pw.Text('-'),
+                  )
+                else
+                  for (final entry in dopeForString)
+                    pw.Padding(
+                      padding: const pw.EdgeInsets.only(left: 8, top: 2),
+                      child: pw.Text(_pdfDopeEntryDetail(entry)),
+                    ),
+              ],
+            ),
+          );
+        }
+
         final widgets = <pw.Widget>[
           pw.Container(
             margin: const pw.EdgeInsets.only(top: 16, bottom: 8),
@@ -23698,15 +23940,11 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
                 pw.Text(
-                  _pdfSessionLabel(session),
+                  _pdfSessionDetailLabel(session),
                   style: pw.TextStyle(
                     fontSize: 14,
                     fontWeight: pw.FontWeight.bold,
                   ),
-                ),
-                pw.SizedBox(height: 4),
-                pw.Text(
-                  'Rounds: ${sessionShotCount(session)}   Strings: ${session.strings.length}   Cold bore: ${coldBoreShots.length}',
                 ),
               ],
             ),
@@ -23741,41 +23979,7 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
           ]);
         }
 
-        if (session.trainingDope.isNotEmpty) {
-          widgets.addAll([
-            pw.Text(
-              'Training DOPE',
-              style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
-            ),
-            pw.SizedBox(height: 4),
-            ...session.trainingDope.map(
-              (entry) => pw.Padding(
-                padding: const pw.EdgeInsets.only(bottom: 4),
-                child: pw.Text(_pdfDopeEntrySummary(entry)),
-              ),
-            ),
-            pw.SizedBox(height: 8),
-          ]);
-        }
-
         if (stringsByStart.isNotEmpty) {
-          final assignedShots = session.shotsByString.values.fold<int>(
-            0,
-            (sum, list) => sum + list.length,
-          );
-          final assignedDope = session.trainingDopeByString.values.fold<int>(
-            0,
-            (sum, list) => sum + list.length,
-          );
-          final unassignedShots = math.max(
-            0,
-            sessionShotCount(session) - assignedShots,
-          );
-          final unassignedDope = math.max(
-            0,
-            session.trainingDope.length - assignedDope,
-          );
-
           widgets.addAll([
             pw.Text(
               'Strings',
@@ -23783,58 +23987,7 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
             ),
             pw.SizedBox(height: 6),
             for (var i = 0; i < stringsByStart.length; i++)
-              pw.Container(
-                margin: const pw.EdgeInsets.only(bottom: 8),
-                padding: const pw.EdgeInsets.all(8),
-                decoration: pw.BoxDecoration(
-                  border: pw.Border.all(color: PdfColors.grey400, width: 0.5),
-                  borderRadius: pw.BorderRadius.circular(6),
-                ),
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text(
-                      'String ${i + 1} | ${stringsByStart[i].endedAt == null ? 'Active' : 'Ended'}',
-                      style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-                    ),
-                    pw.SizedBox(height: 2),
-                    pw.Text(
-                      'Rifle: ${_pdfRifleLabel(stringsByStart[i].rifleId ?? session.rifleId)} | Ammo: ${_pdfAmmoLabel(stringsByStart[i].ammoLotId ?? session.ammoLotId)}',
-                    ),
-                    pw.Text('Started: ${_pdfDateTime(stringsByStart[i].startedAt)}'),
-                    if (stringsByStart[i].endedAt != null)
-                      pw.Text('Ended: ${_pdfDateTime(stringsByStart[i].endedAt!)}'),
-                    pw.Text(
-                      'Shots: ${(session.shotsByString[stringsByStart[i].id] ?? const <ShotEntry>[]).length} | DOPE entries: ${(session.trainingDopeByString[stringsByStart[i].id] ?? const <DopeEntry>[]).length}',
-                    ),
-                  ],
-                ),
-              ),
-            if (unassignedShots > 0 || unassignedDope > 0)
-              pw.Container(
-                margin: const pw.EdgeInsets.only(bottom: 8),
-                padding: const pw.EdgeInsets.all(8),
-                decoration: pw.BoxDecoration(
-                  border: pw.Border.all(color: PdfColors.grey400, width: 0.5),
-                  borderRadius: pw.BorderRadius.circular(6),
-                ),
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text(
-                      'Unassigned',
-                      style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-                    ),
-                    pw.SizedBox(height: 2),
-                    pw.Text(
-                      'Rifle: ${_pdfRifleLabel(session.rifleId)} | Ammo: ${_pdfAmmoLabel(session.ammoLotId)}',
-                    ),
-                    pw.Text(
-                      'Shots: $unassignedShots | DOPE entries: $unassignedDope',
-                    ),
-                  ],
-                ),
-              ),
+              stringDetailCard(i, stringsByStart[i]),
             pw.SizedBox(height: 4),
           ]);
         }

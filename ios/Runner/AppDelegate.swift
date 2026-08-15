@@ -1,5 +1,6 @@
 import Flutter
 import MultipeerConnectivity
+import StoreKit
 import UIKit
 
 @main
@@ -61,8 +62,46 @@ import UIKit
                             binaryMessenger: controller.binaryMessenger)
     let nearbyShareEventsChannel = FlutterMethodChannel(name: "com.remington.coldbore/nearby_share_events",
                               binaryMessenger: controller.binaryMessenger)
+    let subscriptionChannel = FlutterMethodChannel(name: "com.remington.coldbore/subscription",
+                             binaryMessenger: controller.binaryMessenger)
 
     nearbyShareManager.eventChannel = nearbyShareEventsChannel
+
+    subscriptionChannel.setMethodCallHandler { (call: FlutterMethodCall, result: @escaping FlutterResult) in
+      guard call.method == "currentEntitlement" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+
+      let args = call.arguments as? [String: Any]
+      guard let productID = args?["productId"] as? String, !productID.isEmpty else {
+        result(FlutterError(code: "INVALID_ARGS", message: "Missing productId", details: nil))
+        return
+      }
+
+      Task {
+        var isEntitled = false
+        if #available(iOS 15.0, *) {
+          for await verificationResult in Transaction.currentEntitlements {
+            guard case .verified(let transaction) = verificationResult,
+                  transaction.productID == productID else {
+              continue
+            }
+            if let expirationDate = transaction.expirationDate {
+              isEntitled = expirationDate > Date()
+            } else {
+              isEntitled = true
+            }
+            if isEntitled {
+              break
+            }
+          }
+        }
+        DispatchQueue.main.async {
+          result(isEntitled)
+        }
+      }
+    }
 
     incomingShareChannel.setMethodCallHandler { [weak self] (call: FlutterMethodCall, result: @escaping FlutterResult) in
       switch call.method {

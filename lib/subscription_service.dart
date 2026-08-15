@@ -4,14 +4,17 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/services.dart';
 
 const String kSubscriptionProductId = 'Coldbore_Pro_Yearly';
-const String _entitlementPrefsKey =
-    'cold_bore.subscription.entitled_hint.v1';
+const String _entitlementPrefsKey = 'cold_bore.subscription.entitled_hint.v1';
 const String _hadEntitlementPrefsKey =
     'cold_bore.subscription.had_entitlement.v1';
 const String _forceLockedPrefsKey =
     'cold_bore.subscription.force_locked_for_testing.v1';
+const MethodChannel _subscriptionChannel = MethodChannel(
+  'com.remington.coldbore/subscription',
+);
 
 class SubscriptionService extends ChangeNotifier {
   static final SubscriptionService _instance = SubscriptionService._();
@@ -30,7 +33,6 @@ class SubscriptionService extends ChangeNotifier {
   bool _purchasing = false;
   bool _restoring = false;
   bool _hadEntitlementEver = false;
-  bool _forceLockedForTesting = false;
   bool _initialized = false;
   String? _lastError;
   String _lastPurchaseStatus = 'idle';
@@ -122,7 +124,8 @@ class SubscriptionService extends ChangeNotifier {
 
       if (response.productDetails.isEmpty) {
         _product = null;
-        _lastError = 'Subscription product not found in App Store ($kSubscriptionProductId).';
+        _lastError =
+            'Subscription product not found in App Store ($kSubscriptionProductId).';
         return;
       }
 
@@ -139,6 +142,11 @@ class SubscriptionService extends ChangeNotifier {
         _lastError =
             'Subscription product not found in App Store ($kSubscriptionProductId).';
         return;
+      }
+
+      final appleEntitlement = await _readAppleEntitlement();
+      if (appleEntitlement != null) {
+        await _applyAppleEntitlement(appleEntitlement);
       }
       _lastError = null;
     } catch (e) {
@@ -167,11 +175,14 @@ class SubscriptionService extends ChangeNotifier {
 
       if (!_storeAvailable || _product == null) {
         _lastPurchaseStatus = 'error';
-        _lastError = 'Subscription is temporarily unavailable. Please try again.';
+        _lastError =
+            'Subscription is temporarily unavailable. Please try again.';
         return false;
       }
 
-      debugPrint('[IAP] Start trial tapped product=${_product!.id} price=${_product!.price}');
+      debugPrint(
+        '[IAP] Start trial tapped product=${_product!.id} price=${_product!.price}',
+      );
       final wait = _beginEntitlementWait();
       final param = PurchaseParam(productDetails: _product!);
       _lastPurchaseStatus = 'calling_purchase';
@@ -179,13 +190,19 @@ class SubscriptionService extends ChangeNotifier {
 
       var unlocked = await wait;
       if (!unlocked && !kIsWeb && Platform.isIOS) {
-        debugPrint('[IAP] purchase returned without entitlement, running restore fallback');
-        unlocked = await _restoreInternal(silent: true, reason: 'purchase_fallback');
+        debugPrint(
+          '[IAP] purchase returned without entitlement, running restore fallback',
+        );
+        unlocked = await _restoreInternal(
+          silent: true,
+          reason: 'purchase_fallback',
+        );
       }
 
       if (unlocked) {
         _lastPurchaseStatus = 'purchased';
-      } else if (_lastPurchaseStatus != 'canceled' && _lastPurchaseStatus != 'error') {
+      } else if (_lastPurchaseStatus != 'canceled' &&
+          _lastPurchaseStatus != 'error') {
         _lastPurchaseStatus = 'no_entitlement';
       }
       return unlocked;
@@ -226,7 +243,9 @@ class SubscriptionService extends ChangeNotifier {
       _storeAvailable = await _iap.isAvailable();
       if (!_storeAvailable) {
         _lastRestoreStatus = 'store_unavailable';
-        _lastError = silent ? _lastError : 'Subscription store is currently unavailable.';
+        _lastError = silent
+            ? _lastError
+            : 'Subscription store is currently unavailable.';
         return false;
       }
 
@@ -315,6 +334,30 @@ class SubscriptionService extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<bool?> _readAppleEntitlement() async {
+    if (kIsWeb || !Platform.isIOS) return null;
+    try {
+      return await _subscriptionChannel.invokeMethod<bool>(
+        'currentEntitlement',
+        <String, dynamic>{'productId': kSubscriptionProductId},
+      );
+    } catch (e) {
+      debugPrint('[IAP] Current entitlement check unavailable: $e');
+      return null;
+    }
+  }
+
+  Future<void> _applyAppleEntitlement(bool entitled) async {
+    _isEntitled = entitled;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_entitlementPrefsKey, entitled);
+    if (entitled) {
+      _hadEntitlementEver = true;
+      await prefs.setBool(_hadEntitlementPrefsKey, true);
+    }
+    notifyListeners();
+  }
+
   Future<void> _loadLocalFlags() async {
     final prefs = await SharedPreferences.getInstance();
     _hadEntitlementEver = prefs.getBool(_hadEntitlementPrefsKey) == true;
@@ -324,14 +367,12 @@ class SubscriptionService extends ChangeNotifier {
     _isEntitled = prefs.getBool(_entitlementPrefsKey) == true;
     // Force-lock testing is disabled in this build. Clear any stuck local
     // override so real Apple entitlement controls access again.
-    _forceLockedForTesting = false;
     await prefs.setBool(_forceLockedPrefsKey, false);
   }
 
   Future<void> setForceLockedForTesting(bool value) async {
     // Force-lock testing is disabled in this build. Always clear the local
     // override so it cannot block a valid Apple entitlement.
-    _forceLockedForTesting = false;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_forceLockedPrefsKey, false);
     notifyListeners();
