@@ -20580,20 +20580,16 @@ class _ColdBoreScreenState extends State<ColdBoreScreen> {
 class _ColdBoreTargetCard extends StatelessWidget {
   final AppState? state;
   final List<_ColdBoreRow> rows;
+  final String? comboFilterKey;
 
-  const _ColdBoreTargetCard({required this.state, required this.rows});
+  const _ColdBoreTargetCard({
+    required this.state,
+    required this.rows,
+    this.comboFilterKey,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final plottedRows =
-        rows
-            .where(
-              (row) => row.shot.offsetX != null && row.shot.offsetY != null,
-            )
-            .toList()
-          ..sort((a, b) => a.shot.time.compareTo(b.shot.time));
-    final hiddenCount = rows.length - plottedRows.length;
-
     String comboKey(_ColdBoreRow row) {
       final rifleId = row.rifle?.id ?? row.session.rifleId ?? 'none-rifle';
       final ammoId = row.ammo?.id ?? row.session.ammoLotId ?? 'none-ammo';
@@ -20603,29 +20599,47 @@ class _ColdBoreTargetCard extends StatelessWidget {
     String comboLabel(_ColdBoreRow row) {
       final rifle = row.rifle;
       final ammo = row.ammo;
-
-      final rifleLabel = (() {
-        if (rifle != null && (rifle.name ?? '').trim().isNotEmpty) {
-          return (rifle.name ?? '').trim();
-        }
-        if (rifle != null && rifle.caliber.trim().isNotEmpty) {
-          return rifle.caliber.trim();
-        }
-        return 'Unknown rifle';
-      })();
-
-      final ammoLabel = (() {
-        if (ammo != null && (ammo.name ?? '').trim().isNotEmpty) {
-          return (ammo.name ?? '').trim();
-        }
-        if (ammo != null && ammo.caliber.trim().isNotEmpty) {
-          return ammo.caliber.trim();
-        }
-        return 'Unknown ammo';
-      })();
-
+      final rifleLabel = rifle != null && (rifle.name ?? '').trim().isNotEmpty
+          ? rifle.name!.trim()
+          : rifle?.caliber.trim().isNotEmpty == true
+              ? rifle!.caliber.trim()
+              : 'Unknown rifle';
+      final ammoLabel = ammo != null && (ammo.name ?? '').trim().isNotEmpty
+          ? ammo.name!.trim()
+          : ammo?.caliber.trim().isNotEmpty == true
+              ? ammo!.caliber.trim()
+              : 'Unknown ammo';
       return '$rifleLabel - $ammoLabel';
     }
+
+    if (comboFilterKey == null) {
+      final groupedRows = <String, List<_ColdBoreRow>>{};
+      for (final row in rows) {
+        groupedRows.putIfAbsent(comboKey(row), () => []).add(row);
+      }
+      final sortedKeys = groupedRows.keys.toList()..sort();
+      if (sortedKeys.length > 1) {
+        return Column(
+          children: [
+            for (final key in sortedKeys)
+              _ColdBoreTargetCard(
+                state: state,
+                rows: groupedRows[key]!,
+                comboFilterKey: key,
+              ),
+          ],
+        );
+      }
+    }
+
+    final plottedRows =
+        rows
+            .where(
+              (row) => row.shot.offsetX != null && row.shot.offsetY != null,
+            )
+            .toList()
+          ..sort((a, b) => a.shot.time.compareTo(b.shot.time));
+    final hiddenCount = rows.length - plottedRows.length;
 
     final combosByKey = <String, _ColdBoreRow>{};
     for (final row in plottedRows) {
@@ -20655,8 +20669,10 @@ class _ColdBoreTargetCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Cold bore target',
+            Text(
+              comboFilterKey == null || plottedRows.isEmpty
+                  ? 'Cold bore target'
+                  : 'Cold bore target - ${comboLabel(plottedRows.first)}',
               style: TextStyle(fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 6),
@@ -23375,20 +23391,33 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
   List<_ColdBoreRow> _coldBoreRowsForSessions(List<TrainingSession> sessions) {
     final out = <_ColdBoreRow>[];
     for (final session in sessions) {
-      final sessionRifle = session.rifleId == null
-          ? null
-          : widget.state.findRifleById(session.rifleId!);
-      final sessionAmmo = session.ammoLotId == null
-          ? null
-          : widget.state.findAmmoLotById(session.ammoLotId!);
       for (final shot in session.shots.where((s) => s.isColdBore)) {
+        String? stringId;
+        for (final entry in session.shotsByString.entries) {
+          if (entry.value.any((candidate) => candidate.id == shot.id)) {
+            stringId = entry.key;
+            break;
+          }
+        }
+        final stringMeta = stringId == null
+            ? null
+            : session.strings.cast<SessionStringMeta?>().firstWhere(
+                (meta) => meta?.id == stringId,
+                orElse: () => null,
+              );
+        final rifleId = stringMeta?.rifleId ?? session.rifleId;
+        final ammoLotId = stringMeta?.ammoLotId ?? session.ammoLotId;
         out.add(
           _ColdBoreRow(
             session: session,
             shot: shot,
-            rifle: sessionRifle,
-            ammo: sessionAmmo,
-            stringId: null,
+            rifle: rifleId == null
+                ? null
+                : widget.state.findRifleById(rifleId),
+            ammo: ammoLotId == null
+                ? null
+                : widget.state.findAmmoLotById(ammoLotId),
+            stringId: stringId,
           ),
         );
       }
@@ -23397,7 +23426,10 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
     return out;
   }
 
-  pw.Widget _pdfColdBoreTargetPlot(List<_ColdBoreRow> rows) {
+  pw.Widget _pdfColdBoreTargetPlot(
+    List<_ColdBoreRow> rows, {
+    String? title,
+  }) {
     const size = 240.0;
     const halfSpanInches = 6.0;
     const fullSpanInches = halfSpanInches * 2;
@@ -23455,7 +23487,7 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
         pw.Row(
           children: [
             pw.Text(
-              'Cold-bore target (${plottedRows.length} plotted)',
+              '${title ?? 'Cold-bore target'} (${plottedRows.length} plotted)',
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
             ),
             if (hiddenCount > 0)
@@ -24508,7 +24540,26 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
                 color: PdfColors.teal700,
               ),
               pw.SizedBox(height: 14),
-              _pdfColdBoreTargetPlot(allColdBoreRows),
+              ...() {
+                final groups = <String, List<_ColdBoreRow>>{};
+                for (final row in allColdBoreRows) {
+                  final rifleId = row.rifle?.id ?? row.session.rifleId ?? '-';
+                  final ammoId = row.ammo?.id ?? row.session.ammoLotId ?? '-';
+                  groups.putIfAbsent('$rifleId|$ammoId', () => []).add(row);
+                }
+                final sortedGroups = groups.entries.toList()
+                  ..sort((a, b) => a.key.compareTo(b.key));
+                return [
+                  for (final group in sortedGroups)
+                    _pdfColdBoreTargetPlot(
+                      group.value,
+                      title:
+                          'Cold-bore target - ${_pdfRifleLabel(group.value.first.rifle?.id ?? group.value.first.session.rifleId)} / ${_pdfAmmoLabel(group.value.first.ammo?.id ?? group.value.first.session.ammoLotId)}',
+                    ),
+                  if (sortedGroups.isEmpty)
+                    _pdfColdBoreTargetPlot(allColdBoreRows),
+                ];
+              }(),
               pw.SizedBox(height: 12),
               _pdfColdBoreAdjustmentChart(allColdBoreRows),
             ],
