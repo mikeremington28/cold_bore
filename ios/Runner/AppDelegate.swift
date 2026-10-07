@@ -1,4 +1,5 @@
 import Flutter
+import AVFoundation
 import MultipeerConnectivity
 import StoreKit
 import UIKit
@@ -64,6 +65,35 @@ import UIKit
                               binaryMessenger: controller.binaryMessenger)
     let subscriptionChannel = FlutterMethodChannel(name: "com.remington.coldbore/subscription",
                              binaryMessenger: controller.binaryMessenger)
+    let audioRouteChannel = FlutterMethodChannel(name: "com.remington.coldbore/audio_route",
+                              binaryMessenger: controller.binaryMessenger)
+
+    audioRouteChannel.setMethodCallHandler { (call: FlutterMethodCall, result: @escaping FlutterResult) in
+      guard call.method == "currentRoute" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+
+      let outputs = AVAudioSession.sharedInstance().currentRoute.outputs.map { output in
+        [
+          "name": output.portName,
+          "type": output.portType.rawValue,
+          "uid": output.uid,
+        ]
+      }
+      let bluetoothTypes: Set<String> = [
+        AVAudioSession.Port.bluetoothA2DP.rawValue,
+        AVAudioSession.Port.bluetoothHFP.rawValue,
+        AVAudioSession.Port.bluetoothLE.rawValue,
+      ]
+      result([
+        "outputs": outputs,
+        "isBluetooth": outputs.contains { output in
+          guard let type = output["type"] else { return false }
+          return bluetoothTypes.contains(type)
+        },
+      ])
+    }
 
     nearbyShareManager.eventChannel = nearbyShareEventsChannel
 
