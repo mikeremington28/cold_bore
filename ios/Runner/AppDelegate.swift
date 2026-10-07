@@ -69,12 +69,34 @@ import UIKit
                               binaryMessenger: controller.binaryMessenger)
 
     audioRouteChannel.setMethodCallHandler { (call: FlutterMethodCall, result: @escaping FlutterResult) in
-      guard call.method == "currentRoute" else {
+      let session = AVAudioSession.sharedInstance()
+      if call.method == "prepareShotTimerOutput" {
+        do {
+          try session.setCategory(
+            .playAndRecord,
+            mode: .default,
+            options: [
+              .allowBluetooth,
+              .allowBluetoothA2DP,
+              .defaultToSpeaker,
+              .mixWithOthers,
+            ]
+          )
+          try session.setActive(true)
+        } catch {
+          result(FlutterError(
+            code: "AUDIO_ROUTE_FAILED",
+            message: error.localizedDescription,
+            details: nil
+          ))
+          return
+        }
+      } else if call.method != "currentRoute" {
         result(FlutterMethodNotImplemented)
         return
       }
 
-      let outputs = AVAudioSession.sharedInstance().currentRoute.outputs.map { output in
+      let outputs = session.currentRoute.outputs.map { output in
         [
           "name": output.portName,
           "type": output.portType.rawValue,

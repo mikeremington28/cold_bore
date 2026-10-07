@@ -112,6 +112,33 @@ Future<void> _playShotTimerBeep({
   double volume = 1.0,
   double frequencyHz = 1750.0,
 }) async {
+  await _shotTimerBeepPlayer.setAudioContext(
+    AudioContext(
+      iOS: AudioContextIOS(
+        category: AVAudioSessionCategory.playAndRecord,
+        options: const {
+          AVAudioSessionOptions.allowBluetooth,
+          AVAudioSessionOptions.allowBluetoothA2DP,
+          AVAudioSessionOptions.defaultToSpeaker,
+          AVAudioSessionOptions.mixWithOthers,
+        },
+      ),
+      android: const AudioContextAndroid(
+        audioFocus: AndroidAudioFocus.none,
+        contentType: AndroidContentType.sonification,
+        usageType: AndroidUsageType.media,
+      ),
+    ),
+  );
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
+    try {
+      await _audioRouteChannel.invokeMethod<void>('prepareShotTimerOutput');
+    } on PlatformException {
+      // Keep playing through the current route if route setup fails.
+    } on MissingPluginException {
+      // Keep playing through the current route if route setup is unavailable.
+    }
+  }
   await _shotTimerBeepPlayer.setVolume(volume);
   await _shotTimerBeepPlayer.stop();
   final bytes = _buildShotTimerBeepWav(frequencyHz: frequencyHz);
