@@ -108,10 +108,7 @@ Uint8List _buildShotTimerBeepWav({
   return byteData.buffer.asUint8List();
 }
 
-Future<void> _playShotTimerBeep({
-  double volume = 1.0,
-  double frequencyHz = 1750.0,
-}) async {
+Future<void> _prepareShotTimerAudioOutput() async {
   await _shotTimerBeepPlayer.setAudioContext(
     AudioContext(
       iOS: AudioContextIOS(
@@ -139,6 +136,12 @@ Future<void> _playShotTimerBeep({
       // Keep playing through the current route if route setup is unavailable.
     }
   }
+}
+
+Future<void> _playShotTimerBeep({
+  double volume = 1.0,
+  double frequencyHz = 1750.0,
+}) async {
   await _shotTimerBeepPlayer.setVolume(volume);
   await _shotTimerBeepPlayer.stop();
   final bytes = _buildShotTimerBeepWav(frequencyHz: frequencyHz);
@@ -16429,6 +16432,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
   String? _audioAssistMessage;
   String? _selectedRifleId;
   int _audioShotCount = 0;
+  Future<void> _audioPreparation = Future<void>.value();
 
   bool get _isRunning => _stopwatch.isRunning;
   bool get _isActive => _isRunning || _isArmed;
@@ -16440,6 +16444,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
   @override
   void initState() {
     super.initState();
+    _audioPreparation = _prepareShotTimerAudioOutput();
     _loadFromSession();
   }
 
@@ -16692,6 +16697,8 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
         },
         cancelOnError: true,
       );
+      _audioPreparation = _prepareShotTimerAudioOutput();
+      await _audioPreparation;
       if (!mounted) return;
       setState(() {
         _audioAssistEnabled = true;
@@ -16717,8 +16724,10 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
     );
   }
 
-  void _start() {
+  Future<void> _start() async {
     if (_isActive) return;
+    await _audioPreparation;
+    if (!mounted || _isActive) return;
     _startDelayMs = _parseSecondsToMs(_delayCtrl.text);
     _goalMs = _parseSecondsToMs(_goalCtrl.text);
     _goalAlertPlayed = _goalMs > 0 && _elapsedMs >= _goalMs;
@@ -17366,6 +17375,7 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
   String? _audioAssistMessage;
   String? _selectedRifleId;
   int _audioShotCount = 0;
+  Future<void> _audioPreparation = Future<void>.value();
 
   bool get _isRunning => _stopwatch.isRunning;
   bool get _isActive => _isRunning || _isArmed;
@@ -17377,6 +17387,7 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
   @override
   void initState() {
     super.initState();
+    _audioPreparation = _prepareShotTimerAudioOutput();
     _selectedRifleId = widget.state.shotTimerSelectedRifleId;
     widget.state.setShotTimerSelectedRifleId(_selectedRifleId);
     _audioThresholdDb = widget.state.audioThresholdDb;
@@ -17593,6 +17604,8 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
         },
         cancelOnError: true,
       );
+      _audioPreparation = _prepareShotTimerAudioOutput();
+      await _audioPreparation;
       if (!mounted) return;
       setState(() {
         _audioAssistEnabled = true;
@@ -17609,8 +17622,10 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
     }
   }
 
-  void _start() {
+  Future<void> _start() async {
     if (_isActive) return;
+    await _audioPreparation;
+    if (!mounted || _isActive) return;
     _startDelayMs = _parseSecondsToMs(_delayCtrl.text);
     _goalMs = _parseSecondsToMs(_goalCtrl.text);
     _goalAlertPlayed = _goalMs > 0 && _elapsedMs >= _goalMs;
