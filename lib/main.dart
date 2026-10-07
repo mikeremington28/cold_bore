@@ -67,7 +67,7 @@ class NearbyPeer {
 Uint8List _buildShotTimerBeepWav({
   int sampleRate = 44100,
   double frequencyHz = 1750,
-  int durationMs = 260,
+  int durationMs = 380,
 }) {
   final sampleCount = (sampleRate * durationMs / 1000).round();
   final dataLength = sampleCount * 2;
@@ -98,9 +98,10 @@ Uint8List _buildShotTimerBeepWav({
     final fadeIn = math.min(1.0, i / (sampleRate * 0.01));
     final fadeOut = math.min(1.0, (sampleCount - i) / (sampleRate * 0.02));
     final envelope = math.min(fadeIn, fadeOut);
-    final sample =
-        (math.sin(2 * math.pi * frequencyHz * t) * 0.9 * envelope * 32767)
-            .round();
+    final boostedSine = math.sin(2 * math.pi * frequencyHz * t) * 3;
+    final exp = math.exp(2 * boostedSine);
+    final softClippedSample = (exp - 1) / (exp + 1);
+    final sample = (softClippedSample * envelope * 32767).round();
     byteData.setInt16(44 + (i * 2), sample.clamp(-32768, 32767), Endian.little);
   }
 
@@ -16541,7 +16542,10 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
   }
 
   Future<void> _beep() async {
-    await _playShotTimerBeep();
+    await _playShotTimerBeep(
+      volume: widget.state.shotTimerBeepVolume,
+      frequencyHz: widget.state.shotTimerBeepFrequencyHz,
+    );
   }
 
   void _beginRun() {
@@ -16700,6 +16704,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
     });
     if (!_isArmed) {
       _beginRun();
+      _beep();
     }
     _startTicker();
   }
@@ -17448,7 +17453,10 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
   }
 
   Future<void> _beep() async {
-    await _playShotTimerBeep();
+    await _playShotTimerBeep(
+      volume: widget.state.shotTimerBeepVolume,
+      frequencyHz: widget.state.shotTimerBeepFrequencyHz,
+    );
   }
 
   void _beginRun() {
@@ -17588,6 +17596,7 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
     });
     if (!_isArmed) {
       _beginRun();
+      _beep();
     }
     _startTicker();
   }
@@ -17921,7 +17930,16 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
               label: (widget.state.shotTimerBeepVolume * 100)
                   .round()
                   .toString(),
-              onChanged: (v) => widget.state.setShotTimerBeepVolume(v),
+              onChanged: (v) {
+                widget.state.setShotTimerBeepVolume(v);
+                setState(() {});
+              },
+              onChangeEnd: (v) => unawaited(
+                _playShotTimerBeep(
+                  volume: v,
+                  frequencyHz: widget.state.shotTimerBeepFrequencyHz,
+                ),
+              ),
             ),
             OutlinedButton.icon(
               onPressed: _isActive
@@ -17949,7 +17967,16 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
               max: 3000.0,
               divisions: 52,
               label: widget.state.shotTimerBeepFrequencyHz.toStringAsFixed(0),
-              onChanged: (v) => widget.state.setShotTimerBeepFrequencyHz(v),
+              onChanged: (v) {
+                widget.state.setShotTimerBeepFrequencyHz(v);
+                setState(() {});
+              },
+              onChangeEnd: (v) => unawaited(
+                _playShotTimerBeep(
+                  volume: widget.state.shotTimerBeepVolume,
+                  frequencyHz: v,
+                ),
+              ),
             ),
             Row(
               children: [
