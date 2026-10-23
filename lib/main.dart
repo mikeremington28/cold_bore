@@ -16484,6 +16484,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
     _selectedRifleId ??=
         session?.rifleId ?? widget.state.shotTimerSelectedRifleId;
     _audioThresholdDb = widget.state.audioThresholdDb;
+    _audioShotCount = session?.confirmedShotCount ?? 0;
   }
 
   int _currentElapsedMs() {
@@ -16860,6 +16861,16 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
     return rifle.caliber.trim().isEmpty ? 'Rifle' : rifle.caliber.trim();
   }
 
+  void _bumpShotCount({int delta = 1}) {
+    final next = _audioShotCount + delta;
+    if (next < 0) return;
+    setState(() => _audioShotCount = next);
+    widget.state.saveSessionShotCount(
+      sessionId: widget.sessionId,
+      shotCount: next,
+    );
+  }
+
   Future<void> _adjustShotCount() async {
     final ctrl = TextEditingController(text: _audioShotCount.toString());
     final noteCtrl = TextEditingController();
@@ -17091,6 +17102,26 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
                       : null,
                   icon: const Icon(Icons.refresh),
                   label: const Text('Clear'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.tonalIcon(
+                    onPressed: isEnded ? null : _bumpShotCount,
+                    icon: const Icon(Icons.add_circle_outline),
+                    label: Text('Add shot ($_audioShotCount)'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  tooltip: 'Undo last shot',
+                  onPressed: (isEnded || _audioShotCount <= 0)
+                      ? null
+                      : () => _bumpShotCount(delta: -1),
+                  icon: const Icon(Icons.undo),
                 ),
               ],
             ),
