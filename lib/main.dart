@@ -16446,11 +16446,16 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
     super.initState();
     _audioPreparation = _prepareShotTimerAudioOutput();
     _loadFromSession();
+    widget.state.addListener(_syncShotCountFromSession);
   }
 
   @override
   void didUpdateWidget(covariant _SessionShotTimerCard oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.state != widget.state) {
+      oldWidget.state.removeListener(_syncShotCountFromSession);
+      widget.state.addListener(_syncShotCountFromSession);
+    }
     if (!_isRunning &&
         (oldWidget.sessionId != widget.sessionId ||
             oldWidget.state != widget.state)) {
@@ -16460,6 +16465,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
 
   @override
   void dispose() {
+    widget.state.removeListener(_syncShotCountFromSession);
     _ticker?.cancel();
     _noiseSubscription?.cancel();
     _stopwatch.stop();
@@ -16485,6 +16491,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
         session?.rifleId ?? widget.state.shotTimerSelectedRifleId;
     _audioThresholdDb = widget.state.audioThresholdDb;
     _audioShotCount = session?.confirmedShotCount ?? 0;
+    _lastConfirmedShotCount = session?.confirmedShotCount;
   }
 
   int _currentElapsedMs() {
@@ -16861,14 +16868,18 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
     return rifle.caliber.trim().isEmpty ? 'Rifle' : rifle.caliber.trim();
   }
 
-  void _bumpShotCount({int delta = 1}) {
-    final next = _audioShotCount + delta;
-    if (next < 0) return;
-    setState(() => _audioShotCount = next);
-    widget.state.saveSessionShotCount(
-      sessionId: widget.sessionId,
-      shotCount: next,
-    );
+  int? _lastConfirmedShotCount;
+
+  // Pick up count changes made outside this card, such as the Add shot button above it.
+  void _syncShotCountFromSession() {
+    final confirmed = widget.state
+        .getSessionById(widget.sessionId)
+        ?.confirmedShotCount;
+    if (confirmed == _lastConfirmedShotCount) return;
+    _lastConfirmedShotCount = confirmed;
+    if (confirmed != null && confirmed != _audioShotCount && mounted) {
+      setState(() => _audioShotCount = confirmed);
+    }
   }
 
   Future<void> _adjustShotCount() async {
@@ -17102,26 +17113,6 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
                       : null,
                   icon: const Icon(Icons.refresh),
                   label: const Text('Clear'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton.tonalIcon(
-                    onPressed: isEnded ? null : _bumpShotCount,
-                    icon: const Icon(Icons.add_circle_outline),
-                    label: Text('Add shot ($_audioShotCount)'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  tooltip: 'Undo last shot',
-                  onPressed: (isEnded || _audioShotCount <= 0)
-                      ? null
-                      : () => _bumpShotCount(delta: -1),
-                  icon: const Icon(Icons.undo),
                 ),
               ],
             ),
@@ -17622,6 +17613,7 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
             _latestDb = maxDb;
             if (shouldMark) {
               _recordShotAt(_currentElapsedMs());
+              _audioShotCount += 1;
             }
           });
         },
@@ -17674,7 +17666,7 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
     _startTicker();
   }
 
-  void _stop() {
+  Future<void> _stop() async {
     if (_isArmed) {
       _ticker?.cancel();
       setState(() {
@@ -17690,6 +17682,70 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
     setState(() {
       _elapsedMs = _currentElapsedMs();
     });
+    if (_audioShotCount > 0) await _offerContributeRounds();
+  }
+
+  void _bumpShotCount({int delta = 1}) {
+    final next = _audioShotCount + delta;
+    if (next < 0) return;
+    setState(() => _audioShotCount = next);
+  }
+
+  Future<void> _offerContributeRounds() async {
+    if (widget.state.rifles.isEmpty || !mounted) return;
+    final count = _audioShotCount;
+    String? rifleId = widget.state.rifleById(_selectedRifleId)?.id;
+    final chosen = await showDialog<String>(
+      context: context,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: Text('Add $count round${count == 1 ? '' : 's'} to total?'),
+          content: DropdownButtonFormField<String?>(
+            initialValue: rifleId,
+            decoration: const InputDecoration(labelText: 'Firearm'),
+            items: [
+              for (final rifle in widget.state.rifles)
+                DropdownMenuItem<String?>(
+                  value: rifle.id,
+                  child: Text(_rifleDropdownLabel(rifle)),
+                ),
+            ],
+            onChanged: (v) => setLocal(() => rifleId = v),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogCtx).pop(),
+              child: const Text('Not now'),
+            ),
+            FilledButton(
+              onPressed: rifleId == null
+                  ? null
+                  : () => Navigator.of(dialogCtx).pop(rifleId),
+              child: const Text('Add rounds'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (chosen == null || !mounted) return;
+    if (!await _guardWrite(
+      context,
+      operation: 'Apply shot timer audio shot counts',
+    )) {
+      return;
+    }
+    widget.state.addRifleRounds(rifleId: chosen, roundCount: count);
+    widget.state.setShotTimerSelectedRifleId(chosen);
+    if (!mounted) return;
+    setState(() {
+      _selectedRifleId = chosen;
+      _audioShotCount = 0;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Added $count round${count == 1 ? '' : 's'} to total'),
+      ),
+    );
   }
 
   void _markShot() {
@@ -17896,6 +17952,26 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
                       : null,
                   icon: const Icon(Icons.refresh),
                   label: const Text('Clear'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.tonalIcon(
+                    onPressed: _bumpShotCount,
+                    icon: const Icon(Icons.add_circle_outline),
+                    label: Text('Add shot ($_audioShotCount)'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  tooltip: 'Undo last shot',
+                  onPressed: _audioShotCount <= 0
+                      ? null
+                      : () => _bumpShotCount(delta: -1),
+                  icon: const Icon(Icons.undo),
                 ),
               ],
             ),
@@ -20634,6 +20710,34 @@ class SessionDetailScreen extends StatelessWidget {
                 ],
               ],
               const SizedBox(height: 16),
+              if (isSessionOwner && s.endedAt == null) ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.tonalIcon(
+                        onPressed: () => state.saveSessionShotCount(
+                          sessionId: s.id,
+                          shotCount: (s.confirmedShotCount ?? 0) + 1,
+                        ),
+                        icon: const Icon(Icons.add_circle_outline),
+                        label: Text('Add shot (${s.confirmedShotCount ?? 0})'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      tooltip: 'Undo last shot',
+                      onPressed: (s.confirmedShotCount ?? 0) <= 0
+                          ? null
+                          : () => state.saveSessionShotCount(
+                              sessionId: s.id,
+                              shotCount: (s.confirmedShotCount ?? 0) - 1,
+                            ),
+                      icon: const Icon(Icons.undo),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+              ],
               _SectionTitle('Shot Timer'),
               const SizedBox(height: 8),
               if (!canViewTimerData)
