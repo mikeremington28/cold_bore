@@ -26,6 +26,7 @@ import 'meta_app_events_service.dart';
 import 'cloud_sync_service.dart';
 import 'subscription_service.dart';
 import 'export_target_logic.dart';
+import 'temperature_utils.dart';
 
 const String kBackupSchemaVersion = '2026-02-05';
 const String kLocalStatePrefsKey = 'cold_bore.local_state.v1';
@@ -1192,7 +1193,7 @@ String _buildSessionReportText(
       s.windDirectionDeg != null) {
     b.writeln(
       ' -  Weather: '
-      '${s.temperatureF != null ? '${s.temperatureF!.toStringAsFixed(1)}°F' : '-'}; '
+      '${s.temperatureF != null ? TemperatureUtils.formatTemperature(s.temperatureF, decimalPlaces: 1) : '-'}; '
       '${s.windSpeedMph != null ? '${s.windSpeedMph!.toStringAsFixed(1)} mph' : '-'} '
       '${s.windDirectionDeg != null ? '@ ${s.windDirectionDeg}°' : ''}',
     );
@@ -13391,7 +13392,7 @@ class WeatherDetailsScreen extends StatelessWidget {
                     Text(
                       temp == null
                           ? 'Temperature: --'
-                          : 'Temperature: ${temp.toStringAsFixed(1)}°F',
+                          : 'Temperature: ${TemperatureUtils.formatTemperature(temp, decimalPlaces: 1)}',
                     ),
                     const SizedBox(height: 6),
                     Text(
@@ -14264,7 +14265,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
 
     final weatherBits = <String>[];
     if (s.temperatureF != null) {
-      weatherBits.add('${s.temperatureF!.toStringAsFixed(0)}°F');
+      weatherBits.add(TemperatureUtils.formatTemperature(s.temperatureF, decimalPlaces: 0));
     }
     if (s.windSpeedMph != null) {
       weatherBits.add('${s.windSpeedMph!.toStringAsFixed(0)} mph');
@@ -23871,7 +23872,7 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
   String _pdfWeatherSummary(TrainingSession session) {
     final parts = <String>[];
     if (session.temperatureF != null) {
-      parts.add('${session.temperatureF!.toStringAsFixed(1)}°F');
+      parts.add(TemperatureUtils.formatTemperature(session.temperatureF, decimalPlaces: 1));
     }
     if (session.windSpeedMph != null) {
       parts.add('${session.windSpeedMph!.toStringAsFixed(1)} mph');
@@ -26667,7 +26668,7 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
       final t = (current['temperature_2m'] as num?)?.toDouble();
       final w = (current['wind_speed_10m'] as num?)?.toDouble();
       final d = (current['wind_direction_10m'] as num?)?.toInt();
-      if (t != null) _tempF.text = t.toStringAsFixed(1);
+      if (t != null) _tempF.text = TemperatureUtils.formatForInput(t, decimalPlaces: 1);
       if (w != null) _windMph.text = w.toStringAsFixed(1);
       if (d != null) _windDir.text = d.toString();
     } catch (e) {
@@ -26711,7 +26712,7 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
         notes: _notes.text,
         latitude: _lat,
         longitude: _lon,
-        temperatureF: double.tryParse(_tempF.text.trim()),
+        temperatureF: TemperatureUtils.convertInputToFahrenheit(_tempF.text),
         windSpeedMph: double.tryParse(_windMph.text.trim()),
         windDirectionDeg: int.tryParse(_windDir.text.trim()),
       ),
@@ -26942,8 +26943,8 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
                                       const TextInputType.numberWithOptions(
                                         decimal: true,
                                       ),
-                                  decoration: const InputDecoration(
-                                    labelText: 'Temp (°F)',
+                                  decoration: InputDecoration(
+                                    labelText: TemperatureUtils.getTemperatureInputLabel(),
                                   ),
                                 ),
                               ),
