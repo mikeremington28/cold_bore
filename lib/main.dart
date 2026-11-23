@@ -15409,7 +15409,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
                                 fit: BoxFit.scaleDown,
                                 alignment: Alignment.centerLeft,
                                 child: Text(
-                                  '${tempF.toStringAsFixed(0)}\u00B0F',
+                                  TemperatureUtils.formatTemperature(tempF),
                                   maxLines: 1,
                                   softWrap: false,
                                   style: const TextStyle(
@@ -15421,7 +15421,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
                               ),
                               const SizedBox(height: 3),
                               Text(
-                                'Feels like ${(tempF - 2).toStringAsFixed(0)}\u00B0F',
+                                'Feels like ${TemperatureUtils.formatTemperature(tempF - 2)}',
                                 style: TextStyle(
                                   color: Colors.white.withValues(alpha: 0.68),
                                 ),
@@ -15436,7 +15436,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       Text(
-                                        'Wind  ${windMph.toStringAsFixed(0)} mph',
+                                        'Wind  ${SpeedUtils.formatSpeed(windMph)}',
                                       ),
                                       const SizedBox(width: 8),
                                       Container(
@@ -15469,7 +15469,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
                                     ],
                                   ),
                                   Text(
-                                    'Pressure  ${pressureInHg.toStringAsFixed(2)} inHg',
+                                    'Pressure  ${PressureUtils.formatPressure(pressureInHg)}',
                                   ),
                                   Text(
                                     weatherLocationLabel != null &&
