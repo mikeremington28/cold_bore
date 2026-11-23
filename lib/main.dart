@@ -1198,7 +1198,7 @@ String _buildSessionReportText(
     b.writeln(
       ' -  Weather: '
       '${s.temperatureF != null ? TemperatureUtils.formatTemperature(s.temperatureF, decimalPlaces: 1) : '-'}; '
-      '${s.windSpeedMph != null ? '${s.windSpeedMph!.toStringAsFixed(1)} mph' : '-'} '
+      '${s.windSpeedMph != null ? SpeedUtils.formatSpeed(s.windSpeedMph!, decimalPlaces: 1) : '-'} '
       '${s.windDirectionDeg != null ? '@ ${s.windDirectionDeg}°' : ''}',
     );
   }
@@ -14289,7 +14289,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
       weatherBits.add(TemperatureUtils.formatTemperature(s.temperatureF, decimalPlaces: 0));
     }
     if (s.windSpeedMph != null) {
-      weatherBits.add('${s.windSpeedMph!.toStringAsFixed(0)} mph');
+      weatherBits.add(SpeedUtils.formatSpeed(s.windSpeedMph!, decimalPlaces: 0));
     }
     final weatherLine = weatherBits.isEmpty
         ? 'No weather saved'
@@ -21967,10 +21967,10 @@ class _ColdBoreEntryScreenState extends State<ColdBoreEntryScreen> {
         String weatherLine() {
           final parts = <String>[];
           if (s.temperatureF != null) {
-            parts.add('${s.temperatureF!.toStringAsFixed(0)} F');
+            parts.add(TemperatureUtils.formatTemperature(s.temperatureF, decimalPlaces: 0));
           }
           if (s.windSpeedMph != null) {
-            parts.add('${s.windSpeedMph!.toStringAsFixed(0)} mph wind');
+            parts.add('${SpeedUtils.formatSpeed(s.windSpeedMph!, decimalPlaces: 0)} wind');
           }
           if (s.windDirectionDeg != null) {
             parts.add('${s.windDirectionDeg} deg');
@@ -23896,7 +23896,7 @@ class _ExportPlaceholderScreenState extends State<ExportPlaceholderScreen> {
       parts.add(TemperatureUtils.formatTemperature(session.temperatureF, decimalPlaces: 1));
     }
     if (session.windSpeedMph != null) {
-      parts.add('${session.windSpeedMph!.toStringAsFixed(1)} mph');
+      parts.add(SpeedUtils.formatSpeed(session.windSpeedMph!, decimalPlaces: 1));
     }
     if (session.windDirectionDeg != null) {
       parts.add('@ ${session.windDirectionDeg}°');
@@ -26690,7 +26690,7 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
       final w = (current['wind_speed_10m'] as num?)?.toDouble();
       final d = (current['wind_direction_10m'] as num?)?.toInt();
       if (t != null) _tempF.text = TemperatureUtils.formatForInput(t, decimalPlaces: 1);
-      if (w != null) _windMph.text = w.toStringAsFixed(1);
+      if (w != null) _windMph.text = SpeedUtils.formatForInput(w, decimalPlaces: 1);
       if (d != null) _windDir.text = d.toString();
     } catch (e) {
       setState(() => _gpsError = 'Weather fetch failed: $e');
