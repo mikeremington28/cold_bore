@@ -4675,7 +4675,7 @@ class AppState extends ChangeNotifier {
       elevationUnit: record.outputUnit,
       elevationNotes: 'Verified via Ballistic Assistant',
       windType: WindType.fullValue,
-      windValue: '${record.windSpeedMph.toStringAsFixed(1)} mph',
+      windValue: SpeedUtils.formatSpeed(record.windSpeedMph),
       windNotes: record.verifiedNotes,
       windageLeft: finalWind < 0 ? finalWind.abs() : 0.0,
       windageRight: finalWind >= 0 ? finalWind.abs() : 0.0,
@@ -10903,7 +10903,10 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
   }
 
   String _weatherSnapshotText() {
-    return 'Temp ${_temperatureCtrl.text.trim()} F | Pressure ${_pressureCtrl.text.trim()} inHg | Humidity ${_humidityCtrl.text.trim()}% | Wind ${_windSpeedCtrl.text.trim()} mph ($_windDirectionValue)';
+    final tempF = double.tryParse(_temperatureCtrl.text.trim()) ?? 68.0;
+    final pressureInHg = double.tryParse(_pressureCtrl.text.trim()) ?? 29.92;
+    final windMph = double.tryParse(_windSpeedCtrl.text.trim()) ?? 10.0;
+    return 'Temp ${TemperatureUtils.formatTemperature(tempF)} | Pressure ${PressureUtils.formatPressure(pressureInHg)} | Humidity ${_humidityCtrl.text.trim()}% | Wind ${SpeedUtils.formatSpeed(windMph)} ($_windDirectionValue)';
   }
 
   _GeneratedDopeRow? _buildCalculatedRow({
@@ -11229,7 +11232,7 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
           ? 'Verified via Ballistic Assistant chart'
           : 'Calculated estimate via Ballistic Assistant chart',
       windType: WindType.fullValue,
-      windValue: '${row.windSpeedMph.toStringAsFixed(1)} mph',
+      windValue: SpeedUtils.formatSpeed(row.windSpeedMph),
       windNotes: useVerified
           ? (record?.verifiedNotes ?? '')
           : 'Calculated estimate',
@@ -12021,8 +12024,8 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                                   const TextInputType.numberWithOptions(
                                     decimal: true,
                                   ),
-                              decoration: const InputDecoration(
-                                labelText: 'Wind speed (mph)',
+                              decoration: InputDecoration(
+                                labelText: SpeedUtils.getSpeedInputLabel(),
                               ),
                             ),
                           ),
@@ -12060,8 +12063,8 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                                   const TextInputType.numberWithOptions(
                                     decimal: true,
                                   ),
-                              decoration: const InputDecoration(
-                                labelText: 'Temperature (F)',
+                              decoration: InputDecoration(
+                                labelText: TemperatureUtils.getTemperatureInputLabel(),
                               ),
                             ),
                           ),
@@ -12074,8 +12077,8 @@ class _BallisticAssistantScreenState extends State<BallisticAssistantScreen> {
                                   const TextInputType.numberWithOptions(
                                     decimal: true,
                                   ),
-                              decoration: const InputDecoration(
-                                labelText: 'Pressure (inHg)',
+                              decoration: InputDecoration(
+                                labelText: PressureUtils.getPressureInputLabel(),
                               ),
                             ),
                           ),
@@ -13028,7 +13031,7 @@ class _SavedBallisticChartScreenState extends State<SavedBallisticChartScreen> {
       elevationUnit: record.outputUnit,
       elevationNotes: 'Source: ${chart.title} | Status: $status',
       windType: WindType.fullValue,
-      windValue: '${record.windSpeedMph.toStringAsFixed(1)} mph',
+      windValue: SpeedUtils.formatSpeed(record.windSpeedMph),
       windNotes: record.verifiedNotes.trim().isEmpty
           ? 'Source: ${chart.title}'
           : '${record.verifiedNotes.trim()} | Source: ${chart.title}',
