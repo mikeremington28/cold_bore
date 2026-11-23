@@ -27,6 +27,10 @@ import 'cloud_sync_service.dart';
 import 'subscription_service.dart';
 import 'export_target_logic.dart';
 import 'temperature_utils.dart';
+import 'units_preferences.dart';
+import 'units_preferences_panel.dart';
+import 'speed_utils.dart';
+import 'pressure_utils.dart';
 
 const String kBackupSchemaVersion = '2026-02-05';
 const String kLocalStatePrefsKey = 'cold_bore.local_state.v1';
@@ -1933,6 +1937,7 @@ class RifleDopeEntry {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await UnitsPreferences.loadPreferences();
   try {
     await Firebase.initializeApp();
   } catch (e, st) {
@@ -9725,6 +9730,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
               subtitle: Text('Theme: ${_themeModeLabel(_theme.mode)}'),
               onTap: _pickThemeMode,
             ),
+          ),
+          const SizedBox(height: 16),
+          const ColdBoreSectionHeader(
+            title: 'Measurement Units',
+            subtitle: 'Temperature, speed, pressure, and other measurements.',
+          ),
+          const SizedBox(height: 8),
+          UnitsPreferencesPanel(
+            onChanged: () {
+              if (mounted) {
+                setState(() {});
+              }
+            },
           ),
           const SizedBox(height: 16),
           const ColdBoreSectionHeader(
