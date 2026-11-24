@@ -15442,30 +15442,33 @@ class _SessionsScreenState extends State<SessionsScreen> {
                                         'Wind  ${SpeedUtils.formatSpeed(windMph)}',
                                       ),
                                       const SizedBox(width: 8),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 3,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white.withValues(
-                                            alpha: 0.08,
+                                      Flexible(
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 3,
                                           ),
-                                          borderRadius: BorderRadius.circular(
-                                            999,
-                                          ),
-                                          border: Border.all(
+                                          decoration: BoxDecoration(
                                             color: Colors.white.withValues(
-                                              alpha: 0.14,
+                                              alpha: 0.08,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              999,
+                                            ),
+                                            border: Border.all(
+                                              color: Colors.white.withValues(
+                                                alpha: 0.14,
+                                              ),
                                             ),
                                           ),
-                                        ),
-                                        child: Text(
-                                          '${dirFromDeg(windDeg)} • $windDeg°',
-                                          style: const TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w700,
-                                            letterSpacing: 0.5,
+                                          child: Text(
+                                            '${dirFromDeg(windDeg)} • $windDeg°',
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700,
+                                              letterSpacing: 0.5,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
                                           ),
                                         ),
                                       ),
