@@ -91,6 +91,27 @@ import UIKit
           ))
           return
         }
+      } else if call.method == "forceBuiltInMicrophone" {
+        do {
+          try session.setCategory(
+            .playAndRecord,
+            mode: .default,
+            options: [
+              .duckOthers,
+              .defaultToSpeaker,
+            ]
+          )
+          try session.setActive(true, options: .notifyOthersOnDeactivation)
+          result(nil)
+          return
+        } catch {
+          result(FlutterError(
+            code: "MIC_FORCE_FAILED",
+            message: error.localizedDescription,
+            details: nil
+          ))
+          return
+        }
       } else if call.method != "currentRoute" {
         result(FlutterMethodNotImplemented)
         return

@@ -146,13 +146,17 @@ Future<void> _prepareShotTimerAudioOutput() async {
   await _prewarmAudioPlayer();
 }
 
-Future<void> _prewarmAudioPlayer() async {
-  try {
-    final silentBytes = _buildShotTimerBeepWav(frequencyHz: 1, durationMs: 1);
-    await _shotTimerBeepPlayer.play(BytesSource(silentBytes, mimeType: 'audio/wav'));
-    await _shotTimerBeepPlayer.stop();
-  } catch (_) {
-    // Silently fail - this is just a warmup
+Future<void> _configureMicrophoneInput() async {
+  // Force the built-in microphone to be used for audio input
+  // This prevents iOS from routing to Bluetooth microphone when available
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
+    try {
+      await _audioRouteChannel.invokeMethod<void>('forceBuiltInMicrophone');
+    } on PlatformException {
+      // Continue if native setup fails
+    } on MissingPluginException {
+      // Continue if native setup is unavailable
+    }
   }
 }
 
@@ -7990,6 +7994,9 @@ class _AudioCounterScreenState extends State<AudioCounterScreen> {
     }
 
     try {
+      // Force built-in microphone when enabling audio detection
+      await _configureMicrophoneInput();
+      
       await _noiseSubscription?.cancel();
       _noiseSubscription = NoiseMeter().noise.listen(
         (reading) {
@@ -16707,6 +16714,9 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
     }
 
     try {
+      // Force built-in microphone when enabling audio assist
+      await _configureMicrophoneInput();
+      
       await _noiseSubscription?.cancel();
       _noiseSubscription = NoiseMeter().noise.listen(
         (reading) {
@@ -17656,6 +17666,9 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
     }
 
     try {
+      // Force built-in microphone when enabling audio assist
+      await _configureMicrophoneInput();
+      
       await _noiseSubscription?.cancel();
       _noiseSubscription = NoiseMeter().noise.listen(
         (reading) {
