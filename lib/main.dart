@@ -17312,7 +17312,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
             ),
             Column(
               spacing: 8,
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Wrap(
                   spacing: 8,
@@ -17327,7 +17327,6 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
                 ),
                 if (_audioAssistMessage != null)
                   Container(
-                    width: double.infinity,
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
                       color: Colors.blue.withOpacity(0.1),
@@ -18242,7 +18241,7 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
             ),
             Column(
               spacing: 8,
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Wrap(
                   spacing: 8,
@@ -18257,7 +18256,6 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
                 ),
                 if (_audioAssistMessage != null)
                   Container(
-                    width: double.infinity,
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
                       color: Colors.blue.withOpacity(0.1),
