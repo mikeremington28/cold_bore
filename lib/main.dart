@@ -16751,15 +16751,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
             _persist();
           }
         },
-        onError: (Object error) {
-          if (!mounted) return;
-          setState(() {
-            _audioAssistEnabled = false;
-            _audioAssistMessage =
-                'Microphone unavailable. Check permissions and try again.';
-          });
-        },
-        cancelOnError: true,
+        cancelOnError: false,
       );
       _audioPreparation = _prepareShotTimerAudioOutput();
       await _audioPreparation;
@@ -17694,15 +17686,7 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
             }
           });
         },
-        onError: (Object error) {
-          if (!mounted) return;
-          setState(() {
-            _audioAssistEnabled = false;
-            _audioAssistMessage =
-                'Microphone unavailable. Check permissions and try again.';
-          });
-        },
-        cancelOnError: true,
+        cancelOnError: false,
       );
       _audioPreparation = _prepareShotTimerAudioOutput();
       await _audioPreparation;
