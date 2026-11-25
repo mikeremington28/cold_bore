@@ -157,15 +157,28 @@ Future<void> _prewarmAudioPlayer() async {
 }
 
 Future<void> _configureMicrophoneInput() async {
-  // Force microphone input from built-in phone mic even when Bluetooth is connected
-  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
-    try {
-      await _audioRouteChannel.invokeMethod<void>('configureBuiltInMic');
-    } on PlatformException {
-      // Continue if native setup fails
-    } on MissingPluginException {
-      // Continue if native setup is unavailable
-    }
+  // Create a separate audio player for microphone input that forces built-in mic
+  // This ensures audio detection works even when Bluetooth is connected
+  try {
+    final tempPlayer = AudioPlayer();
+    await tempPlayer.setAudioContext(
+      AudioContext(
+        iOS: AudioContextIOS(
+          category: AVAudioSessionCategory.record,
+          options: const {
+            AVAudioSessionOptions.defaultToSpeaker,
+            AVAudioSessionOptions.duckOthers,
+          },
+        ),
+        android: const AudioContextAndroid(
+          audioFocus: AndroidAudioFocus.gain,
+          contentType: AndroidContentType.speech,
+          usageType: AndroidUsageType.voiceCommunication,
+        ),
+      ),
+    );
+  } catch (_) {
+    // Continue if setup fails - NoiseMeter will handle it
   }
 }
 
@@ -17297,17 +17310,36 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
                 Text('${_audioThresholdDb.toStringAsFixed(0)} dB'),
               ],
             ),
-            Wrap(
+            Column(
               spacing: 8,
-              runSpacing: 8,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Chip(
-                  label: Text('Live level: ${_latestDb.toStringAsFixed(1)} dB'),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    Chip(
+                      label: Text('Live level: ${_latestDb.toStringAsFixed(1)} dB'),
+                    ),
+                    if (!_audioAssistSupported)
+                      const Chip(label: Text('Phone app only')),
+                  ],
                 ),
                 if (_audioAssistMessage != null)
-                  Chip(label: Text(_audioAssistMessage!, softWrap: true)),
-                if (!_audioAssistSupported)
-                  const Chip(label: Text('Phone app only')),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                    ),
+                    child: Text(
+                      _audioAssistMessage!,
+                      softWrap: true,
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
               ],
             ),
             if (savedRuns.isNotEmpty) ...[
@@ -18208,17 +18240,36 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
                 Text('${_audioThresholdDb.toStringAsFixed(0)} dB'),
               ],
             ),
-            Wrap(
+            Column(
               spacing: 8,
-              runSpacing: 8,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Chip(
-                  label: Text('Live level: ${_latestDb.toStringAsFixed(1)} dB'),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    Chip(
+                      label: Text('Live level: ${_latestDb.toStringAsFixed(1)} dB'),
+                    ),
+                    if (!_audioAssistSupported)
+                      const Chip(label: Text('Phone app only')),
+                  ],
                 ),
                 if (_audioAssistMessage != null)
-                  Chip(label: Text(_audioAssistMessage!, softWrap: true)),
-                if (!_audioAssistSupported)
-                  const Chip(label: Text('Phone app only')),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                    ),
+                    child: Text(
+                      _audioAssistMessage!,
+                      softWrap: true,
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
               ],
             ),
           ],
