@@ -17141,7 +17141,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
                           if (_isActive) {
                             await _stop();
                           } else {
-                            _start();
+                            await _start();
                           }
                         },
                   icon: Icon(
@@ -17193,7 +17193,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
                     : 'Available only in iPhone and Android app builds.',
               ),
               value: _audioAssistEnabled,
-              onChanged: isEnded ? null : (value) => _setAudioAssist(value),
+              onChanged: isEnded ? null : (value) async => await _setAudioAssist(value),
             ),
             if (widget.state.rifles.isNotEmpty) ...[
               const SizedBox(height: 8),
@@ -17997,11 +17997,11 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
               runSpacing: 8,
               children: [
                 FilledButton.icon(
-                  onPressed: () {
+                  onPressed: () async {
                     if (_isActive) {
-                      _stop();
+                      await _stop();
                     } else {
-                      _start();
+                      await _start();
                     }
                   },
                   icon: Icon(
@@ -18073,7 +18073,7 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
                     : 'Available only in iPhone and Android app builds.',
               ),
               value: _audioAssistEnabled,
-              onChanged: (value) => _setAudioAssist(value),
+              onChanged: (value) async => await _setAudioAssist(value),
             ),
             if (widget.state.rifles.isNotEmpty) ...[
               const SizedBox(height: 12),
