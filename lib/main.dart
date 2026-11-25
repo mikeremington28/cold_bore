@@ -39,7 +39,6 @@ const String kThemeModePrefsKey = 'cold_bore.theme_mode.v1';
 // TEMPORARY: true only for TestFlight subscription testing. Set false before App Store release.
 const bool kShowSubscriptionTestControls = false;
 final AudioPlayer _shotTimerBeepPlayer = AudioPlayer();
-final AudioPlayer _microphoneInputPlayer = AudioPlayer();
 const MethodChannel _nearbyShareChannel = MethodChannel(
   'com.remington.coldbore/nearby_share',
 );
@@ -154,31 +153,6 @@ Future<void> _prewarmAudioPlayer() async {
     await _shotTimerBeepPlayer.stop();
   } catch (_) {
     // Silently fail - this is just a warmup
-  }
-}
-
-Future<void> _configureMicrophoneInput() async {
-  // Use persistent audio player to configure microphone input
-  // This ensures the audio session remains configured for recording
-  try {
-    await _microphoneInputPlayer.setAudioContext(
-      AudioContext(
-        iOS: AudioContextIOS(
-          category: AVAudioSessionCategory.record,
-          options: const {
-            AVAudioSessionOptions.defaultToSpeaker,
-            AVAudioSessionOptions.duckOthers,
-          },
-        ),
-        android: const AudioContextAndroid(
-          audioFocus: AndroidAudioFocus.gain,
-          contentType: AndroidContentType.speech,
-          usageType: AndroidUsageType.voiceCommunication,
-        ),
-      ),
-    );
-  } catch (_) {
-    // Continue if setup fails - NoiseMeter will handle it
   }
 }
 
@@ -8016,9 +7990,6 @@ class _AudioCounterScreenState extends State<AudioCounterScreen> {
     }
 
     try {
-      // Configure built-in microphone to work even with Bluetooth connected
-      await _configureMicrophoneInput();
-      
       await _noiseSubscription?.cancel();
       _noiseSubscription = NoiseMeter().noise.listen(
         (reading) {
@@ -16736,9 +16707,6 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
     }
 
     try {
-      // Configure built-in microphone to work even with Bluetooth connected
-      await _configureMicrophoneInput();
-      
       await _noiseSubscription?.cancel();
       _noiseSubscription = NoiseMeter().noise.listen(
         (reading) {
@@ -17688,9 +17656,6 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
     }
 
     try {
-      // Configure built-in microphone to work even with Bluetooth connected
-      await _configureMicrophoneInput();
-      
       await _noiseSubscription?.cancel();
       _noiseSubscription = NoiseMeter().noise.listen(
         (reading) {
