@@ -141,6 +141,32 @@ Future<void> _prepareShotTimerAudioOutput() async {
       // Keep playing through the current route if route setup is unavailable.
     }
   }
+  
+  // Pre-warm the audio player with a silent sample to eliminate startup delay
+  await _prewarmAudioPlayer();
+}
+
+Future<void> _prewarmAudioPlayer() async {
+  try {
+    final silentBytes = _buildShotTimerBeepWav(frequencyHz: 1, durationMs: 1);
+    await _shotTimerBeepPlayer.play(BytesSource(silentBytes, mimeType: 'audio/wav'));
+    await _shotTimerBeepPlayer.stop();
+  } catch (_) {
+    // Silently fail - this is just a warmup
+  }
+}
+
+Future<void> _configureMicrophoneInput() async {
+  // Force microphone input from built-in phone mic even when Bluetooth is connected
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
+    try {
+      await _audioRouteChannel.invokeMethod<void>('configureBuiltInMic');
+    } on PlatformException {
+      // Continue if native setup fails
+    } on MissingPluginException {
+      // Continue if native setup is unavailable
+    }
+  }
 }
 
 Future<void> _playShotTimerBeep({
@@ -7977,6 +8003,9 @@ class _AudioCounterScreenState extends State<AudioCounterScreen> {
     }
 
     try {
+      // Configure built-in microphone to work even with Bluetooth connected
+      await _configureMicrophoneInput();
+      
       await _noiseSubscription?.cancel();
       _noiseSubscription = NoiseMeter().noise.listen(
         (reading) {
@@ -16694,6 +16723,9 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
     }
 
     try {
+      // Configure built-in microphone to work even with Bluetooth connected
+      await _configureMicrophoneInput();
+      
       await _noiseSubscription?.cancel();
       _noiseSubscription = NoiseMeter().noise.listen(
         (reading) {
@@ -17273,7 +17305,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
                   label: Text('Live level: ${_latestDb.toStringAsFixed(1)} dB'),
                 ),
                 if (_audioAssistMessage != null)
-                  Chip(label: Text(_audioAssistMessage!)),
+                  Chip(label: Text(_audioAssistMessage!, softWrap: true)),
                 if (!_audioAssistSupported)
                   const Chip(label: Text('Phone app only')),
               ],
@@ -17625,6 +17657,9 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
     }
 
     try {
+      // Configure built-in microphone to work even with Bluetooth connected
+      await _configureMicrophoneInput();
+      
       await _noiseSubscription?.cancel();
       _noiseSubscription = NoiseMeter().noise.listen(
         (reading) {
@@ -18181,7 +18216,7 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
                   label: Text('Live level: ${_latestDb.toStringAsFixed(1)} dB'),
                 ),
                 if (_audioAssistMessage != null)
-                  Chip(label: Text(_audioAssistMessage!)),
+                  Chip(label: Text(_audioAssistMessage!, softWrap: true)),
                 if (!_audioAssistSupported)
                   const Chip(label: Text('Phone app only')),
               ],
