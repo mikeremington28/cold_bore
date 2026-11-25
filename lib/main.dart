@@ -146,6 +146,16 @@ Future<void> _prepareShotTimerAudioOutput() async {
   await _prewarmAudioPlayer();
 }
 
+Future<void> _prewarmAudioPlayer() async {
+  try {
+    final silentBytes = _buildShotTimerBeepWav(frequencyHz: 1, durationMs: 1);
+    await _shotTimerBeepPlayer.play(BytesSource(silentBytes, mimeType: 'audio/wav'));
+    await _shotTimerBeepPlayer.stop();
+  } catch (_) {
+    // Silently fail - this is just a warmup
+  }
+}
+
 Future<void> _configureMicrophoneInput() async {
   // Force the built-in microphone to be used for audio input
   // This prevents iOS from routing to Bluetooth microphone when available
