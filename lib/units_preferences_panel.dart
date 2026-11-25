@@ -140,22 +140,6 @@ class _UnitsPreferencesPanelState extends State<UnitsPreferencesPanel> {
                           style: TextStyle(fontSize: 10, color: Colors.blue),
                         ),
                       ),
-                    if (!UnitsPreferences.hasTemperatureOverride()) ...[
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          'Device Default: ${UnitsPreferences.getTemperatureUnitName(defaultTemp)}',
-                          style: const TextStyle(fontSize: 10),
-                        ),
-                      ),
-                    ],
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -205,22 +189,6 @@ class _UnitsPreferencesPanelState extends State<UnitsPreferencesPanel> {
                           style: TextStyle(fontSize: 10, color: Colors.blue),
                         ),
                       ),
-                    if (!UnitsPreferences.hasSpeedOverride()) ...[
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          'Device Default: ${UnitsPreferences.getSpeedUnitName(defaultSpeed)}',
-                          style: const TextStyle(fontSize: 10),
-                        ),
-                      ),
-                    ],
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -269,22 +237,6 @@ class _UnitsPreferencesPanelState extends State<UnitsPreferencesPanel> {
                           style: TextStyle(fontSize: 10, color: Colors.blue),
                         ),
                       ),
-                    if (!UnitsPreferences.hasPressureOverride()) ...[
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          'Device Default: ${UnitsPreferences.getPressureUnitName(defaultPressure)}',
-                          style: const TextStyle(fontSize: 10),
-                        ),
-                      ),
-                    ],
                   ],
                 ),
                 const SizedBox(height: 12),
