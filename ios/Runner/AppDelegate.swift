@@ -73,11 +73,9 @@ import UIKit
       if call.method == "prepareShotTimerOutput" {
         do {
           try session.setCategory(
-            .playAndRecord,
+            .playback,
             mode: .default,
             options: [
-              .allowBluetooth,
-              .allowBluetoothA2DP,
               .defaultToSpeaker,
               .mixWithOthers,
             ]

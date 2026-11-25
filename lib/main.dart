@@ -117,10 +117,8 @@ Future<void> _prepareShotTimerAudioOutput() async {
   await _shotTimerBeepPlayer.setAudioContext(
     AudioContext(
       iOS: AudioContextIOS(
-        category: AVAudioSessionCategory.playAndRecord,
+        category: AVAudioSessionCategory.playback,
         options: const {
-          AVAudioSessionOptions.allowBluetooth,
-          AVAudioSessionOptions.allowBluetoothA2DP,
           AVAudioSessionOptions.defaultToSpeaker,
           AVAudioSessionOptions.mixWithOthers,
         },
