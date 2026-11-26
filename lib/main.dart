@@ -119,7 +119,6 @@ Future<void> _prepareShotTimerAudioOutput() async {
       iOS: AudioContextIOS(
         category: AVAudioSessionCategory.playback,
         options: const {
-          AVAudioSessionOptions.defaultToSpeaker,
           AVAudioSessionOptions.mixWithOthers,
         },
       ),
@@ -16645,7 +16644,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
     _stopwatch
       ..reset()
       ..start();
-    _baseElapsedMs = _elapsedMs;
+    _baseElapsedMs = 0;
   }
 
   void _startTicker() {
@@ -17595,7 +17594,7 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
     _stopwatch
       ..reset()
       ..start();
-    _baseElapsedMs = _elapsedMs;
+    _baseElapsedMs = 0;
   }
 
   void _startTicker() {
