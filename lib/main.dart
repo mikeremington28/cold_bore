@@ -16782,7 +16782,11 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
 
   Future<void> _start() async {
     if (_isActive) return;
-    await _audioPreparation;
+    try {
+      await _audioPreparation.timeout(const Duration(seconds: 3));
+    } catch (_) {
+      // If audio preparation times out, continue anyway
+    }
     if (!mounted || _isActive) return;
     _startDelayMs = _parseSecondsToMs(_delayCtrl.text);
     _goalMs = _parseSecondsToMs(_goalCtrl.text);
@@ -17185,7 +17189,9 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
                     : 'Available only in iPhone and Android app builds.',
               ),
               value: _audioAssistEnabled,
-              onChanged: isEnded ? null : (value) async => await _setAudioAssist(value),
+              onChanged: isEnded ? null : (value) {
+                _setAudioAssist(value);
+              },
             ),
             if (widget.state.rifles.isNotEmpty) ...[
               const SizedBox(height: 8),
@@ -17708,7 +17714,11 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
 
   Future<void> _start() async {
     if (_isActive) return;
-    await _audioPreparation;
+    try {
+      await _audioPreparation.timeout(const Duration(seconds: 3));
+    } catch (_) {
+      // If audio preparation times out, continue anyway
+    }
     if (!mounted || _isActive) return;
     _startDelayMs = _parseSecondsToMs(_delayCtrl.text);
     _goalMs = _parseSecondsToMs(_goalCtrl.text);
@@ -18057,7 +18067,9 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
                     : 'Available only in iPhone and Android app builds.',
               ),
               value: _audioAssistEnabled,
-              onChanged: (value) async => await _setAudioAssist(value),
+              onChanged: (value) {
+                _setAudioAssist(value);
+              },
             ),
             if (widget.state.rifles.isNotEmpty) ...[
               const SizedBox(height: 12),
