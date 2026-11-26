@@ -1,4 +1,4 @@
-﻿// ignore_for_file: avoid_types_as_parameter_names, curly_braces_in_flow_control_structures, dead_code, dead_null_aware_expression, deprecated_member_use, library_private_types_in_public_api, unnecessary_underscores, unused_element, unused_element_parameter, unused_local_variable, use_build_context_synchronously
+// ignore_for_file: avoid_types_as_parameter_names, curly_braces_in_flow_control_structures, dead_code, dead_null_aware_expression, deprecated_member_use, library_private_types_in_public_api, unnecessary_underscores, unused_element, unused_element_parameter, unused_local_variable, use_build_context_synchronously
 
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -16790,6 +16790,12 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
     _startDelayMs = _parseSecondsToMs(_delayCtrl.text);
     _goalMs = _parseSecondsToMs(_goalCtrl.text);
     _goalAlertPlayed = _goalMs > 0 && _elapsedMs >= _goalMs;
+    
+    // If starting fresh with a delay, reset elapsed time
+    if (_startDelayMs > 0) {
+      _elapsedMs = 0;
+    }
+    
     setState(() {
       _countdownRemainingMs = _startDelayMs;
       _isArmed = _startDelayMs > 0;
@@ -17189,7 +17195,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
               ),
               value: _audioAssistEnabled,
               onChanged: isEnded ? null : (value) {
-                _setAudioAssist(value);
+                unawaited(_setAudioAssist(value));
               },
             ),
             if (widget.state.rifles.isNotEmpty) ...[
@@ -17722,6 +17728,12 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
     _startDelayMs = _parseSecondsToMs(_delayCtrl.text);
     _goalMs = _parseSecondsToMs(_goalCtrl.text);
     _goalAlertPlayed = _goalMs > 0 && _elapsedMs >= _goalMs;
+    
+    // If starting fresh with a delay, reset elapsed time
+    if (_startDelayMs > 0) {
+      _elapsedMs = 0;
+    }
+    
     setState(() {
       _countdownRemainingMs = _startDelayMs;
       _isArmed = _startDelayMs > 0;
@@ -18067,7 +18079,7 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
               ),
               value: _audioAssistEnabled,
               onChanged: (value) {
-                _setAudioAssist(value);
+                unawaited(_setAudioAssist(value));
               },
             ),
             if (widget.state.rifles.isNotEmpty) ...[
