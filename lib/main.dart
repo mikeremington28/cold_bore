@@ -16721,8 +16721,8 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
     }
 
     try {
-      // Force built-in microphone when enabling audio assist
-      await _configureMicrophoneInput();
+      // Don't force built-in microphone - let the system route audio appropriately
+      // This allows Bluetooth microphones to be used if the user has set them as default
       
       await _noiseSubscription?.cancel();
       _noiseSubscription = NoiseMeter().noise.listen(
@@ -16760,7 +16760,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
         _audioAssistMessage =
             'Audio assist armed. Loud impulses will be counted while this is on.';
       });
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
       setState(() {
         _audioAssistEnabled = false;
@@ -17677,8 +17677,8 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
     }
 
     try {
-      // Force built-in microphone when enabling audio assist
-      await _configureMicrophoneInput();
+      // Don't force built-in microphone - let the system route audio appropriately
+      // This allows Bluetooth microphones to be used if the user has set them as default
       
       await _noiseSubscription?.cancel();
       _noiseSubscription = NoiseMeter().noise.listen(
@@ -17707,7 +17707,7 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
         _audioAssistMessage =
             'Audio assist armed. Loud impulses can auto-mark shots.';
       });
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
       setState(() {
         _audioAssistEnabled = false;
