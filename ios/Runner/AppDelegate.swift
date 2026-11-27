@@ -76,7 +76,6 @@ import UIKit
             .playback,
             mode: .default,
             options: [
-              .defaultToSpeaker,
               .mixWithOthers,
             ]
           )
@@ -89,14 +88,13 @@ import UIKit
           ))
           return
         }
-      } else if call.method == "forceBuiltInMicrophone" {
+      } else if call.method == "configureForAudioDetection" {
         do {
           try session.setCategory(
             .playAndRecord,
             mode: .default,
             options: [
               .duckOthers,
-              .defaultToSpeaker,
             ]
           )
           try session.setActive(true, options: .notifyOthersOnDeactivation)
@@ -104,7 +102,20 @@ import UIKit
           return
         } catch {
           result(FlutterError(
-            code: "MIC_FORCE_FAILED",
+            code: "AUDIO_SESSION_FAILED",
+            message: error.localizedDescription,
+            details: nil
+          ))
+          return
+        }
+      } else if call.method == "releaseAudioSession" {
+        do {
+          try session.setActive(false, options: .notifyOthersOnDeactivation)
+          result(nil)
+          return
+        } catch {
+          result(FlutterError(
+            code: "AUDIO_SESSION_RELEASE_FAILED",
             message: error.localizedDescription,
             details: nil
           ))

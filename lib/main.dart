@@ -154,15 +154,28 @@ Future<void> _prewarmAudioPlayer() async {
 }
 
 Future<void> _configureMicrophoneInput() async {
-  // Force the built-in microphone to be used for audio input
-  // This prevents iOS from routing to Bluetooth microphone when available
+  // Configure the audio session for microphone recording
+  // This is called only when audio detection is actually needed
   if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
     try {
-      await _audioRouteChannel.invokeMethod<void>('forceBuiltInMicrophone');
+      await _audioRouteChannel.invokeMethod<void>('configureForAudioDetection');
     } on PlatformException {
-      // Continue if native setup fails
+      rethrow;
     } on MissingPluginException {
-      // Continue if native setup is unavailable
+      rethrow;
+    }
+  }
+}
+
+Future<void> _releaseAudioSession() async {
+  // Release the audio session to allow other apps to resume playing audio
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
+    try {
+      await _audioRouteChannel.invokeMethod<void>('releaseAudioSession');
+    } on PlatformException {
+      // Silently continue if release fails
+    } on MissingPluginException {
+      // Silently continue if method is unavailable
     }
   }
 }
@@ -16484,7 +16497,6 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
   String? _audioAssistMessage;
   String? _selectedRifleId;
   int _audioShotCount = 0;
-  Future<void> _audioPreparation = Future<void>.value();
 
   bool get _isRunning => _stopwatch.isRunning;
   bool get _isActive => _isRunning || _isArmed;
@@ -16496,7 +16508,6 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
   @override
   void initState() {
     super.initState();
-    _audioPreparation = _prepareShotTimerAudioOutput();
     _loadFromSession();
     widget.state.addListener(_syncShotCountFromSession);
   }
@@ -16523,6 +16534,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
     _stopwatch.stop();
     _delayCtrl.dispose();
     _goalCtrl.dispose();
+    unawaited(_releaseAudioSession());
     super.dispose();
   }
 
@@ -16709,8 +16721,13 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
       return;
     }
     if (!enabled) {
+      // Disable audio assist and clean up resources
       await _noiseSubscription?.cancel();
       _noiseSubscription = null;
+      
+      // Release audio session to allow other apps to resume
+      await _releaseAudioSession();
+      
       if (!mounted) return;
       setState(() {
         _audioAssistEnabled = false;
@@ -16721,55 +16738,74 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
     }
 
     try {
-      // Prepare audio output first to establish audio session
-      _audioPreparation = _prepareShotTimerAudioOutput();
-      await _audioPreparation;
-      if (!mounted) return;
-      
-      // Configure microphone input for audio detection
-      await _configureMicrophoneInput();
-      
-      // Cancel any existing subscription
+      // Cancel any existing subscription first
       await _noiseSubscription?.cancel();
+      _noiseSubscription = null;
+      
+      // Configure audio session for microphone recording
+      try {
+        await _configureMicrophoneInput();
+      } catch (e) {
+        if (!mounted) return;
+        // Audio session configuration error
+        setState(() {
+          _audioAssistEnabled = false;
+          _audioAssistMessage = 'Could not configure microphone. Check permissions and try again.';
+        });
+        return;
+      }
       
       // Now try to start listening for noise
-      final noiseMeter = NoiseMeter();
-      _noiseSubscription = noiseMeter.noise.listen(
-        (reading) {
-          if (!mounted) return;
-          final maxDb = reading.maxDecibel;
-          final now = DateTime.now();
-          final gated = _shotGate.check(maxDb, _audioThresholdDb, now);
-          final shouldMark = _audioAssistEnabled && gated;
+      try {
+        final noiseMeter = NoiseMeter();
+        _noiseSubscription = noiseMeter.noise.listen(
+          (reading) {
+            if (!mounted) return;
+            final maxDb = reading.maxDecibel;
+            final now = DateTime.now();
+            final gated = _shotGate.check(maxDb, _audioThresholdDb, now);
+            final shouldMark = _audioAssistEnabled && gated;
 
-          setState(() {
-            _latestDb = maxDb;
-            if (shouldMark) {
-              if (_isRunning) {
-                _recordShotAt(_currentElapsedMs());
+            setState(() {
+              _latestDb = maxDb;
+              if (shouldMark) {
+                if (_isRunning) {
+                  _recordShotAt(_currentElapsedMs());
+                }
+                _audioShotCount += 1;
               }
-              _audioShotCount += 1;
+            });
+            if (shouldMark) {
+              widget.state.saveSessionShotCount(
+                sessionId: widget.sessionId,
+                shotCount: _audioShotCount,
+              );
+              _persist();
             }
-          });
-          if (shouldMark) {
-            widget.state.saveSessionShotCount(
-              sessionId: widget.sessionId,
-              shotCount: _audioShotCount,
-            );
-            _persist();
-          }
-        },
-        onError: (error) {
-          if (!mounted) return;
-          _noiseSubscription?.cancel();
-          _noiseSubscription = null;
-          setState(() {
-            _audioAssistEnabled = false;
-            _audioAssistMessage = 'Microphone access denied. Please enable microphone permissions in Settings.';
-          });
-        },
-        cancelOnError: true,
-      );
+          },
+          onError: (error) {
+            if (!mounted) return;
+            _noiseSubscription?.cancel();
+            _noiseSubscription = null;
+            unawaited(_releaseAudioSession());
+            setState(() {
+              _audioAssistEnabled = false;
+              _audioAssistMessage = 'Microphone access denied. Check Settings > Cold Bore > Microphone.';
+            });
+          },
+          cancelOnError: true,
+        );
+      } catch (e) {
+        await _noiseSubscription?.cancel();
+        _noiseSubscription = null;
+        unawaited(_releaseAudioSession());
+        if (!mounted) return;
+        setState(() {
+          _audioAssistEnabled = false;
+          _audioAssistMessage = 'Microphone unavailable. Check permissions and try again.';
+        });
+        return;
+      }
       
       if (!mounted) return;
       setState(() {
@@ -16778,11 +16814,13 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
             'Audio assist armed. Loud impulses will be counted while this is on.';
       });
     } catch (e) {
+      await _noiseSubscription?.cancel();
+      _noiseSubscription = null;
+      unawaited(_releaseAudioSession());
       if (!mounted) return;
       setState(() {
         _audioAssistEnabled = false;
-        _audioAssistMessage =
-            'Microphone unavailable. Please enable microphone permissions in Settings.';
+        _audioAssistMessage = 'Microphone unavailable. Check permissions and try again.';
       });
     }
   }
@@ -16798,11 +16836,6 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
 
   Future<void> _start() async {
     if (_isActive) return;
-    try {
-      await _audioPreparation.timeout(const Duration(seconds: 3));
-    } catch (_) {
-      // If audio preparation times out, continue anyway
-    }
     if (!mounted || _isActive) return;
     _startDelayMs = _parseSecondsToMs(_delayCtrl.text);
     _goalMs = _parseSecondsToMs(_goalCtrl.text);
@@ -17491,7 +17524,6 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
   String? _audioAssistMessage;
   String? _selectedRifleId;
   int _audioShotCount = 0;
-  Future<void> _audioPreparation = Future<void>.value();
 
   bool get _isRunning => _stopwatch.isRunning;
   bool get _isActive => _isRunning || _isArmed;
@@ -17503,7 +17535,6 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
   @override
   void initState() {
     super.initState();
-    _audioPreparation = _prepareShotTimerAudioOutput();
     _selectedRifleId = widget.state.shotTimerSelectedRifleId;
     widget.state.setShotTimerSelectedRifleId(_selectedRifleId);
     _audioThresholdDb = widget.state.audioThresholdDb;
@@ -17516,6 +17547,7 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
     _stopwatch.stop();
     _delayCtrl.dispose();
     _goalCtrl.dispose();
+    unawaited(_releaseAudioSession());
     super.dispose();
   }
 
@@ -17682,8 +17714,13 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
       return;
     }
     if (!enabled) {
+      // Disable audio assist and clean up resources
       await _noiseSubscription?.cancel();
       _noiseSubscription = null;
+      
+      // Release audio session to allow other apps to resume
+      await _releaseAudioSession();
+      
       if (!mounted) return;
       setState(() {
         _audioAssistEnabled = false;
@@ -17694,46 +17731,65 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
     }
 
     try {
-      // Prepare audio output first to establish audio session
-      _audioPreparation = _prepareShotTimerAudioOutput();
-      await _audioPreparation;
-      if (!mounted) return;
-      
-      // Configure microphone input for audio detection
-      await _configureMicrophoneInput();
-      
-      // Cancel any existing subscription
+      // Cancel any existing subscription first
       await _noiseSubscription?.cancel();
+      _noiseSubscription = null;
+      
+      // Configure audio session for microphone recording
+      try {
+        await _configureMicrophoneInput();
+      } catch (e) {
+        if (!mounted) return;
+        // Audio session configuration error
+        setState(() {
+          _audioAssistEnabled = false;
+          _audioAssistMessage = 'Could not configure microphone. Check permissions and try again.';
+        });
+        return;
+      }
       
       // Now try to start listening for noise
-      final noiseMeter = NoiseMeter();
-      _noiseSubscription = noiseMeter.noise.listen(
-        (reading) {
-          if (!mounted) return;
-          final maxDb = reading.maxDecibel;
-          final now = DateTime.now();
-          final gated = _shotGate.check(maxDb, _audioThresholdDb, now);
-          final shouldMark = _audioAssistEnabled && _isRunning && gated;
+      try {
+        final noiseMeter = NoiseMeter();
+        _noiseSubscription = noiseMeter.noise.listen(
+          (reading) {
+            if (!mounted) return;
+            final maxDb = reading.maxDecibel;
+            final now = DateTime.now();
+            final gated = _shotGate.check(maxDb, _audioThresholdDb, now);
+            final shouldMark = _audioAssistEnabled && _isRunning && gated;
 
-          setState(() {
-            _latestDb = maxDb;
-            if (shouldMark) {
-              _recordShotAt(_currentElapsedMs());
-              _audioShotCount += 1;
-            }
-          });
-        },
-        onError: (error) {
-          if (!mounted) return;
-          _noiseSubscription?.cancel();
-          _noiseSubscription = null;
-          setState(() {
-            _audioAssistEnabled = false;
-            _audioAssistMessage = 'Microphone access denied. Please enable microphone permissions in Settings.';
-          });
-        },
-        cancelOnError: true,
-      );
+            setState(() {
+              _latestDb = maxDb;
+              if (shouldMark) {
+                _recordShotAt(_currentElapsedMs());
+                _audioShotCount += 1;
+              }
+            });
+          },
+          onError: (error) {
+            if (!mounted) return;
+            _noiseSubscription?.cancel();
+            _noiseSubscription = null;
+            unawaited(_releaseAudioSession());
+            setState(() {
+              _audioAssistEnabled = false;
+              _audioAssistMessage = 'Microphone access denied. Check Settings > Cold Bore > Microphone.';
+            });
+          },
+          cancelOnError: true,
+        );
+      } catch (e) {
+        await _noiseSubscription?.cancel();
+        _noiseSubscription = null;
+        unawaited(_releaseAudioSession());
+        if (!mounted) return;
+        setState(() {
+          _audioAssistEnabled = false;
+          _audioAssistMessage = 'Microphone unavailable. Check permissions and try again.';
+        });
+        return;
+      }
       
       if (!mounted) return;
       setState(() {
@@ -17742,22 +17798,19 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
             'Audio assist armed. Loud impulses can auto-mark shots.';
       });
     } catch (e) {
+      await _noiseSubscription?.cancel();
+      _noiseSubscription = null;
+      unawaited(_releaseAudioSession());
       if (!mounted) return;
       setState(() {
         _audioAssistEnabled = false;
-        _audioAssistMessage =
-            'Microphone unavailable. Please enable microphone permissions in Settings.';
+        _audioAssistMessage = 'Microphone unavailable. Check permissions and try again.';
       });
     }
   }
 
   Future<void> _start() async {
     if (_isActive) return;
-    try {
-      await _audioPreparation.timeout(const Duration(seconds: 3));
-    } catch (_) {
-      // If audio preparation times out, continue anyway
-    }
     if (!mounted || _isActive) return;
     _startDelayMs = _parseSecondsToMs(_delayCtrl.text);
     _goalMs = _parseSecondsToMs(_goalCtrl.text);
