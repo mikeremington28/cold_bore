@@ -16721,11 +16721,12 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
     }
 
     try {
-      // Don't force built-in microphone - let the system route audio appropriately
-      // This allows Bluetooth microphones to be used if the user has set them as default
-      
+      // Cancel any existing subscription
       await _noiseSubscription?.cancel();
-      _noiseSubscription = NoiseMeter().noise.listen(
+      
+      // Create NoiseMeter and listen for readings
+      final noiseMeter = NoiseMeter();
+      _noiseSubscription = noiseMeter.noise.listen(
         (reading) {
           if (!mounted) return;
           final maxDb = reading.maxDecibel;
@@ -16750,8 +16751,19 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
             _persist();
           }
         },
-        cancelOnError: false,
+        onError: (error) {
+          // Handle microphone errors
+          if (!mounted) return;
+          _noiseSubscription?.cancel();
+          _noiseSubscription = null;
+          setState(() {
+            _audioAssistEnabled = false;
+            _audioAssistMessage = 'Microphone access denied. Please enable microphone permissions in Settings.';
+          });
+        },
+        cancelOnError: true,
       );
+      
       _audioPreparation = _prepareShotTimerAudioOutput();
       await _audioPreparation;
       if (!mounted) return;
@@ -16765,7 +16777,7 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
       setState(() {
         _audioAssistEnabled = false;
         _audioAssistMessage =
-            'Microphone unavailable. Check permissions and try again.';
+            'Microphone unavailable. Please enable microphone permissions in Settings.';
       });
     }
   }
@@ -17677,11 +17689,12 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
     }
 
     try {
-      // Don't force built-in microphone - let the system route audio appropriately
-      // This allows Bluetooth microphones to be used if the user has set them as default
-      
+      // Cancel any existing subscription
       await _noiseSubscription?.cancel();
-      _noiseSubscription = NoiseMeter().noise.listen(
+      
+      // Create NoiseMeter and listen for readings
+      final noiseMeter = NoiseMeter();
+      _noiseSubscription = noiseMeter.noise.listen(
         (reading) {
           if (!mounted) return;
           final maxDb = reading.maxDecibel;
@@ -17697,8 +17710,19 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
             }
           });
         },
-        cancelOnError: false,
+        onError: (error) {
+          // Handle microphone errors
+          if (!mounted) return;
+          _noiseSubscription?.cancel();
+          _noiseSubscription = null;
+          setState(() {
+            _audioAssistEnabled = false;
+            _audioAssistMessage = 'Microphone access denied. Please enable microphone permissions in Settings.';
+          });
+        },
+        cancelOnError: true,
       );
+      
       _audioPreparation = _prepareShotTimerAudioOutput();
       await _audioPreparation;
       if (!mounted) return;
@@ -17712,7 +17736,7 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
       setState(() {
         _audioAssistEnabled = false;
         _audioAssistMessage =
-            'Microphone unavailable. Check permissions and try again.';
+            'Microphone unavailable. Please enable microphone permissions in Settings.';
       });
     }
   }
