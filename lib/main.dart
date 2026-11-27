@@ -16721,10 +16721,18 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
     }
 
     try {
+      // Prepare audio output first to establish audio session
+      _audioPreparation = _prepareShotTimerAudioOutput();
+      await _audioPreparation;
+      if (!mounted) return;
+      
+      // Configure microphone input for audio detection
+      await _configureMicrophoneInput();
+      
       // Cancel any existing subscription
       await _noiseSubscription?.cancel();
       
-      // Create NoiseMeter and listen for readings
+      // Now try to start listening for noise
       final noiseMeter = NoiseMeter();
       _noiseSubscription = noiseMeter.noise.listen(
         (reading) {
@@ -16752,7 +16760,6 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
           }
         },
         onError: (error) {
-          // Handle microphone errors
           if (!mounted) return;
           _noiseSubscription?.cancel();
           _noiseSubscription = null;
@@ -16764,8 +16771,6 @@ class _SessionShotTimerCardState extends State<_SessionShotTimerCard> {
         cancelOnError: true,
       );
       
-      _audioPreparation = _prepareShotTimerAudioOutput();
-      await _audioPreparation;
       if (!mounted) return;
       setState(() {
         _audioAssistEnabled = true;
@@ -17689,10 +17694,18 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
     }
 
     try {
+      // Prepare audio output first to establish audio session
+      _audioPreparation = _prepareShotTimerAudioOutput();
+      await _audioPreparation;
+      if (!mounted) return;
+      
+      // Configure microphone input for audio detection
+      await _configureMicrophoneInput();
+      
       // Cancel any existing subscription
       await _noiseSubscription?.cancel();
       
-      // Create NoiseMeter and listen for readings
+      // Now try to start listening for noise
       final noiseMeter = NoiseMeter();
       _noiseSubscription = noiseMeter.noise.listen(
         (reading) {
@@ -17711,7 +17724,6 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
           });
         },
         onError: (error) {
-          // Handle microphone errors
           if (!mounted) return;
           _noiseSubscription?.cancel();
           _noiseSubscription = null;
@@ -17723,8 +17735,6 @@ class _StandaloneShotTimerCardState extends State<_StandaloneShotTimerCard> {
         cancelOnError: true,
       );
       
-      _audioPreparation = _prepareShotTimerAudioOutput();
-      await _audioPreparation;
       if (!mounted) return;
       setState(() {
         _audioAssistEnabled = true;
